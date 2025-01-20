@@ -21,10 +21,27 @@ interface Business {
 
 type TicketFormData = NewTicket & {
   businessId: number;
+  category: string;
+  priority: string;
 };
 
+const CATEGORIES = [
+  { value: "technical", label: "Technical Issue" },
+  { value: "billing", label: "Billing Problem" },
+  { value: "feature_request", label: "Feature Request" },
+  { value: "general_inquiry", label: "General Inquiry" },
+  { value: "bug_report", label: "Bug Report" },
+];
+
+const PRIORITIES = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+];
+
 export default function TicketForm() {
-  const { register, handleSubmit, reset, setValue, watch } = useForm<TicketFormData>();
+  const { register, handleSubmit, reset, setValue } = useForm<TicketFormData>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -84,6 +101,47 @@ export default function TicketForm() {
           </SelectContent>
         </Select>
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="category">Category</Label>
+        <Select
+          onValueChange={(value) => setValue('category', value)}
+          required
+          defaultValue="general_inquiry"
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select ticket category" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((category) => (
+              <SelectItem key={category.value} value={category.value}>
+                {category.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="priority">Priority</Label>
+        <Select
+          onValueChange={(value) => setValue('priority', value)}
+          required
+          defaultValue="medium"
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select ticket priority" />
+          </SelectTrigger>
+          <SelectContent>
+            {PRIORITIES.map((priority) => (
+              <SelectItem key={priority.value} value={priority.value}>
+                {priority.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="title">Title</Label>
         <Input
@@ -92,6 +150,7 @@ export default function TicketForm() {
           placeholder="Brief description of the issue"
         />
       </div>
+
       <div className="space-y-2">
         <Label htmlFor="description">Description</Label>
         <Textarea
@@ -101,6 +160,7 @@ export default function TicketForm() {
           rows={4}
         />
       </div>
+
       <Button type="submit" disabled={createTicket.isPending}>
         {createTicket.isPending ? "Creating..." : "Create Ticket"}
       </Button>

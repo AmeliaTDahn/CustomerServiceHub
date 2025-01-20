@@ -16,6 +16,12 @@ export const tickets = pgTable("tickets", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   status: text("status", { enum: ["open", "in_progress", "resolved"] }).default("open").notNull(),
+  category: text("category", { 
+    enum: ["technical", "billing", "feature_request", "general_inquiry", "bug_report"] 
+  }).default("general_inquiry").notNull(),
+  priority: text("priority", { 
+    enum: ["low", "medium", "high", "urgent"] 
+  }).default("medium").notNull(),
   customerId: integer("customer_id").references(() => users.id).notNull(),
   businessId: integer("business_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -38,7 +44,6 @@ export const usersRelations = relations(users, ({ many }) => ({
   businessTickets: many(tickets, { relationName: "business" })
 }));
 
-// Create base schemas
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),

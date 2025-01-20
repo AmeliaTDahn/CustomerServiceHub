@@ -60,49 +60,80 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
     }
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "urgent":
+        return "bg-red-100 text-red-800";
+      case "high":
+        return "bg-orange-100 text-orange-800";
+      case "medium":
+        return "bg-blue-100 text-blue-800";
+      case "low":
+        return "bg-green-100 text-green-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const getCategoryLabel = (category: string) => {
+    return category.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  };
+
   return (
     <div className="space-y-4">
       {tickets.map((ticket) => (
         <Card key={ticket.id}>
           <CardHeader>
             <div className="flex justify-between items-start">
-              <div>
+              <div className="space-y-1">
                 <CardTitle>{ticket.title}</CardTitle>
                 <CardDescription>
                   Created on {new Date(ticket.createdAt).toLocaleDateString()}
                 </CardDescription>
               </div>
-              <Badge className={getStatusColor(ticket.status)}>
-                {ticket.status.replace("_", " ")}
-              </Badge>
+              <div className="flex gap-2">
+                <Badge className={getStatusColor(ticket.status)}>
+                  {ticket.status.replace("_", " ")}
+                </Badge>
+                <Badge className={getPriorityColor(ticket.priority)}>
+                  {ticket.priority.toUpperCase()}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600 mb-4">{ticket.description}</p>
-            {isBusiness && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    updateTicket.mutate({ id: ticket.id, status: "in_progress" })
-                  }
-                  disabled={ticket.status === "in_progress"}
-                >
-                  Mark In Progress
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    updateTicket.mutate({ id: ticket.id, status: "resolved" })
-                  }
-                  disabled={ticket.status === "resolved"}
-                >
-                  Mark Resolved
-                </Button>
+            <div className="space-y-4">
+              <div>
+                <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
               </div>
-            )}
+              <p className="text-sm text-gray-600">{ticket.description}</p>
+              {isBusiness && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      updateTicket.mutate({ id: ticket.id, status: "in_progress" })
+                    }
+                    disabled={ticket.status === "in_progress"}
+                  >
+                    Mark In Progress
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      updateTicket.mutate({ id: ticket.id, status: "resolved" })
+                    }
+                    disabled={ticket.status === "resolved"}
+                  >
+                    Mark Resolved
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       ))}

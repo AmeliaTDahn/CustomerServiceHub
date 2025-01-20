@@ -16,21 +16,39 @@ interface TicketChatProps {
   ticketId: number;
 }
 
+const STORAGE_KEY = 'ticket-chat-messages';
+const RECONNECT_DELAY = 3000; // 3 seconds
+
 export default function TicketChat({ ticketId }: TicketChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    // Load messages from localStorage on component mount
+    const storedMessages = localStorage.getItem(STORAGE_KEY);
+    if (storedMessages) {
+      const allMessages = JSON.parse(storedMessages);
+      return allMessages[ticketId] || [];
+    }
+    return [];
+  });
   const [newMessage, setNewMessage] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
+  // Save messages to localStorage whenever they change
   useEffect(() => {
-    let wsInstance: WebSocket;
+    const storedMessages = localStorage.getItem(STORAGE_KEY);
+    const allMessages = storedMessages ? JSON.parse(storedMessages) : {};
+    allMessages[ticketId] = messages;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allMessages));
+  }, [messages, ticketId]);
 
+  const connectWebSocket = () => {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}?ticketId=${ticketId}&role=${user?.role}`;
-      wsInstance = new WebSocket(wsUrl);
+      const wsInstance = new WebSocket(wsUrl);
 
       wsInstance.onopen = () => {
         console.log('WebSocket Connected');
@@ -61,32 +79,43 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to connect to chat. Please try again.",
+          description: "Connection error. Attempting to reconnect...",
         });
       };
 
       wsInstance.onclose = () => {
         console.log('WebSocket Disconnected');
-        toast({
-          variant: "destructive",
-          title: "Disconnected",
-          description: "Chat connection lost. Please refresh to reconnect.",
-        });
+        setWs(null);
+        // Attempt to reconnect after delay
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
       };
 
       setWs(wsInstance);
-
-      return () => {
-        wsInstance.close();
-      };
+      return wsInstance;
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to setup chat connection.",
+        description: "Failed to setup chat connection. Retrying...",
       });
+      // Attempt to reconnect after delay
+      reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+      return null;
     }
+  };
+
+  useEffect(() => {
+    const wsInstance = connectWebSocket();
+
+    return () => {
+      if (wsInstance) {
+        wsInstance.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
   }, [ticketId, user?.role]);
 
   const sendMessage = (e: React.FormEvent) => {

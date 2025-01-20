@@ -2,11 +2,25 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { db } from "@db";
-import { tickets } from "@db/schema";
+import { tickets, users } from "@db/schema";
 import { eq, and } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
+
+  // Get all registered businesses
+  app.get("/api/businesses", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const businesses = await db.select({
+      id: users.id,
+      username: users.username
+    })
+    .from(users)
+    .where(eq(users.role, "business"));
+
+    res.json(businesses);
+  });
 
   // Ticket management routes
   app.post("/api/tickets", async (req, res) => {
@@ -14,12 +28,27 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Only customers can create tickets");
     }
 
-    const { title, description } = req.body;
+    const { title, description, businessId } = req.body;
+
+    // Verify that the selected business exists
+    const [business] = await db.select()
+      .from(users)
+      .where(and(
+        eq(users.id, businessId),
+        eq(users.role, "business")
+      ))
+      .limit(1);
+
+    if (!business) {
+      return res.status(404).send("Selected business not found");
+    }
+
     const [ticket] = await db.insert(tickets)
       .values({
         title,
         description,
         customerId: req.user.id,
+        businessId: business.id,
       })
       .returning();
 

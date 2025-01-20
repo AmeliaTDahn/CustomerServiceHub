@@ -25,7 +25,8 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     const storedMessages = localStorage.getItem(STORAGE_KEY);
     if (storedMessages) {
       const allMessages = JSON.parse(storedMessages);
-      return allMessages[ticketId] || [];
+      // Filter out any system messages when loading from storage
+      return (allMessages[ticketId] || []).filter((msg: Message) => msg.sender !== 'system');
     }
     return [];
   });
@@ -61,13 +62,16 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
       wsInstance.onmessage = (event) => {
         try {
           const message: Message = JSON.parse(event.data);
-          setMessages((prev) => [...prev, message]);
+          // Only add the message if it's from a user (not system)
+          if (message.sender !== 'system') {
+            setMessages((prev) => [...prev, message]);
 
-          // Scroll to bottom on new message
-          if (scrollAreaRef.current) {
-            setTimeout(() => {
-              scrollAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            }, 100);
+            // Scroll to bottom on new message
+            if (scrollAreaRef.current) {
+              setTimeout(() => {
+                scrollAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+              }, 100);
+            }
           }
         } catch (error) {
           console.error('Error parsing message:', error);

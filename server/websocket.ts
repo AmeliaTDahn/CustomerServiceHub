@@ -61,14 +61,6 @@ export function setupWebSocket(server: Server, app: Express) {
         }
       }
     });
-
-    // Send initial connection success message
-    ws.send(JSON.stringify({
-      ticketId,
-      sender: 'system',
-      content: `Connected to ticket ${ticketId} chat as ${role}`,
-      timestamp: new Date().toISOString()
-    }));
   });
 
   // Handle upgrade requests

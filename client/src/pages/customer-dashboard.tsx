@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketForm from "@/components/ticket-form";
 import TicketList from "@/components/ticket-list";
+import TicketFilters from "@/components/ticket-filters";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useUser } from "@/hooks/use-user";
 import type { Ticket } from "@db/schema";
@@ -12,6 +14,21 @@ export default function CustomerDashboard() {
   const { data: tickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets'],
   });
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const filteredTickets = tickets?.filter((ticket) => {
+    const matchesSearch = searchTerm === "" || 
+      ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
+    const matchesCategory = categoryFilter === "all" || ticket.category === categoryFilter;
+
+    return matchesSearch && matchesStatus && matchesCategory;
+  }) || [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,7 +62,16 @@ export default function CustomerDashboard() {
             </CardContent>
           </Card>
 
-          <TicketList tickets={tickets || []} />
+          <Card>
+            <CardContent className="pt-6">
+              <TicketFilters 
+                onSearchChange={setSearchTerm}
+                onStatusChange={setStatusFilter}
+                onCategoryChange={setCategoryFilter}
+              />
+              <TicketList tickets={filteredTickets} />
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

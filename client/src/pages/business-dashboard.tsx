@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
+import TicketFilters from "@/components/ticket-filters";
 import { useUser } from "@/hooks/use-user";
 import type { Ticket } from "@db/schema";
 
@@ -10,6 +12,21 @@ export default function BusinessDashboard() {
   const { data: tickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets'],
   });
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const filteredTickets = tickets?.filter((ticket) => {
+    const matchesSearch = searchTerm === "" || 
+      ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
+    const matchesCategory = categoryFilter === "all" || ticket.category === categoryFilter;
+
+    return matchesSearch && matchesStatus && matchesCategory;
+  }) || [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -31,7 +48,12 @@ export default function BusinessDashboard() {
             <CardTitle>Customer Tickets</CardTitle>
           </CardHeader>
           <CardContent>
-            <TicketList tickets={tickets || []} isBusiness />
+            <TicketFilters 
+              onSearchChange={setSearchTerm}
+              onStatusChange={setStatusFilter}
+              onCategoryChange={setCategoryFilter}
+            />
+            <TicketList tickets={filteredTickets} isBusiness />
           </CardContent>
         </Card>
       </main>

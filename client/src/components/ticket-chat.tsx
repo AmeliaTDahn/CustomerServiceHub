@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 
 interface Message {
+  ticketId: number;
   sender: string;
   content: string;
   timestamp: string;
@@ -21,61 +22,101 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const { user } = useUser();
   const { toast } = useToast();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const socket = new WebSocket(
-      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}?ticketId=${ticketId}&role=${user?.role}`
-    );
+    let wsInstance: WebSocket;
 
-    socket.onopen = () => {
-      console.log('WebSocket Connected');
-    };
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?ticketId=${ticketId}&role=${user?.role}`;
+      wsInstance = new WebSocket(wsUrl);
 
-    socket.onmessage = (event) => {
-      const message: Message = JSON.parse(event.data);
-      setMessages((prev) => [...prev, message]);
-      
-      // Scroll to bottom on new message
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-    };
+      wsInstance.onopen = () => {
+        console.log('WebSocket Connected');
+        toast({
+          title: "Connected",
+          description: "Chat connection established",
+        });
+      };
 
-    socket.onerror = (error) => {
-      console.error('WebSocket Error:', error);
+      wsInstance.onmessage = (event) => {
+        try {
+          const message: Message = JSON.parse(event.data);
+          setMessages((prev) => [...prev, message]);
+
+          // Scroll to bottom on new message
+          if (scrollAreaRef.current) {
+            setTimeout(() => {
+              scrollAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }, 100);
+          }
+        } catch (error) {
+          console.error('Error parsing message:', error);
+        }
+      };
+
+      wsInstance.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to connect to chat. Please try again.",
+        });
+      };
+
+      wsInstance.onclose = () => {
+        console.log('WebSocket Disconnected');
+        toast({
+          variant: "destructive",
+          title: "Disconnected",
+          description: "Chat connection lost. Please refresh to reconnect.",
+        });
+      };
+
+      setWs(wsInstance);
+
+      return () => {
+        wsInstance.close();
+      };
+    } catch (error) {
+      console.error('Error setting up WebSocket:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to connect to chat. Please try again.",
+        description: "Failed to setup chat connection.",
       });
-    };
-
-    setWs(socket);
-
-    return () => {
-      socket.close();
-    };
+    }
   }, [ticketId, user?.role]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !user) return;
 
     const message: Message = {
-      sender: user?.username || 'Unknown',
-      content: newMessage,
-      timestamp: new Date().toISOString(),
+      ticketId,
+      sender: user.username,
+      content: newMessage.trim(),
+      timestamp: new Date().toISOString()
     };
 
-    ws.send(JSON.stringify(message));
-    setMessages((prev) => [...prev, message]);
-    setNewMessage("");
+    try {
+      ws.send(JSON.stringify(message));
+      setMessages((prev) => [...prev, message]);
+      setNewMessage("");
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+      });
+    }
   };
 
   return (
     <div className="flex flex-col h-[400px] border rounded-lg">
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map((message, index) => (
             <div
@@ -99,6 +140,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
               </div>
             </div>
           ))}
+          <div ref={scrollAreaRef} />
         </div>
       </ScrollArea>
       <form onSubmit={sendMessage} className="p-4 border-t">
@@ -109,7 +151,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
             placeholder="Type your message..."
             className="flex-1"
           />
-          <Button type="submit" disabled={!newMessage.trim()}>
+          <Button type="submit" disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN}>
             Send
           </Button>
         </div>

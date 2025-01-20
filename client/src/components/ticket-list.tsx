@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
+import TicketChat from "./ticket-chat";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -132,7 +133,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
       </div>
 
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl">
           {selectedTicket && (
             <>
               <DialogHeader>
@@ -141,49 +142,55 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                   Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Badge className={getStatusColor(selectedTicket.status)}>
-                    {selectedTicket.status.replace("_", " ")}
-                  </Badge>
-                  <Badge className={getPriorityColor(selectedTicket.priority)}>
-                    {selectedTicket.priority.toUpperCase()}
-                  </Badge>
-                  <Badge variant="outline">
-                    {getCategoryLabel(selectedTicket.category)}
-                  </Badge>
-                </div>
-                <div className="prose prose-sm max-w-none">
-                  <p>{selectedTicket.description}</p>
-                </div>
-                {isBusiness && (
-                  <div className="flex gap-2 pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        updateTicket.mutate({
-                          id: selectedTicket.id,
-                          status: "in_progress",
-                        })
-                      }
-                      disabled={selectedTicket.status === "in_progress"}
-                    >
-                      Mark In Progress
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        updateTicket.mutate({
-                          id: selectedTicket.id,
-                          status: "resolved",
-                        })
-                      }
-                      disabled={selectedTicket.status === "resolved"}
-                    >
-                      Mark Resolved
-                    </Button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Badge className={getStatusColor(selectedTicket.status)}>
+                      {selectedTicket.status.replace("_", " ")}
+                    </Badge>
+                    <Badge className={getPriorityColor(selectedTicket.priority)}>
+                      {selectedTicket.priority.toUpperCase()}
+                    </Badge>
+                    <Badge variant="outline">
+                      {getCategoryLabel(selectedTicket.category)}
+                    </Badge>
                   </div>
-                )}
+                  <div className="prose prose-sm max-w-none">
+                    <p>{selectedTicket.description}</p>
+                  </div>
+                  {isBusiness && (
+                    <div className="flex gap-2 pt-4">
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          updateTicket.mutate({
+                            id: selectedTicket.id,
+                            status: "in_progress",
+                          })
+                        }
+                        disabled={selectedTicket.status === "in_progress"}
+                      >
+                        Mark In Progress
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          updateTicket.mutate({
+                            id: selectedTicket.id,
+                            status: "resolved",
+                          })
+                        }
+                        disabled={selectedTicket.status === "resolved"}
+                      >
+                        Mark Resolved
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-4">Chat</h3>
+                  <TicketChat ticketId={selectedTicket.id} />
+                </div>
               </div>
             </>
           )}

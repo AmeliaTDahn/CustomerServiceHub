@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
+import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users } from "@db/schema";
 import { eq, and } from "drizzle-orm";
@@ -96,5 +97,9 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
+
+  // Setup WebSocket server
+  setupWebSocket(httpServer, app);
+
   return httpServer;
 }

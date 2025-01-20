@@ -32,10 +32,17 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
   });
   const [newMessage, setNewMessage] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [hasBusinessMessage, setHasBusinessMessage] = useState(false);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Check if there's a business message in stored messages
+  useEffect(() => {
+    const hasBusinessMsg = messages.some(msg => msg.sender !== user?.username);
+    setHasBusinessMessage(hasBusinessMsg);
+  }, [messages, user?.username]);
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -62,9 +69,13 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
       wsInstance.onmessage = (event) => {
         try {
           const message: Message = JSON.parse(event.data);
-          // Only add the message if it's from a user (not system)
           if (message.sender !== 'system') {
             setMessages((prev) => [...prev, message]);
+
+            // If it's a business message and customer hasn't received one yet
+            if (message.sender !== user?.username && user?.role === 'customer') {
+              setHasBusinessMessage(true);
+            }
 
             // Scroll to bottom on new message
             if (scrollAreaRef.current) {
@@ -126,6 +137,16 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     e.preventDefault();
     if (!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !user) return;
 
+    // If user is a customer and hasn't received a business message yet, prevent sending
+    if (user.role === 'customer' && !hasBusinessMessage) {
+      toast({
+        variant: "destructive",
+        title: "Cannot send message",
+        description: "Please wait for a business representative to message first.",
+      });
+      return;
+    }
+
     const message: Message = {
       ticketId,
       sender: user.username,
@@ -146,6 +167,9 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
       });
     }
   };
+
+  // Check if user is customer and hasn't received a business message
+  const isMessageInputDisabled = user?.role === 'customer' && !hasBusinessMessage;
 
   return (
     <div className="flex flex-col h-[400px] border rounded-lg">
@@ -181,10 +205,14 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type your message..."
+            placeholder={isMessageInputDisabled ? "Wait for business representative to message first..." : "Type your message..."}
             className="flex-1"
+            disabled={isMessageInputDisabled}
           />
-          <Button type="submit" disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN}>
+          <Button 
+            type="submit" 
+            disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || isMessageInputDisabled}
+          >
             Send
           </Button>
         </div>

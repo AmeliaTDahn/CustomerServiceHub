@@ -8,8 +8,16 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { Ticket } from "@db/schema";
+import { useState } from "react";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -17,6 +25,7 @@ interface TicketListProps {
 }
 
 export default function TicketList({ tickets, isBusiness = false }: TicketListProps) {
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -82,68 +91,104 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
   };
 
   return (
-    <div className="space-y-4">
-      {tickets.map((ticket) => (
-        <Card key={ticket.id}>
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <CardTitle>{ticket.title}</CardTitle>
-                <CardDescription>
-                  Created on {new Date(ticket.createdAt).toLocaleDateString()}
-                </CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Badge className={getStatusColor(ticket.status)}>
-                  {ticket.status.replace("_", " ")}
-                </Badge>
-                <Badge className={getPriorityColor(ticket.priority)}>
-                  {ticket.priority.toUpperCase()}
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-              </div>
-              <p className="text-sm text-gray-600">{ticket.description}</p>
-              {isBusiness && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      updateTicket.mutate({ id: ticket.id, status: "in_progress" })
-                    }
-                    disabled={ticket.status === "in_progress"}
-                  >
-                    Mark In Progress
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      updateTicket.mutate({ id: ticket.id, status: "resolved" })
-                    }
-                    disabled={ticket.status === "resolved"}
-                  >
-                    Mark Resolved
-                  </Button>
+    <>
+      <div className="space-y-4">
+        {tickets.map((ticket) => (
+          <Card 
+            key={ticket.id} 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setSelectedTicket(ticket)}
+          >
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <CardTitle>{ticket.title}</CardTitle>
+                  <CardDescription>
+                    Created on {new Date(ticket.createdAt).toLocaleDateString()}
+                  </CardDescription>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      {tickets.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-500">
-            No tickets found
-          </CardContent>
-        </Card>
-      )}
-    </div>
+                <div className="flex gap-2">
+                  <Badge className={getStatusColor(ticket.status)}>
+                    {ticket.status.replace("_", " ")}
+                  </Badge>
+                  <Badge className={getPriorityColor(ticket.priority)}>
+                    {ticket.priority.toUpperCase()}
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+            </CardContent>
+          </Card>
+        ))}
+        {tickets.length === 0 && (
+          <Card>
+            <CardContent className="py-8 text-center text-gray-500">
+              No tickets found
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
+        <DialogContent className="max-w-2xl">
+          {selectedTicket && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedTicket.title}</DialogTitle>
+                <DialogDescription>
+                  Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Badge className={getStatusColor(selectedTicket.status)}>
+                    {selectedTicket.status.replace("_", " ")}
+                  </Badge>
+                  <Badge className={getPriorityColor(selectedTicket.priority)}>
+                    {selectedTicket.priority.toUpperCase()}
+                  </Badge>
+                  <Badge variant="outline">
+                    {getCategoryLabel(selectedTicket.category)}
+                  </Badge>
+                </div>
+                <div className="prose prose-sm max-w-none">
+                  <p>{selectedTicket.description}</p>
+                </div>
+                {isBusiness && (
+                  <div className="flex gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        updateTicket.mutate({
+                          id: selectedTicket.id,
+                          status: "in_progress",
+                        })
+                      }
+                      disabled={selectedTicket.status === "in_progress"}
+                    >
+                      Mark In Progress
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        updateTicket.mutate({
+                          id: selectedTicket.id,
+                          status: "resolved",
+                        })
+                      }
+                      disabled={selectedTicket.status === "resolved"}
+                    >
+                      Mark Resolved
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

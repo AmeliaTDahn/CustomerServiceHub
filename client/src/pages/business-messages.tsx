@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +70,7 @@ export default function BusinessMessages() {
       try {
         console.log('Connecting WebSocket...');
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.role}`;
         const wsInstance = new WebSocket(wsUrl);
 
         wsInstance.onopen = () => {

@@ -12,16 +12,17 @@ interface Message {
   timestamp: string;
 }
 
-// Store active connections
-const connections = new Map<number, WebSocket>();
+// Store active connections with role information
+const connections = new Map<string, WebSocket>();
 
 export function setupWebSocket(server: Server, app: Express) {
   const wss = new WebSocketServer({ noServer: true });
 
   // Handle WebSocket connections
-  wss.on('connection', (ws: WebSocket, userId: number) => {
-    console.log(`New WebSocket connection for user ${userId}`);
-    connections.set(userId, ws);
+  wss.on('connection', (ws: WebSocket, userId: number, role: string) => {
+    console.log(`New WebSocket connection for ${role} user ${userId}`);
+    const connectionKey = `${userId}-${role}`;
+    connections.set(connectionKey, ws);
 
     // Handle incoming messages
     ws.on('message', async (data: string) => {
@@ -55,11 +56,14 @@ export function setupWebSocket(server: Server, app: Express) {
           createdAt: savedMessage.createdAt.toISOString()
         };
 
-        // Forward message to receiver if online
-        const receiverWs = connections.get(message.receiverId);
-        if (receiverWs?.readyState === WebSocket.OPEN) {
-          console.log('Forwarding message to receiver:', message.receiverId);
-          receiverWs.send(JSON.stringify(responseMessage));
+        // Forward message to receiver if online (try both business and customer roles)
+        const receiverRoles = ['business', 'customer'];
+        for (const receiverRole of receiverRoles) {
+          const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
+          if (receiverWs?.readyState === WebSocket.OPEN) {
+            console.log(`Forwarding message to ${receiverRole} ${message.receiverId}`);
+            receiverWs.send(JSON.stringify(responseMessage));
+          }
         }
 
         // Send confirmation back to sender
@@ -76,15 +80,16 @@ export function setupWebSocket(server: Server, app: Express) {
 
     // Handle connection close
     ws.on('close', () => {
-      console.log(`User ${userId} disconnected`);
-      connections.delete(userId);
+      console.log(`User ${userId} (${role}) disconnected`);
+      connections.delete(`${userId}-${role}`);
     });
 
     // Send initial connection success message
     ws.send(JSON.stringify({ 
       type: 'connection', 
       status: 'connected',
-      userId: userId
+      userId: userId,
+      role: role
     }));
   });
 
@@ -98,16 +103,17 @@ export function setupWebSocket(server: Server, app: Express) {
     try {
       const url = new URL(request.url!, `http://${request.headers.host}`);
       const userId = parseInt(url.searchParams.get('userId') || '');
+      const role = url.searchParams.get('role') || '';
 
-      if (!userId || isNaN(userId)) {
-        console.error('Invalid WebSocket connection parameters:', { userId });
+      if (!userId || isNaN(userId) || !role || !['business', 'customer'].includes(role)) {
+        console.error('Invalid WebSocket connection parameters:', { userId, role });
         socket.destroy();
         return;
       }
 
-      console.log('Upgrading connection for user:', userId);
+      console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, userId);
+        wss.emit('connection', ws, userId, role);
       });
     } catch (error) {
       console.error('Error handling WebSocket upgrade:', error);

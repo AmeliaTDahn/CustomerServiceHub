@@ -5,14 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { supabase } from "@/lib/supabase";
-
-interface Message {
-  id: number;
-  content: string;
-  senderId: number;
-  receiverId: number;
-  createdAt: string;
-}
+import type { Message } from "@db/schema";
 
 interface TicketChatProps {
   ticketId: number;
@@ -58,30 +51,35 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     loadMessages();
 
     // Set up real-time subscription
-    const channel = supabase.channel(`ticket:${ticketId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `ticket_id=eq.${ticketId}`
-      }, (payload) => {
-        console.log('Received new message:', payload);
-        const newMessage = payload.new as Message;
-        setMessages(prev => [...prev, newMessage]);
-      })
-      .subscribe((status) => {
-        console.log(`Channel status for ticket:${ticketId}:`, status);
-        if (status === 'SUBSCRIBED') {
-          console.log(`Successfully subscribed to ticket:${ticketId}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error(`Error in ticket:${ticketId} subscription`);
-          toast({
-            variant: "destructive",
-            title: "Connection Error",
-            description: "Lost connection to chat. Please refresh the page."
-          });
-        }
-      });
+    const channel = supabase.channel(`ticket:${ticketId}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: user?.id.toString() },
+      }
+    })
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'messages',
+      filter: `ticket_id=eq.${ticketId}`
+    }, (payload) => {
+      console.log('Received new message:', payload);
+      const newMessage = payload.new as Message;
+      setMessages(prev => [...prev, newMessage]);
+    })
+    .subscribe(async (status) => {
+      console.log(`Channel status for ticket:${ticketId}:`, status);
+      if (status === 'SUBSCRIBED') {
+        console.log(`Successfully subscribed to ticket:${ticketId}`);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error(`Error in ticket:${ticketId} subscription`);
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Lost connection to chat. Please refresh the page."
+        });
+      }
+    });
 
     channelRef.current = channel;
 
@@ -91,7 +89,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
         channelRef.current.unsubscribe();
       }
     };
-  }, [ticketId, toast]);
+  }, [ticketId, toast, user?.id]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

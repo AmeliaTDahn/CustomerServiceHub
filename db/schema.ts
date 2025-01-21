@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -49,7 +49,7 @@ export const tickets = pgTable("tickets", {
 export const ticketFeedback = pgTable("ticket_feedback", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
-  rating: integer("rating").notNull(), 
+  rating: integer("rating").notNull(),
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -58,7 +58,8 @@ export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
   senderId: integer("sender_id").references(() => users.id).notNull(),
-  receiverId: integer("receiver_id").references(() => users.id).notNull(),
+  ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
+  senderType: text("sender_type", { enum: ["business", "customer", "employee"] }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -133,9 +134,9 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     fields: [messages.senderId],
     references: [users.id]
   }),
-  receiver: one(users, {
-    fields: [messages.receiverId],
-    references: [users.id]
+  ticket: one(tickets, {
+    fields: [messages.ticketId],
+    references: [tickets.id]
   })
 }));
 

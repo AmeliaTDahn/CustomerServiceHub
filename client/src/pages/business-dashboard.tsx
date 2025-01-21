@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
+import InvitationHandler from "@/components/invitation-handler";
+import BusinessSwitcher from "@/components/business-switcher";
 import { useUser } from "@/hooks/use-user";
 import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
@@ -12,8 +14,10 @@ import type { Ticket } from "@db/schema";
 
 export default function BusinessDashboard() {
   const { user, logout } = useUser();
+  const [currentBusinessId, setCurrentBusinessId] = useState<string>();
+
   const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets'],
+    queryKey: ['/api/tickets', currentBusinessId],
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -51,7 +55,17 @@ export default function BusinessDashboard() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Business Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {user?.role === "business" ? "Business" : "Employee"} Dashboard
+            </h1>
+            {user?.role === "employee" && (
+              <BusinessSwitcher
+                onBusinessChange={setCurrentBusinessId}
+                currentBusinessId={currentBusinessId}
+              />
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <Link href="/messages">
               <Button variant="outline" className="flex items-center gap-2">
@@ -74,6 +88,8 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        {user?.role === "employee" && <InvitationHandler />}
+
         {user?.role === "business" && (
           <Card>
             <CardHeader>

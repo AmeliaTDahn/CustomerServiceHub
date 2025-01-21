@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ export default function BusinessProfile() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-        credentials: 'include',
+        credentials: 'include', // Important: Include credentials for auth
       });
 
       if (!res.ok) {
@@ -60,14 +60,28 @@ export default function BusinessProfile() {
     },
   });
 
+  useEffect(() => {
+    if (profile && !isEditing) {
+      setFormData({
+        companyName: profile.companyName || '',
+        description: profile.description || '',
+        website: profile.website || '',
+        address: profile.address || '',
+        phone: profile.phone || '',
+        industry: profile.industry || '',
+        logo: profile.logo || '',
+      });
+    }
+  }, [profile, isEditing]);
+
   const [formData, setFormData] = useState<BusinessProfile>({
-    companyName: profile?.companyName || '',
-    description: profile?.description || '',
-    website: profile?.website || '',
-    address: profile?.address || '',
-    phone: profile?.phone || '',
-    industry: profile?.industry || '',
-    logo: profile?.logo || '',
+    companyName: '',
+    description: '',
+    website: '',
+    address: '',
+    phone: '',
+    industry: '',
+    logo: '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {

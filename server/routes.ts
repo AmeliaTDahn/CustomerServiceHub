@@ -138,69 +138,87 @@ export function registerRoutes(app: Express): Server {
 
   // Feedback routes
   app.post("/api/tickets/:id/feedback", async (req, res) => {
-    if (!req.user || req.user.role !== "customer") {
-      return res.status(403).send("Only customers can provide feedback");
+    try {
+      if (!req.user || req.user.role !== "customer") {
+        return res.status(403).json({ error: "Only customers can provide feedback" });
+      }
+
+      const { id } = req.params;
+      const { rating, comment } = req.body;
+
+      if (typeof rating !== 'number' || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
+      }
+
+      const [ticket] = await db.select().from(tickets)
+        .where(and(
+          eq(tickets.id, parseInt(id)),
+          eq(tickets.customerId, req.user.id),
+          eq(tickets.status, "resolved")
+        ));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found or not eligible for feedback" });
+      }
+
+      // Check if feedback already exists
+      const [existingFeedback] = await db.select()
+        .from(ticketFeedback)
+        .where(eq(ticketFeedback.ticketId, parseInt(id)))
+        .limit(1);
+
+      if (existingFeedback) {
+        return res.status(400).json({ error: "Feedback already submitted for this ticket" });
+      }
+
+      const [feedback] = await db.insert(ticketFeedback)
+        .values({
+          ticketId: parseInt(id),
+          rating,
+          comment: comment || null
+        })
+        .returning();
+
+      res.json(feedback);
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      res.status(500).json({ error: "Failed to submit feedback" });
     }
-
-    const { id } = req.params;
-    const { rating, comment } = req.body;
-
-    const [ticket] = await db.select().from(tickets)
-      .where(and(
-        eq(tickets.id, parseInt(id)),
-        eq(tickets.customerId, req.user.id),
-        eq(tickets.status, "resolved")
-      ));
-
-    if (!ticket) {
-      return res.status(404).send("Ticket not found or not eligible for feedback");
-    }
-
-    // Check if feedback already exists
-    const [existingFeedback] = await db.select()
-      .from(ticketFeedback)
-      .where(eq(ticketFeedback.ticketId, parseInt(id)))
-      .limit(1);
-
-    if (existingFeedback) {
-      return res.status(400).send("Feedback already submitted for this ticket");
-    }
-
-    const [feedback] = await db.insert(ticketFeedback)
-      .values({
-        ticketId: parseInt(id),
-        rating,
-        comment
-      })
-      .returning();
-
-    res.json(feedback);
   });
 
   // Get feedback for a ticket
   app.get("/api/tickets/:id/feedback", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
 
-    const { id } = req.params;
-    const [ticket] = await db.select().from(tickets)
-      .where(eq(tickets.id, parseInt(id)));
+      const { id } = req.params;
+      const [ticket] = await db.select().from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
-    if (!ticket) return res.status(404).send("Ticket not found");
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
 
-    // Check if user is authorized to view feedback
-    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
-      return res.status(403).send("Not authorized to view this feedback");
+      // Check if user is authorized to view feedback
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to view this feedback" });
+      }
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to view this feedback" });
+      }
+
+      const [feedback] = await db.select()
+        .from(ticketFeedback)
+        .where(eq(ticketFeedback.ticketId, parseInt(id)))
+        .limit(1);
+
+      res.json(feedback || null);
+    } catch (error) {
+      console.error('Error getting feedback:', error);
+      res.status(500).json({ error: "Failed to get feedback" });
     }
-    if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
-      return res.status(403).send("Not authorized to view this feedback");
-    }
-
-    const [feedback] = await db.select()
-      .from(ticketFeedback)
-      .where(eq(ticketFeedback.ticketId, parseInt(id)))
-      .limit(1);
-
-    res.json(feedback || null);
   });
 
   // Ticket notes routes

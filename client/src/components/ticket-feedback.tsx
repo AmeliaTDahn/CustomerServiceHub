@@ -29,15 +29,24 @@ export default function TicketFeedback({ ticketId, isResolved }: TicketFeedbackP
       const res = await fetch(`/api/tickets/${ticketId}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          rating: Number(data.rating),
+          comment: data.comment
+        }),
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+
+      const responseData = await res.json();
+      if (!res.ok) {
+        throw new Error(responseData.error || 'Failed to submit feedback');
+      }
+      return responseData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       setIsOpen(false);
+      setRating(0);
+      setComment("");
       toast({
         title: "Success",
         description: "Thank you for your feedback!",

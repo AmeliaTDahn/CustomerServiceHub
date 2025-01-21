@@ -43,7 +43,7 @@ async function fetchUser(): Promise<SelectUser | null> {
 
   if (!response.ok) {
     if (response.status === 401) {
-      return null;
+      return null; // Return null on 401, indicating unauthenticated user.
     }
 
     if (response.status >= 500) {
@@ -59,11 +59,12 @@ async function fetchUser(): Promise<SelectUser | null> {
 export function useUser() {
   const queryClient = useQueryClient();
 
-  const { data: user, error, isLoading } = useQuery<SelectUser | null, Error>({
+  const { data: user, error, isLoading, refetch } = useQuery<SelectUser | null, Error>({ // Added refetch
     queryKey: ['user'],
     queryFn: fetchUser,
     staleTime: Infinity,
-    retry: false
+    retry: false,
+    refetchOnWindowFocus: false // Added to prevent refetches on window focus
   });
 
   const loginMutation = useMutation<RequestResult, Error, InsertUser>({
@@ -94,5 +95,6 @@ export function useUser() {
     login: loginMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     register: registerMutation.mutateAsync,
+    refetch // Added refetch to the returned object
   };
 }

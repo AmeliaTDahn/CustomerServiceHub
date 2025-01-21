@@ -10,6 +10,8 @@ import CustomerMessages from "@/pages/customer-messages";
 import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
+import EmployeeDashboard from "@/pages/employee-dashboard";
+import EmployeeMessages from "@/pages/employee-messages";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -27,13 +29,24 @@ function Router() {
     return <AuthPage />;
   }
 
-  // Show business interface for both business owners and employees
-  if (user.role === "business" || user.role === "employee") {
+  // Business interface
+  if (user.role === "business") {
     return (
       <Switch>
         <Route path="/" component={BusinessDashboard} />
         <Route path="/analytics" component={BusinessAnalytics} />
         <Route path="/messages" component={BusinessMessages} />
+        <Route component={NotFound} />
+      </Switch>
+    );
+  }
+
+  // Employee interface
+  if (user.role === "employee") {
+    return (
+      <Switch>
+        <Route path="/" component={EmployeeDashboard} />
+        <Route path="/messages" component={EmployeeMessages} />
         <Route component={NotFound} />
       </Switch>
     );

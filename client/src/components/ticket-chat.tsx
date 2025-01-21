@@ -80,7 +80,10 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
             // Scroll to bottom on new message
             if (scrollAreaRef.current) {
               setTimeout(() => {
-                scrollAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+                if (scrollArea) {
+                  scrollArea.scrollTop = scrollArea.scrollHeight;
+                }
               }, 100);
             }
           }
@@ -172,9 +175,9 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
   const isMessageInputDisabled = user?.role === 'customer' && !hasBusinessMessage;
 
   return (
-    <div className="flex flex-col h-[400px] border rounded-lg">
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4">
+    <div className="flex flex-col h-full">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 pr-4">
+        <div className="space-y-4 min-h-0">
           {messages.map((message, index) => (
             <div
               key={index}
@@ -197,10 +200,14 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
               </div>
             </div>
           ))}
-          <div ref={scrollAreaRef} />
+          {messages.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No messages yet
+            </p>
+          )}
         </div>
       </ScrollArea>
-      <form onSubmit={sendMessage} className="p-4 border-t">
+      <form onSubmit={sendMessage} className="pt-4">
         <div className="flex gap-2">
           <Input
             value={newMessage}

@@ -223,7 +223,9 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     )}
                     <div className={isBusiness ? "flex-1" : "h-full"}>
                       <h3 className="font-semibold mb-4">Chat</h3>
-                      <TicketChat ticketId={selectedTicket.id} />
+                      <div className="h-[calc(100%-2rem)]">
+                        <TicketChat ticketId={selectedTicket.id} />
+                      </div>
                     </div>
                   </div>
                 </div>

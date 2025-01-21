@@ -4,10 +4,60 @@ import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback } from "@db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
+
+  // Get all business analytics data
+  app.get("/api/analytics/feedback", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business users can view analytics" });
+      }
+
+      // Get all feedback for tickets assigned to this business
+      const feedback = await db
+        .select({
+          id: ticketFeedback.id,
+          rating: ticketFeedback.rating,
+          comment: ticketFeedback.comment,
+          createdAt: ticketFeedback.createdAt,
+          ticketTitle: tickets.title,
+          customerName: users.username,
+        })
+        .from(ticketFeedback)
+        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
+        .innerJoin(users, eq(tickets.customerId, users.id))
+        .where(eq(tickets.businessId, req.user.id))
+        .orderBy(ticketFeedback.createdAt);
+
+      // Calculate summary statistics
+      const stats = await db
+        .select({
+          averageRating: sql<number>`ROUND(AVG(${ticketFeedback.rating})::numeric, 2)`,
+          totalFeedback: sql<number>`COUNT(*)`,
+          ratingCounts: sql<Record<string, number>>`
+            json_object_agg(
+              ${ticketFeedback.rating}::text,
+              COUNT(*)
+            )
+          `,
+        })
+        .from(ticketFeedback)
+        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
+        .where(eq(tickets.businessId, req.user.id))
+        .limit(1);
+
+      res.json({
+        feedback,
+        stats: stats[0],
+      });
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      res.status(500).json({ error: "Failed to fetch analytics data" });
+    }
+  });
 
   // Get all registered businesses
   app.get("/api/businesses", async (req, res) => {
@@ -276,9 +326,6 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
-
-  // Setup WebSocket server
   setupWebSocket(httpServer, app);
-
   return httpServer;
 }

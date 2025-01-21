@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
+import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages } from "@db/schema";
 import { eq, and, or } from "drizzle-orm";
@@ -60,22 +61,6 @@ export function registerRoutes(app: Express): Server {
       .orderBy(messages.createdAt);
 
     res.json(conversationMessages);
-  });
-
-  app.post("/api/messages", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { content, receiverId } = req.body;
-
-    const [message] = await db.insert(messages)
-      .values({
-        content,
-        senderId: req.user.id,
-        receiverId: parseInt(receiverId)
-      })
-      .returning();
-
-    res.json(message);
   });
 
   // Ticket management routes
@@ -205,5 +190,9 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
+
+  // Setup WebSocket server
+  setupWebSocket(httpServer, app);
+
   return httpServer;
 }

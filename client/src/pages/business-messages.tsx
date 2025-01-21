@@ -1,12 +1,13 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
+import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import type { User } from "@db/schema";
 
 interface Message {
@@ -14,15 +15,17 @@ interface Message {
   senderId: number;
   receiverId: number;
   content: string;
-  timestamp: string;
+  createdAt: string;
 }
 
 export default function BusinessMessages() {
   const { user } = useUser();
-  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const queryClient = useQueryClient();
 
   // Fetch all customers
   const { data: customers } = useQuery<User[]>({
@@ -30,7 +33,7 @@ export default function BusinessMessages() {
   });
 
   // Fetch messages for selected user
-  const { data: messages } = useQuery<Message[]>({
+  const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUser?.id],
     enabled: !!selectedUser,
   });
@@ -39,12 +42,71 @@ export default function BusinessMessages() {
     customer.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // WebSocket setup
+  useEffect(() => {
+    if (!user || !selectedUser) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+    const wsInstance = new WebSocket(wsUrl);
+
+    wsInstance.onopen = () => {
+      console.log('WebSocket Connected');
+      toast({
+        title: "Connected",
+        description: "Message connection established",
+      });
+    };
+
+    wsInstance.onmessage = (event) => {
+      try {
+        const message: Message = JSON.parse(event.data);
+        if (message.senderId === selectedUser.id || message.receiverId === selectedUser.id) {
+          queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+        }
+      } catch (error) {
+        console.error('Error parsing message:', error);
+      }
+    };
+
+    wsInstance.onerror = (error) => {
+      console.error('WebSocket Error:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Connection error. Please try again.",
+      });
+    };
+
+    setWs(wsInstance);
+
+    return () => {
+      wsInstance.close();
+    };
+  }, [user?.id, selectedUser?.id]);
+
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUser) return;
+    if (!newMessage.trim() || !selectedUser || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-    // TODO: Implement send message mutation
-    setNewMessage("");
+    const message = {
+      senderId: user.id,
+      receiverId: selectedUser.id,
+      content: newMessage.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      ws.send(JSON.stringify(message));
+      setNewMessage("");
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+      });
+    }
   };
 
   return (
@@ -89,7 +151,6 @@ export default function BusinessMessages() {
                     onClick={() => setSelectedUser(customer)}
                   >
                     <div className="font-medium">{customer.username}</div>
-                    {/* Add last message preview here */}
                   </div>
                 ))}
               </div>
@@ -121,7 +182,7 @@ export default function BusinessMessages() {
                         >
                           <p className="text-sm">{message.content}</p>
                           <p className="text-xs opacity-70 mt-1">
-                            {new Date(message.timestamp).toLocaleTimeString()}
+                            {new Date(message.createdAt).toLocaleTimeString()}
                           </p>
                         </div>
                       </div>
@@ -136,7 +197,7 @@ export default function BusinessMessages() {
                       placeholder="Type your message..."
                       className="flex-1"
                     />
-                    <Button type="submit" disabled={!newMessage.trim()}>
+                    <Button type="submit" disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN}>
                       Send
                     </Button>
                   </div>

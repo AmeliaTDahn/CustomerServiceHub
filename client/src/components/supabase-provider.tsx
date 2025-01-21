@@ -37,7 +37,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      console.log('Profile fetched successfully:', data);
+      console.log('Profile fetched:', data);
       return data as Profile;
     } catch (error) {
       console.error('Error in getProfile:', error);
@@ -45,38 +45,25 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Update auth state and profile
-  const updateAuthState = async (session: Session | null) => {
-    console.log('Updating auth state with session:', session);
-    setSession(session);
-    setUser(session?.user ?? null);
-
-    if (session?.user) {
-      const profile = await getProfile(session.user.id);
-      console.log('Setting profile:', profile);
-      setProfile(profile);
-      if (profile) {
-        // Redirect based on user role
-        if (profile.role === 'business' || profile.role === 'employee') {
-          setLocation('/');
-        } else {
-          setLocation('/');
-        }
-      }
-    } else {
-      setProfile(null);
-      setLocation('/auth');
-    }
-  };
-
+  // Initialize auth state
   useEffect(() => {
-    // Handle initial session
     const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        await updateAuthState(session);
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Error getting session:', error);
+          return;
+        }
+
+        if (session?.user) {
+          setSession(session);
+          setUser(session.user);
+          const profile = await getProfile(session.user.id);
+          setProfile(profile);
+        }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('Error during auth initialization:', error);
       } finally {
         setIsLoading(false);
       }
@@ -84,10 +71,23 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, session);
-      await updateAuthState(session);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        const profile = await getProfile(session.user.id);
+        setProfile(profile);
+        if (profile) {
+          setLocation('/');
+        }
+      } else {
+        setProfile(null);
+        setLocation('/auth');
+      }
     });
 
     return () => {
@@ -97,19 +97,22 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('Attempting sign in for:', email);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
       if (error) throw error;
-      await updateAuthState(data.session);
+
+      // Auth state change listener will handle the rest
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('Sign in error:', error);
       throw error;
     }
   };
 
   const signUp = async (email: string, password: string, role: 'business' | 'customer' | 'employee') => {
     try {
-      console.log('Attempting sign up for:', email, 'with role:', role);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -117,30 +120,28 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           data: { role }
         }
       });
+
       if (error) throw error;
 
-      if (data.session) {
-        // Create profile after successful signup
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user?.id,
-            email: data.user?.email,
-            role: role,
-            username: email,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+      if (data.user) {
+        // Create initial profile
+        const { error: profileError } = await supabase.from('profiles').insert({
+          id: data.user.id,
+          username: email,
+          role: role,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
 
         if (profileError) {
           console.error('Error creating profile:', profileError);
           throw profileError;
         }
-
-        await updateAuthState(data.session);
       }
+
+      // Auth state change listener will handle the rest
     } catch (error) {
-      console.error('Error signing up:', error);
+      console.error('Sign up error:', error);
       throw error;
     }
   };
@@ -149,25 +150,24 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      await updateAuthState(null);
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('Sign out error:', error);
       throw error;
     }
   };
 
-  const value = {
-    user,
-    profile,
-    session,
-    signIn,
-    signUp,
-    signOut,
-    isLoading
-  };
-
   return (
-    <SupabaseContext.Provider value={value}>
+    <SupabaseContext.Provider
+      value={{
+        user,
+        profile,
+        session,
+        signIn,
+        signUp,
+        signOut,
+        isLoading,
+      }}
+    >
       {children}
     </SupabaseContext.Provider>
   );

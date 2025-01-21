@@ -17,41 +17,48 @@ function Router() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // If no user, show auth page regardless of profile
+  // Always show auth page when no user
   if (!user) {
     return <AuthPage />;
   }
 
-  // Show business interface for both business owners and employees
-  if (profile?.role === "business" || profile?.role === "employee") {
+  // Wait for profile to load
+  if (!profile) {
     return (
-      <Switch>
-        <Route path="/" component={BusinessDashboard} />
-        <Route path="/messages" component={BusinessMessages} />
-        <Route component={NotFound} />
-      </Switch>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
-  // Customer interface
-  if (profile?.role === "customer") {
-    return (
-      <Switch>
-        <Route path="/" component={CustomerDashboard} />
-        <Route path="/messages" component={CustomerMessages} />
-        <Route component={NotFound} />
-      </Switch>
-    );
+  // Route based on role
+  switch (profile.role) {
+    case 'business':
+    case 'employee':
+      return (
+        <Switch>
+          <Route path="/" component={BusinessDashboard} />
+          <Route path="/messages" component={BusinessMessages} />
+          <Route component={NotFound} />
+        </Switch>
+      );
+    case 'customer':
+      return (
+        <Switch>
+          <Route path="/" component={CustomerDashboard} />
+          <Route path="/messages" component={CustomerMessages} />
+          <Route component={NotFound} />
+        </Switch>
+      );
+    default:
+      return <AuthPage />;
   }
-
-  // If we have a user but no profile or invalid role, show auth page
-  return <AuthPage />;
 }
 
 function App() {

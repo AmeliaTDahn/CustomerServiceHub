@@ -7,13 +7,13 @@ import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
-import { useUser } from "@/hooks/use-user";
+import { useSupabase } from "@/components/supabase-provider";
 import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
-import type { Ticket } from "@db/schema";
+import type { Ticket } from "@/lib/database.types";
 
 export default function BusinessDashboard() {
-  const { user, logout } = useUser();
+  const { user, signOut } = useSupabase();
   const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
   // For employees, fetch the first available business ID if none is selected
@@ -22,12 +22,12 @@ export default function BusinessDashboard() {
   });
 
   useEffect(() => {
-    if (user?.role === "employee" && !currentBusinessId && businesses.length > 0) {
+    if (user?.user_metadata.role === "employee" && !currentBusinessId && businesses.length > 0) {
       setCurrentBusinessId(businesses[0].id.toString());
     }
-  }, [user?.role, currentBusinessId, businesses]);
+  }, [user?.user_metadata.role, currentBusinessId, businesses]);
 
-  const effectiveBusinessId = user?.role === "business" ? user.id.toString() : currentBusinessId;
+  const effectiveBusinessId = user?.user_metadata.role === "business" ? user.id.toString() : currentBusinessId;
 
   const { data: tickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets', effectiveBusinessId],
@@ -53,9 +53,9 @@ export default function BusinessDashboard() {
   }).sort((a, b) => {
     switch (sortBy) {
       case "newest":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       case "priority":
         const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
         return priorityOrder[a.priority as keyof typeof priorityOrder] - 
@@ -71,9 +71,9 @@ export default function BusinessDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-gray-900">
-              {user?.role === "business" ? "Business" : "Employee"} Dashboard
+              {user?.user_metadata.role === "business" ? "Business" : "Employee"} Dashboard
             </h1>
-            {user?.role === "employee" && (
+            {user?.user_metadata.role === "employee" && (
               <BusinessSwitcher
                 onBusinessChange={setCurrentBusinessId}
                 currentBusinessId={currentBusinessId}
@@ -94,7 +94,7 @@ export default function BusinessDashboard() {
               </Button>
             </Link>
             <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
-            <Button variant="outline" onClick={() => logout()}>
+            <Button variant="outline" onClick={() => signOut()}>
               Logout
             </Button>
           </div>
@@ -102,9 +102,9 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {user?.role === "employee" && !currentBusinessId && <InvitationHandler />}
+        {user?.user_metadata.role === "employee" && !currentBusinessId && <InvitationHandler />}
 
-        {user?.role === "business" && (
+        {user?.user_metadata.role === "business" && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

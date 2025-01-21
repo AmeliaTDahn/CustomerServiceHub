@@ -3,12 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import BusinessSwitcher from "@/components/business-switcher";
-import { useUser } from "@/hooks/use-user";
+import { useSupabase } from "@/components/supabase-provider";
 import { MessageCircle } from "lucide-react";
 import { Link } from "wouter";
 
 export default function EmployeeMessages() {
-  const { user, logout } = useUser();
+  const { user, signOut } = useSupabase();
   const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
   // For employees, fetch the first available business ID if none is selected
@@ -40,8 +40,8 @@ export default function EmployeeMessages() {
                 Dashboard
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
-            <Button variant="outline" onClick={() => logout()}>
+            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
+            <Button variant="outline" onClick={() => signOut()}>
               Logout
             </Button>
           </div>

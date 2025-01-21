@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { useLocation } from 'wouter';
 
 type SupabaseContextType = {
   user: User | null;
@@ -17,6 +18,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     // Check active session
@@ -38,7 +40,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    //setLocation('/'); //Removed as per intention, location management not needed in this simplified version.
   };
 
   const signUp = async (email: string, password: string, role: 'business' | 'customer' | 'employee') => {
@@ -50,13 +51,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       }
     });
     if (error) throw error;
-    //setLocation('/'); //Removed as per intention, location management not needed in this simplified version.
   };
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    //setLocation('/auth'); //Removed as per intention, location management not needed in this simplified version.
+    setLocation('/');
   };
 
   return (

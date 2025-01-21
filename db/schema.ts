@@ -7,8 +7,25 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
   password: text("password").notNull(),
-  role: text("role", { enum: ["business", "customer"] }).notNull(),
+  role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const businessEmployees = pgTable("business_employees", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => users.id).notNull(),
+  employeeId: integer("employee_id").references(() => users.id).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const employeeInvitations = pgTable("employee_invitations", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => users.id).notNull(),
+  employeeId: integer("employee_id").references(() => users.id).notNull(),
+  status: text("status", { enum: ["pending", "accepted", "rejected"] }).default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
 export const tickets = pgTable("tickets", {
@@ -51,6 +68,29 @@ export const ticketNotes = pgTable("ticket_notes", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Relations
+export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
+  business: one(users, {
+    fields: [businessEmployees.businessId],
+    references: [users.id]
+  }),
+  employee: one(users, {
+    fields: [businessEmployees.employeeId],
+    references: [users.id]
+  })
+}));
+
+export const employeeInvitationsRelations = relations(employeeInvitations, ({ one }) => ({
+  business: one(users, {
+    fields: [employeeInvitations.businessId],
+    references: [users.id]
+  }),
+  employee: one(users, {
+    fields: [employeeInvitations.employeeId],
+    references: [users.id]
+  })
+}));
 
 export const ticketsRelations = relations(tickets, ({ one, many }) => ({
   customer: one(users, {
@@ -99,28 +139,33 @@ export const usersRelations = relations(users, ({ many }) => ({
   businessTickets: many(tickets, { relationName: "business" }),
   ticketNotes: many(ticketNotes),
   sentMessages: many(messages, { relationName: "sender" }),
-  receivedMessages: many(messages, { relationName: "receiver" })
+  receivedMessages: many(messages, { relationName: "receiver" }),
+  employeeOf: many(businessEmployees, { relationName: "employee" }),
+  employees: many(businessEmployees, { relationName: "business" }),
+  sentInvitations: many(employeeInvitations, { relationName: "business" }),
+  receivedInvitations: many(employeeInvitations, { relationName: "employee" })
 }));
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["business", "customer"])
+  role: z.enum(["business", "customer", "employee"])
 };
 
 export const insertUserSchema = z.object(baseUserSchema);
 export const selectUserSchema = createSelectSchema(users);
-export const insertTicketSchema = createInsertSchema(tickets);
-export const selectTicketSchema = createSelectSchema(tickets);
-export const insertTicketNoteSchema = createInsertSchema(ticketNotes);
-export const selectTicketNoteSchema = createSelectSchema(ticketNotes);
-export const insertMessageSchema = createInsertSchema(messages);
-export const selectMessageSchema = createSelectSchema(messages);
-export const insertTicketFeedbackSchema = createInsertSchema(ticketFeedback);
-export const selectTicketFeedbackSchema = createSelectSchema(ticketFeedback);
+export const insertBusinessEmployeeSchema = createInsertSchema(businessEmployees);
+export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees);
+export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
+export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
 
+// Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type BusinessEmployee = typeof businessEmployees.$inferSelect;
+export type NewBusinessEmployee = typeof businessEmployees.$inferInsert;
+export type EmployeeInvitation = typeof employeeInvitations.$inferSelect;
+export type NewEmployeeInvitation = typeof employeeInvitations.$inferInsert;
 export type Ticket = typeof tickets.$inferSelect;
 export type NewTicket = typeof tickets.$inferInsert;
 export type TicketNote = typeof ticketNotes.$inferSelect;

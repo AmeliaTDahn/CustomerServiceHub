@@ -3,11 +3,209 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { tickets, users, ticketNotes, messages, ticketFeedback } from "@db/schema";
+import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations } from "@db/schema";
 import { eq, and, or } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
+
+  // Employee management routes
+  app.post("/api/businesses/:businessId/employees/invite", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can invite employees" });
+      }
+
+      const { employeeId } = req.body;
+
+      // Verify the employee exists and is of role 'employee'
+      const [employee] = await db.select()
+        .from(users)
+        .where(and(
+          eq(users.id, employeeId),
+          eq(users.role, "employee")
+        ));
+
+      if (!employee) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      // Check if invitation already exists
+      const [existingInvitation] = await db.select()
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.businessId, req.user.id),
+          eq(employeeInvitations.employeeId, employeeId),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      if (existingInvitation) {
+        return res.status(400).json({ error: "Invitation already sent" });
+      }
+
+      // Create invitation
+      const [invitation] = await db.insert(employeeInvitations)
+        .values({
+          businessId: req.user.id,
+          employeeId,
+          status: "pending"
+        })
+        .returning();
+
+      res.json(invitation);
+    } catch (error) {
+      console.error('Error inviting employee:', error);
+      res.status(500).json({ error: "Failed to send invitation" });
+    }
+  });
+
+  // Get all pending invitations for an employee
+  app.get("/api/employees/invitations", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view their invitations" });
+      }
+
+      const invitations = await db.select({
+        invitation: employeeInvitations,
+        business: {
+          id: users.id,
+          username: users.username
+        }
+      })
+      .from(employeeInvitations)
+      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
+      .where(and(
+        eq(employeeInvitations.employeeId, req.user.id),
+        eq(employeeInvitations.status, "pending")
+      ));
+
+      res.json(invitations);
+    } catch (error) {
+      console.error('Error fetching invitations:', error);
+      res.status(500).json({ error: "Failed to fetch invitations" });
+    }
+  });
+
+  // Accept/reject invitation
+  app.post("/api/employees/invitations/:id/respond", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can respond to invitations" });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const [invitation] = await db.select()
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.id, parseInt(id)),
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found" });
+      }
+
+      const [updatedInvitation] = await db.update(employeeInvitations)
+        .set({ 
+          status, 
+          updatedAt: new Date() 
+        })
+        .where(eq(employeeInvitations.id, parseInt(id)))
+        .returning();
+
+      if (status === "accepted") {
+        // Create business-employee relationship
+        await db.insert(businessEmployees)
+          .values({
+            businessId: invitation.businessId,
+            employeeId: req.user.id
+          });
+      }
+
+      res.json(updatedInvitation);
+    } catch (error) {
+      console.error('Error responding to invitation:', error);
+      res.status(500).json({ error: "Failed to respond to invitation" });
+    }
+  });
+
+  // Get all employees for a business
+  app.get("/api/businesses/employees", async (req, res) => {
+    try {
+      if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const businessId = req.user.role === "business" ? req.user.id : 
+        (await db.select()
+          .from(businessEmployees)
+          .where(eq(businessEmployees.employeeId, req.user.id))
+          .limit(1))[0]?.businessId;
+
+      if (!businessId) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      const employees = await db.select({
+        employee: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        },
+        relation: {
+          id: businessEmployees.id,
+          isActive: businessEmployees.isActive
+        }
+      })
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+      .where(eq(businessEmployees.businessId, businessId));
+
+      res.json(employees);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
+
+  // Remove employee (business only)
+  app.delete("/api/businesses/employees/:employeeId", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can remove employees" });
+      }
+
+      const { employeeId } = req.params;
+
+      const [relationship] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.businessId, req.user.id),
+          eq(businessEmployees.employeeId, parseInt(employeeId))
+        ));
+
+      if (!relationship) {
+        return res.status(404).json({ error: "Employee relationship not found" });
+      }
+
+      await db.update(businessEmployees)
+        .set({ isActive: false })
+        .where(eq(businessEmployees.id, relationship.id));
+
+      res.json({ message: "Employee removed successfully" });
+    } catch (error) {
+      console.error('Error removing employee:', error);
+      res.status(500).json({ error: "Failed to remove employee" });
+    }
+  });
 
   // Get all registered businesses
   app.get("/api/businesses", async (req, res) => {

@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
+import EmployeeManagement from "@/components/employee-management";
 import { useUser } from "@/hooks/use-user";
-import { BarChart, MessageCircle } from "lucide-react";
+import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -73,6 +74,20 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        {user?.role === "business" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Employee Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EmployeeManagement />
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Customer Tickets</CardTitle>

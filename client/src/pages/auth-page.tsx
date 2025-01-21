@@ -11,7 +11,7 @@ export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"business" | "customer">("customer");
+  const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
   const { toast } = useToast();
 
@@ -71,7 +71,7 @@ export default function AuthPage() {
                 <Label>Account Type</Label>
                 <RadioGroup
                   value={role}
-                  onValueChange={(value) => setRole(value as "business" | "customer")}
+                  onValueChange={(value) => setRole(value as "business" | "customer" | "employee")}
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="customer" id="customer" />
@@ -81,7 +81,16 @@ export default function AuthPage() {
                     <RadioGroupItem value="business" id="business" />
                     <Label htmlFor="business">Business</Label>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="employee" id="employee" />
+                    <Label htmlFor="employee">Employee</Label>
+                  </div>
                 </RadioGroup>
+                {role === "employee" && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    After registration, you'll need to be invited by a business to access their support system.
+                  </p>
+                )}
               </div>
             )}
             <Button type="submit" className="w-full">

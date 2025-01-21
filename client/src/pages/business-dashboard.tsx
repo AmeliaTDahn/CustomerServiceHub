@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +16,23 @@ export default function BusinessDashboard() {
   const { user, logout } = useUser();
   const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
+  // For employees, fetch the first available business ID if none is selected
+  const { data: businesses = [] } = useQuery<Array<{ id: number; username: string }>>({
+    queryKey: ['/api/businesses'],
+  });
+
+  useEffect(() => {
+    if (user?.role === "employee" && !currentBusinessId && businesses.length > 0) {
+      setCurrentBusinessId(businesses[0].id.toString());
+    }
+  }, [user?.role, currentBusinessId, businesses]);
+
+  // Use the current user's ID for business owners, or the selected business ID for employees
+  const effectiveBusinessId = user?.role === "business" ? user.id.toString() : currentBusinessId;
+
   const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets', currentBusinessId],
+    queryKey: ['/api/tickets', effectiveBusinessId],
+    enabled: !!effectiveBusinessId,
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,8 +103,10 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {user?.role === "employee" && <InvitationHandler />}
+        {/* Show invitation handler only for employees with no business selected */}
+        {user?.role === "employee" && !currentBusinessId && <InvitationHandler />}
 
+        {/* Show employee management only for business owners */}
         {user?.role === "business" && (
           <Card>
             <CardHeader>
@@ -104,21 +121,24 @@ export default function BusinessDashboard() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Tickets</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TicketFilters 
-              onSearchChange={setSearchTerm}
-              onStatusChange={setStatusFilter}
-              onCategoryChange={setCategoryFilter}
-              onPriorityChange={setPriorityFilter}
-              onSortChange={setSortBy}
-            />
-            <TicketList tickets={filteredTickets} isBusiness />
-          </CardContent>
-        </Card>
+        {/* Show tickets only when there's an effective business ID */}
+        {effectiveBusinessId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Tickets</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TicketFilters 
+                onSearchChange={setSearchTerm}
+                onStatusChange={setStatusFilter}
+                onCategoryChange={setCategoryFilter}
+                onPriorityChange={setPriorityFilter}
+                onSortChange={setSortBy}
+              />
+              <TicketList tickets={filteredTickets} isBusiness />
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

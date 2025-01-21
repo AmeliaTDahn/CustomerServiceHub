@@ -27,7 +27,8 @@ function Router() {
     return <AuthPage />;
   }
 
-  if (user.role === "business") {
+  // Show business interface for both business owners and employees
+  if (user.role === "business" || user.role === "employee") {
     return (
       <Switch>
         <Route path="/" component={BusinessDashboard} />
@@ -38,17 +39,7 @@ function Router() {
     );
   }
 
-  if (user.role === "employee") {
-    return (
-      <Switch>
-        <Route path="/" component={BusinessDashboard} />
-        <Route path="/analytics" component={BusinessAnalytics} />
-        <Route path="/messages" component={BusinessMessages} />
-        <Route component={NotFound} />
-      </Switch>
-    );
-  }
-
+  // Customer interface
   return (
     <Switch>
       <Route path="/" component={CustomerDashboard} />

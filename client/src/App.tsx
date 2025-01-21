@@ -8,7 +8,6 @@ import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import CustomerMessages from "@/pages/customer-messages";
 import BusinessDashboard from "@/pages/business-dashboard";
-import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
 import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
@@ -24,17 +23,16 @@ function Router() {
     );
   }
 
-  // If no user or profile, show auth page
-  if (!user || !profile) {
+  // If no user, show auth page regardless of profile
+  if (!user) {
     return <AuthPage />;
   }
 
   // Show business interface for both business owners and employees
-  if (profile.role === "business" || profile.role === "employee") {
+  if (profile?.role === "business" || profile?.role === "employee") {
     return (
       <Switch>
         <Route path="/" component={BusinessDashboard} />
-        <Route path="/analytics" component={BusinessAnalytics} />
         <Route path="/messages" component={BusinessMessages} />
         <Route component={NotFound} />
       </Switch>
@@ -42,13 +40,18 @@ function Router() {
   }
 
   // Customer interface
-  return (
-    <Switch>
-      <Route path="/" component={CustomerDashboard} />
-      <Route path="/messages" component={CustomerMessages} />
-      <Route component={NotFound} />
-    </Switch>
-  );
+  if (profile?.role === "customer") {
+    return (
+      <Switch>
+        <Route path="/" component={CustomerDashboard} />
+        <Route path="/messages" component={CustomerMessages} />
+        <Route component={NotFound} />
+      </Switch>
+    );
+  }
+
+  // If we have a user but no profile or invalid role, show auth page
+  return <AuthPage />;
 }
 
 function App() {

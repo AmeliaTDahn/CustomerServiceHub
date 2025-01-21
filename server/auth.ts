@@ -130,39 +130,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // New endpoint for deleting account
-  app.delete("/api/account", async (req, res) => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      // Delete the user from Supabase
-      const { error: deleteError } = await supabase.auth.admin.deleteUser(
-        session.user.id
-      );
-
-      if (deleteError) {
-        console.error('Delete account error:', deleteError);
-        return res.status(500).json({ error: deleteError.message });
-      }
-
-      // Clear the session
-      req.session.destroy((err) => {
-        if (err) {
-          console.error('Session destruction error:', err);
-          return res.status(500).json({ error: "Failed to clear session" });
-        }
-        res.json({ message: "Account deleted successfully" });
-      });
-    } catch (error) {
-      console.error('Delete account error:', error);
-      res.status(500).json({ error: "Failed to delete account" });
-    }
-  });
-
   app.get("/api/user", async (req, res) => {
     try {
       const { data: { session }, error: authError } = await supabase.auth.getSession();

@@ -5,25 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [, setLocation] = useLocation();
-  const { login, register, deleteAccount, user } = useUser();
+  const { login, register } = useUser();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,41 +38,19 @@ export default function AuthPage() {
           return;
         }
 
-        toast({
-          title: "Registration initiated",
-          description: "Please check your email for the verification code.",
-          duration: 5000,
-        });
-
-        setLocation(`/verify-code?email=${encodeURIComponent(email)}`);
-        return;
+        if (role === "employee") {
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created. Wait for a business to invite you to their support system.",
+            duration: 5000,
+          });
+        } else {
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created successfully.",
+          });
+        }
       }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: (error as Error).message,
-      });
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    try {
-      const result = await deleteAccount();
-      if (!result.ok) {
-        toast({
-          variant: "destructive",
-          title: "Failed to delete account",
-          description: result.message,
-        });
-        return;
-      }
-
-      toast({
-        title: "Account deleted",
-        description: "Your account has been successfully deleted.",
-      });
-      setShowDeleteConfirm(false);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -159,7 +126,7 @@ export default function AuthPage() {
               {isLogin ? "Login" : "Register"}
             </Button>
           </form>
-          <div className="mt-4 text-center space-y-2">
+          <div className="mt-4 text-center">
             <Button
               variant="link"
               onClick={() => setIsLogin(!isLogin)}
@@ -169,39 +136,9 @@ export default function AuthPage() {
                 ? "Don't have an account? Register"
                 : "Already have an account? Login"}
             </Button>
-            {user && (
-              <div>
-                <Button
-                  variant="destructive"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="mt-4"
-                >
-                  Delete Account
-                </Button>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
-
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Account</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete your account? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteAccount}>
-              Delete Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

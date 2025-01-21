@@ -11,7 +11,6 @@ import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
 import NotFound from "@/pages/not-found";
-import VerifyCode from "@/pages/verify-code";
 
 function Router() {
   const { user, isLoading } = useUser();
@@ -22,11 +21,6 @@ function Router() {
         <Loader2 className="h-8 w-8 animate-spin text-border" />
       </div>
     );
-  }
-
-  // Special routes that don't require authentication
-  if (window.location.pathname === "/verify-code") {
-    return <VerifyCode />;
   }
 
   if (!user) {

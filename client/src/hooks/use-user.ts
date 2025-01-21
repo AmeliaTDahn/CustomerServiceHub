@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getSupabase } from '@/lib/supabase';
 
 type UserData = {
   email: string;
@@ -21,19 +20,53 @@ type RequestResult = {
   message: string;
 };
 
-async function fetchUser(): Promise<User | null> {
-  const supabase = await getSupabase();
-  const { data: { session }, error } = await supabase.auth.getSession();
+async function handleRequest(
+  url: string,
+  method: string,
+  body?: UserData
+): Promise<RequestResult> {
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: "include",
+    });
 
-  if (error || !session?.user) {
-    return null;
+    if (!response.ok) {
+      if (response.status >= 500) {
+        return { ok: false, message: response.statusText };
+      }
+
+      const message = await response.text();
+      return { ok: false, message };
+    }
+
+    const data = await response.json();
+    return { ok: true, user: data.user };
+  } catch (e: any) {
+    return { ok: false, message: e.toString() };
+  }
+}
+
+async function fetchUser(): Promise<User | null> {
+  const response = await fetch('/api/user', {
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      return null;
+    }
+
+    if (response.status >= 500) {
+      throw new Error(`${response.status}: ${response.statusText}`);
+    }
+
+    throw new Error(`${response.status}: ${await response.text()}`);
   }
 
-  return {
-    id: session.user.id,
-    email: session.user.email!,
-    role: session.user.user_metadata.role
-  };
+  return response.json();
 }
 
 export function useUser() {
@@ -48,26 +81,7 @@ export function useUser() {
   });
 
   const loginMutation = useMutation<RequestResult, Error, UserData>({
-    mutationFn: async ({ email, password }) => {
-      const supabase = await getSupabase();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) {
-        return { ok: false, message: error.message };
-      }
-
-      return { 
-        ok: true, 
-        user: {
-          id: data.user.id,
-          email: data.user.email!,
-          role: data.user.user_metadata.role
-        }
-      };
-    },
+    mutationFn: (userData) => handleRequest('/api/login', 'POST', userData),
     onSuccess: (result) => {
       if (result.ok && result.user) {
         queryClient.setQueryData(['user'], result.user);
@@ -76,95 +90,18 @@ export function useUser() {
   });
 
   const logoutMutation = useMutation<RequestResult, Error>({
-    mutationFn: async () => {
-      const supabase = await getSupabase();
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        return { ok: false, message: error.message };
-      }
-      return { ok: true };
-    },
+    mutationFn: () => handleRequest('/api/logout', 'POST'),
     onSuccess: () => {
       queryClient.setQueryData(['user'], null);
     },
   });
 
   const registerMutation = useMutation<RequestResult, Error, UserData>({
-    mutationFn: async ({ email, password, role }) => {
-      const supabase = await getSupabase();
-      // First, sign up the user without auto-confirming
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { role },
-          emailRedirectTo: undefined // Disable email redirect
-        }
-      });
-
-      if (error) {
-        return { ok: false, message: error.message };
-      }
-
-      return { 
-        ok: true,
-        user: data.user ? {
-          id: data.user.id,
-          email: data.user.email!,
-          role: data.user.user_metadata.role
-        } : undefined
-      };
-    },
-  });
-
-  const verifyOtpMutation = useMutation<RequestResult, Error, { email: string; token: string }>({
-    mutationFn: async ({ email, token }) => {
-      const supabase = await getSupabase();
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'signup'
-      });
-
-      if (error) {
-        return { ok: false, message: error.message };
-      }
-
-      return {
-        ok: true,
-        user: data.user ? {
-          id: data.user.id,
-          email: data.user.email!,
-          role: data.user.user_metadata.role
-        } : undefined
-      };
-    },
+    mutationFn: (userData) => handleRequest('/api/register', 'POST', userData),
     onSuccess: (result) => {
       if (result.ok && result.user) {
         queryClient.setQueryData(['user'], result.user);
       }
-    },
-  });
-
-  const deleteAccountMutation = useMutation<RequestResult, Error>({
-    mutationFn: async () => {
-      const supabase = await getSupabase();
-      const session = await supabase.auth.getSession();
-      if (!session.data.session?.user.id) {
-        return { ok: false, message: "Not authenticated" };
-      }
-
-      const { error } = await supabase.auth.admin.deleteUser(
-        session.data.session.user.id
-      );
-
-      if (error) {
-        return { ok: false, message: error.message };
-      }
-      return { ok: true };
-    },
-    onSuccess: () => {
-      queryClient.setQueryData(['user'], null);
     },
   });
 
@@ -175,8 +112,6 @@ export function useUser() {
     login: loginMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     register: registerMutation.mutateAsync,
-    verifyOtp: verifyOtpMutation.mutateAsync,
-    deleteAccount: deleteAccountMutation.mutateAsync,
     refetch
   };
 }

@@ -7,7 +7,6 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Building2 } from "lucide-react";
 import { useSupabase } from "@/components/supabase-provider";
-import { supabase } from "@/lib/supabase";
 
 interface BusinessProfile {
   company_name: string | null;
@@ -21,6 +20,7 @@ export default function BusinessProfile() {
   const { user } = useSupabase();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<BusinessProfile>({
     company_name: null,
     description: null,
@@ -51,7 +51,13 @@ export default function BusinessProfile() {
         }
 
         if (data) {
-          setProfile(data);
+          setProfile({
+            company_name: data.company_name,
+            description: data.description,
+            website: data.website,
+            phone: data.phone,
+            address: data.address,
+          });
         }
       } catch (err) {
         console.error('Error in fetchProfile:', err);
@@ -68,23 +74,30 @@ export default function BusinessProfile() {
 
   const handleSave = async () => {
     if (!user) return;
+    setIsLoading(true);
 
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
           company_name: profile.company_name,
           description: profile.description,
           website: profile.website,
           phone: profile.phone,
           address: profile.address,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id)
-        .select()
-        .single();
+        });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating profile:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Failed to update business profile: ${error.message}`,
+        });
+        return;
+      }
 
       toast({
         title: "Success",
@@ -96,8 +109,10 @@ export default function BusinessProfile() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to update business profile",
+        description: "An unexpected error occurred while saving the profile",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -110,7 +125,9 @@ export default function BusinessProfile() {
             <h2 className="text-xl font-semibold">Business Profile</h2>
           </div>
           {!isEditing && (
-            <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
+            <Button onClick={() => setIsEditing(true)} disabled={isLoading}>
+              Edit Profile
+            </Button>
           )}
         </div>
       </CardHeader>
@@ -126,6 +143,7 @@ export default function BusinessProfile() {
                   setProfile({ ...profile, company_name: e.target.value })
                 }
                 placeholder="Enter your company name"
+                disabled={isLoading}
               />
             ) : (
               <p className="mt-1">{profile.company_name || "Not set"}</p>
@@ -142,6 +160,7 @@ export default function BusinessProfile() {
                   setProfile({ ...profile, description: e.target.value })
                 }
                 placeholder="Describe your business"
+                disabled={isLoading}
               />
             ) : (
               <p className="mt-1">{profile.description || "Not set"}</p>
@@ -158,6 +177,7 @@ export default function BusinessProfile() {
                   setProfile({ ...profile, website: e.target.value })
                 }
                 placeholder="https://example.com"
+                disabled={isLoading}
               />
             ) : (
               <p className="mt-1">{profile.website || "Not set"}</p>
@@ -174,6 +194,7 @@ export default function BusinessProfile() {
                   setProfile({ ...profile, phone: e.target.value })
                 }
                 placeholder="+1 (555) 555-5555"
+                disabled={isLoading}
               />
             ) : (
               <p className="mt-1">{profile.phone || "Not set"}</p>
@@ -190,6 +211,7 @@ export default function BusinessProfile() {
                   setProfile({ ...profile, address: e.target.value })
                 }
                 placeholder="123 Business St, City, State, ZIP"
+                disabled={isLoading}
               />
             ) : (
               <p className="mt-1">{profile.address || "Not set"}</p>
@@ -198,10 +220,13 @@ export default function BusinessProfile() {
 
           {isEditing && (
             <div className="flex gap-2">
-              <Button onClick={handleSave}>Save Changes</Button>
+              <Button onClick={handleSave} disabled={isLoading}>
+                {isLoading ? "Saving..." : "Save Changes"}
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setIsEditing(false)}
+                disabled={isLoading}
               >
                 Cancel
               </Button>

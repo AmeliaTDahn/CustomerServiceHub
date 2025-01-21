@@ -292,66 +292,83 @@ export function registerRoutes(app: Express): Server {
 
     const { title, description, businessId } = req.body;
 
-    // Verify that the selected business exists
-    const [business] = await db.select()
-      .from(users)
-      .where(and(
-        eq(users.id, businessId),
-        eq(users.role, "business")
-      ))
-      .limit(1);
+    try {
+      // Verify that the selected business exists
+      const [business] = await db.select()
+        .from(users)
+        .where(and(
+          eq(users.id, businessId),
+          eq(users.role, "business")
+        ))
+        .limit(1);
 
-    if (!business) {
-      return res.status(404).send("Selected business not found");
+      if (!business) {
+        return res.status(404).send("Selected business not found");
+      }
+
+      // Create the ticket without initial assignment
+      const [ticket] = await db.insert(tickets)
+        .values({
+          title,
+          description,
+          customerId: req.user.id,
+          businessId: business.id,
+        })
+        .returning();
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      res.status(500).json({ error: "Failed to create ticket" });
     }
-
-    const [ticket] = await db.insert(tickets)
-      .values({
-        title,
-        description,
-        customerId: req.user.id,
-        businessId: business.id,
-      })
-      .returning();
-
-    res.json(ticket);
   });
 
   app.get("/api/tickets", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
-    let query;
-    if (req.user.role === "customer") {
-      query = { customerId: req.user.id };
-    } else if (req.user.role === "business") {
-      query = { businessId: req.user.id };
-    } else if (req.user.role === "employee") {
-      // For employees, check if they have access to the business
-      const businessId = req.query.businessId;
-      if (!businessId) {
-        return res.status(400).json({ error: "Business ID is required for employees" });
+    try {
+      let tickets;
+      if (req.user.role === "customer") {
+        // Customers only see their own tickets
+        tickets = await db.select()
+          .from(tickets)
+          .where(eq(tickets.customerId, req.user.id));
+      } else if (req.user.role === "business") {
+        // Business sees all tickets assigned to them
+        tickets = await db.select()
+          .from(tickets)
+          .where(eq(tickets.businessId, req.user.id));
+      } else if (req.user.role === "employee") {
+        // Employees see all tickets for their assigned businesses
+        const businessId = req.query.businessId;
+        if (!businessId) {
+          return res.status(400).json({ error: "Business ID is required for employees" });
+        }
+
+        // Verify employee has access to this business
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, parseInt(businessId as string)),
+            eq(businessEmployees.isActive, true)
+          ))
+          .limit(1);
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this business" });
+        }
+
+        tickets = await db.select()
+          .from(tickets)
+          .where(eq(tickets.businessId, parseInt(businessId as string)));
       }
 
-      const [hasAccess] = await db.select()
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.businessId, parseInt(businessId as string)),
-          eq(businessEmployees.isActive, true)
-        ))
-        .limit(1);
-
-      if (!hasAccess) {
-        return res.status(403).json({ error: "No access to this business" });
-      }
-
-      query = { businessId: parseInt(businessId as string) };
+      res.json(tickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
     }
-
-    const userTickets = await db.select().from(tickets)
-      .where(eq(tickets[Object.keys(query)[0] as keyof typeof tickets], Object.values(query)[0]));
-
-    res.json(userTickets);
   });
 
   app.patch("/api/tickets/:id", async (req, res) => {
@@ -722,6 +739,56 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching feedback analytics:', error);
       res.status(500).json({ error: "Failed to fetch feedback analytics" });
+    }
+  });
+
+  // Add endpoint to assign/claim a ticket
+  app.post("/api/tickets/:id/assign", async (req, res) => {
+    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      return res.status(403).send("Only business users and employees can assign tickets");
+    }
+
+    const { id } = req.params;
+    const { assignToId } = req.body;
+
+    try {
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
+
+      if (!ticket) {
+        return res.status(404).send("Ticket not found");
+      }
+
+      // Verify access for employees
+      if (req.user.role === "employee") {
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId),
+            eq(businessEmployees.isActive, true)
+          ))
+          .limit(1);
+
+        if (!hasAccess) {
+          return res.status(403).send("Not authorized to assign this ticket");
+        }
+      }
+
+      // Update ticket assignment
+      const [updatedTicket] = await db.update(tickets)
+        .set({ 
+          assignedToId: assignToId || req.user.id,
+          updatedAt: new Date()
+        })
+        .where(eq(tickets.id, parseInt(id)))
+        .returning();
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error assigning ticket:', error);
+      res.status(500).json({ error: "Failed to assign ticket" });
     }
   });
 

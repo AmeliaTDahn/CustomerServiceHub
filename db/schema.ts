@@ -40,7 +40,8 @@ export const tickets = pgTable("tickets", {
     enum: ["low", "medium", "high", "urgent"]
   }).default("medium").notNull(),
   customerId: integer("customer_id").references(() => users.id).notNull(),
-  businessId: integer("business_id").references(() => users.id),
+  businessId: integer("business_id").references(() => users.id).notNull(),
+  assignedToId: integer("assigned_to_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
@@ -99,6 +100,10 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
   }),
   business: one(users, {
     fields: [tickets.businessId],
+    references: [users.id]
+  }),
+  assignedTo: one(users, {
+    fields: [tickets.assignedToId],
     references: [users.id]
   }),
   notes: many(ticketNotes),

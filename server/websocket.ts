@@ -5,6 +5,7 @@ import { db } from "@db";
 import { messages } from "@db/schema";
 
 interface Message {
+  type: string;
   senderId: number;
   receiverId: number;
   content: string;
@@ -25,9 +26,7 @@ export function setupWebSocket(server: Server, app: Express) {
     // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
-        const message = JSON.parse(data);
-        if (message.type !== 'message') return;
-        
+        const message: Message = JSON.parse(data);
         console.log(`Received message from ${message.senderId} to ${message.receiverId}:`, message);
 
         // Save message to database
@@ -46,11 +45,23 @@ export function setupWebSocket(server: Server, app: Express) {
         const receiverWs = connections.get(message.receiverId);
         if (receiverWs?.readyState === WebSocket.OPEN) {
           console.log('Forwarding message to receiver');
-          receiverWs.send(JSON.stringify(savedMessage));
+          receiverWs.send(JSON.stringify({
+            id: savedMessage.id,
+            content: savedMessage.content,
+            senderId: savedMessage.senderId,
+            receiverId: savedMessage.receiverId,
+            createdAt: savedMessage.createdAt
+          }));
         }
 
         // Send confirmation back to sender
-        ws.send(JSON.stringify(savedMessage));
+        ws.send(JSON.stringify({
+          id: savedMessage.id,
+          content: savedMessage.content,
+          senderId: savedMessage.senderId,
+          receiverId: savedMessage.receiverId,
+          createdAt: savedMessage.createdAt
+        }));
       } catch (error) {
         console.error('Error handling message:', error);
         ws.send(JSON.stringify({ error: 'Failed to process message' }));

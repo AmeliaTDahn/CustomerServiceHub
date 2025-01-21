@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +29,7 @@ export default function BusinessMessages() {
   const [searchTerm, setSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch all customers
   const { data: customers } = useQuery<User[]>({
@@ -54,6 +55,13 @@ export default function BusinessMessages() {
   const filteredCustomers = customers?.filter(customer =>
     customer.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   // WebSocket setup
   useEffect(() => {
@@ -228,6 +236,7 @@ export default function BusinessMessages() {
                       </div>
                     </div>
                   ))}
+                  <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
               <form onSubmit={sendMessage} className="p-4 border-t">

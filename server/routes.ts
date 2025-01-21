@@ -275,6 +275,34 @@ export function registerRoutes(app: Express): Server {
     res.json(notes);
   });
 
+  // Business analytics routes
+  app.get("/api/analytics/feedback", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business users can access analytics" });
+      }
+
+      // Get all feedback for tickets assigned to this business
+      const feedbackData = await db
+        .select({
+          feedback: ticketFeedback,
+          ticket: {
+            title: tickets.title,
+            createdAt: tickets.createdAt
+          }
+        })
+        .from(ticketFeedback)
+        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
+        .where(eq(tickets.businessId, req.user.id));
+
+      res.json(feedbackData);
+    } catch (error) {
+      console.error('Error fetching feedback analytics:', error);
+      res.status(500).json({ error: "Failed to fetch feedback analytics" });
+    }
+  });
+
+
   const httpServer = createServer(app);
 
   // Setup WebSocket server

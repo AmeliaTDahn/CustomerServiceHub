@@ -36,10 +36,36 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         console.error('Error fetching profile:', error);
         return null;
       }
+
+      console.log('Profile fetched successfully:', data);
       return data as Profile;
     } catch (error) {
       console.error('Error in getProfile:', error);
       return null;
+    }
+  };
+
+  // Update auth state and profile
+  const updateAuthState = async (session: Session | null) => {
+    console.log('Updating auth state with session:', session);
+    setSession(session);
+    setUser(session?.user ?? null);
+
+    if (session?.user) {
+      const profile = await getProfile(session.user.id);
+      console.log('Setting profile:', profile);
+      setProfile(profile);
+      if (profile) {
+        // Redirect based on user role
+        if (profile.role === 'business' || profile.role === 'employee') {
+          setLocation('/');
+        } else {
+          setLocation('/');
+        }
+      }
+    } else {
+      setProfile(null);
+      setLocation('/auth');
     }
   };
 
@@ -48,13 +74,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const profile = await getProfile(session.user.id);
-          setProfile(profile);
-        }
+        await updateAuthState(session);
       } catch (error) {
         console.error('Error initializing auth:', error);
       } finally {
@@ -66,19 +86,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const profile = await getProfile(session.user.id);
-          setProfile(profile);
-        } else {
-          setProfile(null);
-        }
-      } catch (error) {
-        console.error('Error in auth state change:', error);
-      }
+      console.log('Auth state changed:', _event, session);
+      await updateAuthState(session);
     });
 
     return () => {
@@ -88,9 +97,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log('Attempting sign in for:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      setLocation('/');
+      await updateAuthState(data.session);
     } catch (error) {
       console.error('Error signing in:', error);
       throw error;
@@ -99,7 +109,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, role: 'business' | 'customer' | 'employee') => {
     try {
-      const { error } = await supabase.auth.signUp({
+      console.log('Attempting sign up for:', email, 'with role:', role);
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -107,7 +118,27 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
       });
       if (error) throw error;
-      setLocation('/');
+
+      if (data.session) {
+        // Create profile after successful signup
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user?.id,
+            email: data.user?.email,
+            role: role,
+            username: email,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          throw profileError;
+        }
+
+        await updateAuthState(data.session);
+      }
     } catch (error) {
       console.error('Error signing up:', error);
       throw error;
@@ -118,7 +149,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      setLocation('/auth');
+      await updateAuthState(null);
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;

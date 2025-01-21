@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +15,17 @@ export default function AuthPage() {
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { signIn, signUp } = useSupabase();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+
     try {
       if (isLogin) {
         await signIn(email, password);
+        // Note: We don't need to call setLocation here as it's handled in the SupabaseProvider
         toast({
           title: "Success",
           description: "Logged in successfully",
@@ -40,11 +46,14 @@ export default function AuthPage() {
         }
       }
     } catch (error) {
+      console.error('Auth error:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: (error as Error).message,
+        description: error instanceof Error ? error.message : "Authentication failed",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -71,6 +80,7 @@ export default function AuthPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -81,6 +91,7 @@ export default function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={isLoading}
               />
             </div>
             {!isLogin && (
@@ -89,6 +100,7 @@ export default function AuthPage() {
                 <RadioGroup
                   value={role}
                   onValueChange={(value) => setRole(value as "business" | "customer" | "employee")}
+                  disabled={isLoading}
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="customer" id="customer" />
@@ -110,8 +122,8 @@ export default function AuthPage() {
                 )}
               </div>
             )}
-            <Button type="submit" className="w-full">
-              {isLogin ? "Login" : "Register"}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Please wait..." : (isLogin ? "Login" : "Register")}
             </Button>
           </form>
           <div className="mt-4 text-center">
@@ -119,6 +131,7 @@ export default function AuthPage() {
               variant="link"
               onClick={() => setIsLogin(!isLogin)}
               className="text-sm"
+              disabled={isLoading}
             >
               {isLogin
                 ? "Don't have an account? Register"

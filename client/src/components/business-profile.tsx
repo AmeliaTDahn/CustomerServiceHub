@@ -80,17 +80,11 @@ export default function BusinessProfile() {
           address: profile.address,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select()
+        .single();
 
-      if (error) {
-        console.error('Error updating profile:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: `Failed to update business profile: ${error.message}`,
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: "Success",
@@ -102,7 +96,7 @@ export default function BusinessProfile() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred while saving the profile",
+        description: "Failed to update business profile",
       });
     }
   };

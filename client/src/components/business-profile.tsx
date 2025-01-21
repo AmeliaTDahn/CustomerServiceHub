@@ -17,7 +17,7 @@ interface BusinessProfile {
 }
 
 export default function BusinessProfile() {
-  const { user } = useSupabase();
+  const { user, supabase } = useSupabase();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,10 +70,10 @@ export default function BusinessProfile() {
     }
 
     fetchProfile();
-  }, [user]);
+  }, [user, supabase]);
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !supabase) return;
     setIsLoading(true);
 
     try {

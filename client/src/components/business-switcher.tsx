@@ -9,15 +9,8 @@ import {
 import { Label } from "@/components/ui/label";
 
 interface Business {
-  employee: {
-    id: number;
-    username: string;
-    role: string;
-  };
-  relation: {
-    id: number;
-    isActive: boolean;
-  };
+  id: number;
+  username: string;
 }
 
 interface BusinessSwitcherProps {
@@ -27,15 +20,10 @@ interface BusinessSwitcherProps {
 
 export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }: BusinessSwitcherProps) {
   const { data: businesses = [] } = useQuery<Business[]>({
-    queryKey: ['/api/businesses/employees'],
+    queryKey: ['/api/businesses'],
   });
 
-  // Filter out inactive relationships
-  const activeBusinesses = businesses.filter(
-    (business) => business.relation.isActive
-  );
-
-  if (activeBusinesses.length === 0) {
+  if (businesses.length === 0) {
     return null;
   }
 
@@ -50,12 +38,12 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
           <SelectValue placeholder="Select business" />
         </SelectTrigger>
         <SelectContent>
-          {activeBusinesses.map((business) => (
+          {businesses.map((business) => (
             <SelectItem
-              key={business.relation.id}
-              value={business.relation.id.toString()}
+              key={business.id}
+              value={business.id.toString()}
             >
-              {business.employee.username}
+              {business.username}
             </SelectItem>
           ))}
         </SelectContent>

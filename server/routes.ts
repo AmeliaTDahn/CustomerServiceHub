@@ -217,6 +217,23 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/businesses", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
+    // If user is an employee, return only the businesses they're connected to
+    if (req.user.role === "employee") {
+      const businesses = await db.select({
+        id: users.id,
+        username: users.username
+      })
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.businessId))
+      .where(and(
+        eq(businessEmployees.employeeId, req.user.id),
+        eq(businessEmployees.isActive, true)
+      ));
+
+      return res.json(businesses);
+    }
+
+    // For customers or other roles, return all businesses
     const businesses = await db.select({
       id: users.id,
       username: users.username
@@ -229,8 +246,8 @@ export function registerRoutes(app: Express): Server {
 
   // Get all customers
   app.get("/api/customers", async (req, res) => {
-    if (!req.user || req.user.role !== "business") {
-      return res.status(403).send("Only business users can view customers");
+    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      return res.status(403).send("Only business users and employees can view customers");
     }
 
     const customers = await db.select({
@@ -303,12 +320,36 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/tickets", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
-    const query = req.user.role === "business" 
-      ? { businessId: req.user.id }
-      : { customerId: req.user.id };
+    let query;
+    if (req.user.role === "customer") {
+      query = { customerId: req.user.id };
+    } else if (req.user.role === "business") {
+      query = { businessId: req.user.id };
+    } else if (req.user.role === "employee") {
+      // For employees, check if they have access to the business
+      const businessId = req.query.businessId;
+      if (!businessId) {
+        return res.status(400).json({ error: "Business ID is required for employees" });
+      }
+
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, parseInt(businessId as string)),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No access to this business" });
+      }
+
+      query = { businessId: parseInt(businessId as string) };
+    }
 
     const userTickets = await db.select().from(tickets)
-      .where(eq(tickets[req.user.role === "business" ? "businessId" : "customerId"], req.user.id));
+      .where(eq(tickets[Object.keys(query)[0] as keyof typeof tickets], Object.values(query)[0]));
 
     res.json(userTickets);
   });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,6 +7,7 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Building2 } from "lucide-react";
 import { useSupabase } from "@/components/supabase-provider";
+import { supabase } from "@/lib/supabase";
 
 interface BusinessProfile {
   company_name: string;
@@ -28,10 +29,7 @@ export default function BusinessProfile() {
     address: "",
   });
 
-  // Fetch business profile on component mount
-  const { data: supabase } = useSupabase();
-
-  useState(() => {
+  useEffect(() => {
     async function fetchProfile() {
       if (!user) return;
 
@@ -56,7 +54,7 @@ export default function BusinessProfile() {
     }
 
     fetchProfile();
-  }, [user, supabase]);
+  }, [user]);
 
   const handleSave = async () => {
     if (!user) return;

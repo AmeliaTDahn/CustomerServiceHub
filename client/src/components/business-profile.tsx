@@ -10,11 +10,11 @@ import { useSupabase } from "@/components/supabase-provider";
 import { supabase } from "@/lib/supabase";
 
 interface BusinessProfile {
-  company_name: string;
-  description: string;
-  website?: string;
-  phone?: string;
-  address?: string;
+  company_name: string | null;
+  description: string | null;
+  website: string | null;
+  phone: string | null;
+  address: string | null;
 }
 
 export default function BusinessProfile() {
@@ -22,34 +22,44 @@ export default function BusinessProfile() {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<BusinessProfile>({
-    company_name: "",
-    description: "",
-    website: "",
-    phone: "",
-    address: "",
+    company_name: null,
+    description: null,
+    website: null,
+    phone: null,
+    address: null,
   });
 
   useEffect(() => {
     async function fetchProfile() {
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('company_name, description, website, phone, address')
-        .eq('id', user.id)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('company_name, description, website, phone, address')
+          .eq('id', user.id)
+          .single();
 
-      if (error) {
+        if (error) {
+          console.error('Error fetching profile:', error);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load business profile",
+          });
+          return;
+        }
+
+        if (data) {
+          setProfile(data);
+        }
+      } catch (err) {
+        console.error('Error in fetchProfile:', err);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to load business profile",
+          description: "An unexpected error occurred while loading the profile",
         });
-        return;
-      }
-
-      if (data) {
-        setProfile(data);
       }
     }
 
@@ -59,32 +69,42 @@ export default function BusinessProfile() {
   const handleSave = async () => {
     if (!user) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        company_name: profile.company_name,
-        description: profile.description,
-        website: profile.website,
-        phone: profile.phone,
-        address: profile.address,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', user.id);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          company_name: profile.company_name,
+          description: profile.description,
+          website: profile.website,
+          phone: profile.phone,
+          address: profile.address,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
 
-    if (error) {
+      if (error) {
+        console.error('Error updating profile:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Failed to update business profile: ${error.message}`,
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Business profile updated successfully",
+      });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Error in handleSave:', err);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to update business profile",
+        description: "An unexpected error occurred while saving the profile",
       });
-      return;
     }
-
-    toast({
-      title: "Success",
-      description: "Business profile updated successfully",
-    });
-    setIsEditing(false);
   };
 
   return (
@@ -107,7 +127,7 @@ export default function BusinessProfile() {
             {isEditing ? (
               <Input
                 id="company_name"
-                value={profile.company_name}
+                value={profile.company_name || ""}
                 onChange={(e) =>
                   setProfile({ ...profile, company_name: e.target.value })
                 }
@@ -123,7 +143,7 @@ export default function BusinessProfile() {
             {isEditing ? (
               <Textarea
                 id="description"
-                value={profile.description}
+                value={profile.description || ""}
                 onChange={(e) =>
                   setProfile({ ...profile, description: e.target.value })
                 }
@@ -139,7 +159,7 @@ export default function BusinessProfile() {
             {isEditing ? (
               <Input
                 id="website"
-                value={profile.website}
+                value={profile.website || ""}
                 onChange={(e) =>
                   setProfile({ ...profile, website: e.target.value })
                 }
@@ -155,7 +175,7 @@ export default function BusinessProfile() {
             {isEditing ? (
               <Input
                 id="phone"
-                value={profile.phone}
+                value={profile.phone || ""}
                 onChange={(e) =>
                   setProfile({ ...profile, phone: e.target.value })
                 }
@@ -171,7 +191,7 @@ export default function BusinessProfile() {
             {isEditing ? (
               <Input
                 id="address"
-                value={profile.address}
+                value={profile.address || ""}
                 onChange={(e) =>
                   setProfile({ ...profile, address: e.target.value })
                 }

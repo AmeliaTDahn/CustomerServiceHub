@@ -40,7 +40,7 @@ export function setupAuth(app: Express) {
           data: {
             role: role,
           },
-          emailRedirectTo: `${req.protocol}://${req.get('host')}`,
+          emailRedirectTo: undefined,  // Disable email redirect
         }
       });
 

@@ -11,7 +11,7 @@ import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
 import NotFound from "@/pages/not-found";
-import VerifyEmail from "@/pages/verify-email";
+import VerifyCode from "@/pages/verify-code";
 
 function Router() {
   const { user, isLoading } = useUser();
@@ -25,8 +25,8 @@ function Router() {
   }
 
   // Special routes that don't require authentication
-  if (window.location.pathname === "/verify") {
-    return <VerifyEmail />;
+  if (window.location.pathname === "/verify-code") {
+    return <VerifyCode />;
   }
 
   if (!user) {

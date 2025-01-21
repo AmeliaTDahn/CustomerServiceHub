@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -21,6 +22,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [, setLocation] = useLocation();
   const { login, register, deleteAccount, user } = useUser();
   const { toast } = useToast();
 
@@ -47,18 +49,14 @@ export default function AuthPage() {
           return;
         }
 
-        if (role === "employee") {
-          toast({
-            title: "Registration successful",
-            description: "Your account has been created. Wait for a business to invite you to their support system.",
-            duration: 5000,
-          });
-        } else {
-          toast({
-            title: "Registration successful",
-            description: "Your account has been created successfully.",
-          });
-        }
+        toast({
+          title: "Registration initiated",
+          description: "Please check your email for the verification code.",
+          duration: 5000,
+        });
+
+        setLocation(`/verify-code?email=${encodeURIComponent(email)}`);
+        return;
       }
     } catch (error) {
       toast({

@@ -6,6 +6,8 @@ import { useSupabase } from "@/components/supabase-provider";
 import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
+import BusinessDashboard from "@/pages/business-dashboard";
+import EmployeeMessages from "@/pages/employee-messages";
 import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
 
@@ -24,10 +26,18 @@ function Router() {
     return <AuthPage />;
   }
 
-  // Simple router for now
+  // Route based on user role
   return (
     <Switch>
-      <Route path="/" component={CustomerDashboard} />
+      {user.user_metadata.role === 'business' && (
+        <Route path="/" component={BusinessDashboard} />
+      )}
+      {user.user_metadata.role === 'customer' && (
+        <Route path="/" component={CustomerDashboard} />
+      )}
+      {user.user_metadata.role === 'employee' && (
+        <Route path="/" component={EmployeeMessages} />
+      )}
       <Route component={NotFound} />
     </Switch>
   );

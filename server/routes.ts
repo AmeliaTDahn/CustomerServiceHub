@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { tickets, users } from "@db/schema";
+import { tickets, users, ticketNotes } from "@db/schema";
 import { eq, and } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
@@ -94,6 +94,59 @@ export function registerRoutes(app: Express): Server {
       .returning();
 
     res.json(updated);
+  });
+
+  // Ticket notes routes
+  app.post("/api/tickets/:id/notes", async (req, res) => {
+    if (!req.user || req.user.role !== "business") {
+      return res.status(403).send("Only business users can add notes");
+    }
+
+    const { id } = req.params;
+    const { content } = req.body;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(and(
+        eq(tickets.id, parseInt(id)),
+        eq(tickets.businessId, req.user.id)
+      ));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found or not assigned to you");
+    }
+
+    const [note] = await db.insert(ticketNotes)
+      .values({
+        ticketId: parseInt(id),
+        businessId: req.user.id,
+        content
+      })
+      .returning();
+
+    res.json(note);
+  });
+
+  app.get("/api/tickets/:id/notes", async (req, res) => {
+    if (!req.user || req.user.role !== "business") {
+      return res.status(403).send("Only business users can view notes");
+    }
+
+    const { id } = req.params;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(and(
+        eq(tickets.id, parseInt(id)),
+        eq(tickets.businessId, req.user.id)
+      ));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found or not assigned to you");
+    }
+
+    const notes = await db.select().from(ticketNotes)
+      .where(eq(ticketNotes.ticketId, parseInt(id)));
+
+    res.json(notes);
   });
 
   const httpServer = createServer(app);

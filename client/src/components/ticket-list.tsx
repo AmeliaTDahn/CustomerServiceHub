@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
 import TicketChat from "./ticket-chat";
+import TicketNotes from "./ticket-notes";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -187,9 +188,14 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     </div>
                   )}
                 </div>
-                <div>
-                  <h3 className="font-semibold mb-4">Chat</h3>
-                  <TicketChat ticketId={selectedTicket.id} />
+                <div className="space-y-6">
+                  {isBusiness && (
+                    <TicketNotes ticketId={selectedTicket.id} />
+                  )}
+                  <div>
+                    <h3 className="font-semibold mb-4">Chat</h3>
+                    <TicketChat ticketId={selectedTicket.id} />
+                  </div>
                 </div>
               </div>
             </>

@@ -32,7 +32,7 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email, password, and role are required");
       }
 
-      // Create user in Supabase with email confirmation disabled
+      // Create user in Supabase with email notification but no confirmation requirement
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -40,7 +40,7 @@ export function setupAuth(app: Express) {
           data: {
             role: role,
           },
-          emailRedirectTo: undefined,  // Disable email redirect
+          emailRedirectTo: `${req.protocol}://${req.get('host')}`,  // Send welcome email
         }
       });
 

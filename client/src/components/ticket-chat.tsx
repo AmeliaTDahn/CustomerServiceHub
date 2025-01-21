@@ -8,10 +8,9 @@ import { supabase } from "@/lib/supabase";
 
 interface Message {
   id: number;
-  ticketId: number;
   content: string;
   senderId: number;
-  senderType: string;
+  receiverId: number;
   createdAt: string;
 }
 
@@ -30,7 +29,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
   // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+      scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [messages]);
 
@@ -38,14 +37,14 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     // Load existing messages
     const loadMessages = async () => {
       try {
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('ticketId', ticketId)
-          .order('createdAt', { ascending: true });
+        const response = await fetch(`/api/tickets/${ticketId}/chat`, {
+          credentials: 'include'
+        });
 
-        if (error) throw error;
-        setMessages(data || []);
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        console.log('Loaded messages:', data);
+        setMessages(data);
       } catch (error) {
         console.error('Error loading messages:', error);
         toast({
@@ -59,23 +58,23 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     loadMessages();
 
     // Set up real-time subscription
-    const channel = supabase.channel(`ticket-${ticketId}`)
+    const channel = supabase.channel(`ticket:${ticketId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'messages',
-        filter: `ticketId=eq.${ticketId}`
+        filter: `ticket_id=eq.${ticketId}`
       }, (payload) => {
+        console.log('Received new message:', payload);
         const newMessage = payload.new as Message;
         setMessages(prev => [...prev, newMessage]);
       })
       .subscribe((status) => {
+        console.log(`Channel status for ticket:${ticketId}:`, status);
         if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to ticket-${ticketId} messages`);
-        } else if (status === 'CLOSED') {
-          console.log(`Subscription to ticket-${ticketId} closed`);
+          console.log(`Successfully subscribed to ticket:${ticketId}`);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error(`Error in ticket-${ticketId} subscription`);
+          console.error(`Error in ticket:${ticketId} subscription`);
           toast({
             variant: "destructive",
             title: "Connection Error",
@@ -88,6 +87,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
 
     return () => {
       if (channelRef.current) {
+        console.log('Unsubscribing from channel');
         channelRef.current.unsubscribe();
       }
     };
@@ -98,21 +98,21 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
     if (!newMessage.trim() || !user) return;
 
     try {
-      const message = {
-        ticketId,
-        content: newMessage.trim(),
-        senderId: user.id,
-        senderType: user.role,
-        createdAt: new Date().toISOString()
-      };
+      const response = await fetch(`/api/tickets/${ticketId}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          content: newMessage.trim()
+        }),
+        credentials: 'include'
+      });
 
-      const { error } = await supabase
-        .from('messages')
-        .insert(message);
-
-      if (error) throw error;
+      if (!response.ok) throw new Error(await response.text());
 
       setNewMessage("");
+      console.log('Message sent successfully');
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -141,9 +141,6 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
                     : "bg-muted"
                 }`}
               >
-                <p className="text-sm font-medium mb-1">
-                  {message.senderType === user?.role ? "You" : message.senderType}
-                </p>
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 <p className="text-xs opacity-70 mt-1">
                   {new Date(message.createdAt).toLocaleTimeString()}

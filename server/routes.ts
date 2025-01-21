@@ -19,14 +19,20 @@ export function registerRoutes(app: Express): Server {
   // Add business profile routes
   app.get("/api/business/profile", async (req, res) => {
     try {
-      if (!req.user || req.user.role !== "business") {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+      if (authError || !session) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (session.user.user_metadata.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can view their profile" });
       }
 
       const { data: profile, error } = await supabase
         .from('users')
         .select('business_profile')
-        .eq('id', req.user.id)
+        .eq('id', session.user.id)
         .single();
 
       if (error) {
@@ -42,7 +48,13 @@ export function registerRoutes(app: Express): Server {
 
   app.put("/api/business/profile", async (req, res) => {
     try {
-      if (!req.user || req.user.role !== "business") {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+      if (authError || !session) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (session.user.user_metadata.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can update their profile" });
       }
 
@@ -65,7 +77,7 @@ export function registerRoutes(app: Express): Server {
             logo
           }
         })
-        .eq('id', req.user.id);
+        .eq('id', session.user.id);
 
       if (error) {
         throw error;

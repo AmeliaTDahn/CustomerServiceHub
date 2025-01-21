@@ -32,14 +32,15 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email, password, and role are required");
       }
 
-      // Create user in Supabase with custom user metadata
+      // Create user in Supabase with email confirmation disabled
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             role: role,
-          }
+          },
+          emailRedirectTo: `${req.protocol}://${req.get('host')}`,
         }
       });
 
@@ -48,7 +49,7 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ error: authError.message });
       }
 
-      // Set session
+      // Set session immediately after registration
       req.session.user = {
         id: authData.user?.id,
         email: authData.user?.email,

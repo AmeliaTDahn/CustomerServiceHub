@@ -78,7 +78,14 @@ export const selectTicketSchema = createSelectSchema(tickets);
 export const insertTicketNoteSchema = createInsertSchema(ticketNotes);
 export const selectTicketNoteSchema = createSelectSchema(ticketNotes);
 
-export type User = typeof users.$inferSelect;
+export type User = {
+  id: number;
+  username: string;
+  password: string;
+  role: "business" | "customer";
+  createdAt: Date;
+};
+
 export type NewUser = typeof users.$inferInsert;
 export type Ticket = typeof tickets.$inferSelect;
 export type NewTicket = typeof tickets.$inferInsert;

@@ -123,6 +123,7 @@ export default function BusinessMessages() {
     if (!newMessage.trim() || !selectedUser || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     const message = {
+      type: "message",
       senderId: user.id,
       receiverId: selectedUser.id,
       content: newMessage.trim(),

@@ -25,7 +25,9 @@ export function setupWebSocket(server: Server, app: Express) {
     // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
-        const message: Message = JSON.parse(data);
+        const message = JSON.parse(data);
+        if (message.type !== 'message') return;
+        
         console.log(`Received message from ${message.senderId} to ${message.receiverId}:`, message);
 
         // Save message to database

@@ -149,6 +149,7 @@ export default function CustomerMessages() {
     }
 
     const message = {
+      type: "message", 
       senderId: user.id,
       receiverId: selectedUser.id,
       content: newMessage.trim(),

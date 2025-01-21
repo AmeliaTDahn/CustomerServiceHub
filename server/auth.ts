@@ -39,7 +39,8 @@ export function setupAuth(app: Express) {
         options: {
           data: {
             role: role,
-          }
+          },
+          emailRedirectTo: `${req.protocol}://${req.get('host')}/auth/callback`
         }
       });
 
@@ -48,15 +49,9 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ error: authError.message });
       }
 
-      // Set session
-      req.session.user = {
-        id: authData.user?.id,
-        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
-        role: authData.user?.user_metadata?.role,
-      };
-
+      // User registration initiated, waiting for verification
       return res.json({
-        message: "Registration successful",
+        message: "Registration initiated",
         user: {
           id: authData.user?.id,
           ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
@@ -66,6 +61,47 @@ export function setupAuth(app: Express) {
     } catch (error) {
       console.error('Registration error:', error);
       res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/verify", async (req, res) => {
+    try {
+      const { identifier, code, authMethod } = req.body;
+
+      if (!identifier || !code || !authMethod) {
+        return res.status(400).send("Missing required fields");
+      }
+
+      // Verify the OTP token with Supabase
+      const { data, error } = await supabase.auth.verifyOtp({
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
+        token: code,
+        type: authMethod === 'email' ? 'signup' : 'sms',
+      });
+
+      if (error) {
+        console.error('Verification error:', error);
+        return res.status(400).json({ error: error.message });
+      }
+
+      // Set session after successful verification
+      req.session.user = {
+        id: data.user?.id,
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
+        role: data.user?.user_metadata?.role,
+      };
+
+      return res.json({
+        message: "Verification successful",
+        user: {
+          id: data.user?.id,
+          ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
+          role: data.user?.user_metadata?.role,
+        },
+      });
+    } catch (error) {
+      console.error('Verification error:', error);
+      res.status(500).json({ error: "Verification failed" });
     }
   });
 

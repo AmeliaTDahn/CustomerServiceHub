@@ -7,6 +7,12 @@ type UserData = {
   authMethod: 'email' | 'phone';
 };
 
+type VerificationData = {
+  identifier: string;
+  code: string;
+  authMethod: 'email' | 'phone';
+};
+
 type User = {
   id: string;
   email?: string;
@@ -25,7 +31,7 @@ type RequestResult = {
 async function handleRequest(
   url: string,
   method: string,
-  body?: UserData
+  body?: UserData | VerificationData
 ): Promise<RequestResult> {
   try {
     const response = await fetch(url, {
@@ -107,6 +113,15 @@ export function useUser() {
     },
   });
 
+  const verifyRegistrationMutation = useMutation<RequestResult, Error, VerificationData>({
+    mutationFn: (verificationData) => handleRequest('/api/verify', 'POST', verificationData),
+    onSuccess: (result) => {
+      if (result.ok && result.user) {
+        queryClient.setQueryData(['user'], result.user);
+      }
+    },
+  });
+
   const deleteAccountMutation = useMutation<RequestResult, Error>({
     mutationFn: () => handleRequest('/api/account', 'DELETE'),
     onSuccess: () => {
@@ -121,6 +136,7 @@ export function useUser() {
     login: loginMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     register: registerMutation.mutateAsync,
+    verifyRegistration: verifyRegistrationMutation.mutateAsync,
     deleteAccount: deleteAccountMutation.mutateAsync,
     refetch
   };

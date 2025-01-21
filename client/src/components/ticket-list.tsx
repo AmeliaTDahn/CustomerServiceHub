@@ -23,6 +23,7 @@ import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
 import TicketNotes from "./ticket-notes";
+import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -190,7 +191,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     </div>
                   </div>
 
-                  {isBusiness && (
+                  {isBusiness ? (
                     <>
                       <div className="space-y-2">
                         <h3 className="text-sm font-medium">Actions</h3>
@@ -235,6 +236,14 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                       <Separator />
                       <TicketNotes ticketId={selectedTicket.id} />
                     </>
+                  ) : (
+                    <div className="space-y-4">
+                      <Separator />
+                      <TicketFeedback 
+                        ticketId={selectedTicket.id}
+                        isResolved={selectedTicket.status === "resolved"}
+                      />
+                    </div>
                   )}
                 </div>
               </div>

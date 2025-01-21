@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { tickets, users, ticketNotes, messages } from "@db/schema";
+import { tickets, users, ticketNotes, messages, ticketFeedback } from "@db/schema";
 import { eq, and, or } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
@@ -136,6 +136,73 @@ export function registerRoutes(app: Express): Server {
     res.json(updated);
   });
 
+  // Feedback routes
+  app.post("/api/tickets/:id/feedback", async (req, res) => {
+    if (!req.user || req.user.role !== "customer") {
+      return res.status(403).send("Only customers can provide feedback");
+    }
+
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(and(
+        eq(tickets.id, parseInt(id)),
+        eq(tickets.customerId, req.user.id),
+        eq(tickets.status, "resolved")
+      ));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found or not eligible for feedback");
+    }
+
+    // Check if feedback already exists
+    const [existingFeedback] = await db.select()
+      .from(ticketFeedback)
+      .where(eq(ticketFeedback.ticketId, parseInt(id)))
+      .limit(1);
+
+    if (existingFeedback) {
+      return res.status(400).send("Feedback already submitted for this ticket");
+    }
+
+    const [feedback] = await db.insert(ticketFeedback)
+      .values({
+        ticketId: parseInt(id),
+        rating,
+        comment
+      })
+      .returning();
+
+    res.json(feedback);
+  });
+
+  // Get feedback for a ticket
+  app.get("/api/tickets/:id/feedback", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { id } = req.params;
+    const [ticket] = await db.select().from(tickets)
+      .where(eq(tickets.id, parseInt(id)));
+
+    if (!ticket) return res.status(404).send("Ticket not found");
+
+    // Check if user is authorized to view feedback
+    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+      return res.status(403).send("Not authorized to view this feedback");
+    }
+    if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
+      return res.status(403).send("Not authorized to view this feedback");
+    }
+
+    const [feedback] = await db.select()
+      .from(ticketFeedback)
+      .where(eq(ticketFeedback.ticketId, parseInt(id)))
+      .limit(1);
+
+    res.json(feedback || null);
+  });
+
   // Ticket notes routes
   app.post("/api/tickets/:id/notes", async (req, res) => {
     if (!req.user || req.user.role !== "business") {
@@ -183,7 +250,8 @@ export function registerRoutes(app: Express): Server {
       return res.status(404).send("Ticket not found or not assigned to you");
     }
 
-    const notes = await db.select().from(ticketNotes)
+    const notes = await db.select()
+      .from(ticketNotes)
       .where(eq(ticketNotes.ticketId, parseInt(id)));
 
     res.json(notes);

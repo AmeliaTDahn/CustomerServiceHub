@@ -26,15 +26,15 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res) => {
     try {
-      const { email, password, role } = req.body;
+      const { identifier, password, role, authMethod } = req.body;
 
-      if (!email || !password || !role) {
-        return res.status(400).send("Email, password, and role are required");
+      if (!identifier || !password || !role || !authMethod) {
+        return res.status(400).send("Missing required fields");
       }
 
-      // Create user in Supabase with custom user metadata
+      // Create user in Supabase with the appropriate method
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
         password,
         options: {
           data: {
@@ -51,7 +51,7 @@ export function setupAuth(app: Express) {
       // Set session
       req.session.user = {
         id: authData.user?.id,
-        email: authData.user?.email,
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
         role: authData.user?.user_metadata?.role,
       };
 
@@ -59,7 +59,7 @@ export function setupAuth(app: Express) {
         message: "Registration successful",
         user: {
           id: authData.user?.id,
-          email: authData.user?.email,
+          ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
           role: authData.user?.user_metadata?.role,
         },
       });
@@ -71,14 +71,14 @@ export function setupAuth(app: Express) {
 
   app.post("/api/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { identifier, password, authMethod } = req.body;
 
-      if (!email || !password) {
-        return res.status(400).send("Email and password are required");
+      if (!identifier || !password || !authMethod) {
+        return res.status(400).send("Missing required fields");
       }
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
         password,
       });
 
@@ -90,7 +90,7 @@ export function setupAuth(app: Express) {
       // Set session
       req.session.user = {
         id: authData.user?.id,
-        email: authData.user?.email,
+        ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
         role: authData.user?.user_metadata?.role,
       };
 
@@ -98,7 +98,7 @@ export function setupAuth(app: Express) {
         message: "Login successful",
         user: {
           id: authData.user?.id,
-          email: authData.user?.email,
+          ...(authMethod === 'email' ? { email: identifier } : { phone: identifier }),
           role: authData.user?.user_metadata?.role,
         },
       });
@@ -130,7 +130,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // New endpoint for deleting account
   app.delete("/api/account", async (req, res) => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -178,6 +177,7 @@ export function setupAuth(app: Express) {
       res.json({
         id: session.user.id,
         email: session.user.email,
+        phone: session.user.phone,
         role: session.user.user_metadata.role,
       });
     } catch (error) {

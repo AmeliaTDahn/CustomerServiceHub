@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 type UserData = {
-  email: string;
+  identifier: string;
   password: string;
   role?: string;
+  authMethod: 'email' | 'phone';
 };
 
 type User = {
   id: string;
-  email: string;
+  email?: string;
+  phone?: string;
   role: string;
 };
 

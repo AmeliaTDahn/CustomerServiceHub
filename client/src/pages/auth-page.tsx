@@ -14,12 +14,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
+  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { login, register, deleteAccount, user } = useUser();
   const { toast } = useToast();
@@ -27,8 +30,10 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const identifier = authMethod === "email" ? email : phone;
+
       if (isLogin) {
-        const result = await login({ email, password });
+        const result = await login({ identifier, password, authMethod });
         if (!result.ok) {
           toast({
             variant: "destructive",
@@ -37,7 +42,7 @@ export default function AuthPage() {
           });
         }
       } else {
-        const result = await register({ email, password, role });
+        const result = await register({ identifier, password, role, authMethod });
         if (!result.ok) {
           toast({
             variant: "destructive",
@@ -110,16 +115,37 @@ export default function AuthPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
+            <Tabs value={authMethod} onValueChange={(v) => setAuthMethod(v as "email" | "phone")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="email">Email</TabsTrigger>
+                <TabsTrigger value="phone">Phone</TabsTrigger>
+              </TabsList>
+              <TabsContent value="email">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required={authMethod === "email"}
+                  />
+                </div>
+              </TabsContent>
+              <TabsContent value="phone">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="+1234567890"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required={authMethod === "phone"}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input

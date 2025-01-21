@@ -323,53 +323,48 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Get tickets route (REPLACED)
   app.get("/api/tickets", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
     try {
-      let tickets;
+      let ticketsQuery;
       if (req.user.role === "customer") {
         // Customers only see their own tickets
-        tickets = await db.select()
+        ticketsQuery = db.select()
           .from(tickets)
           .where(eq(tickets.customerId, req.user.id));
       } else if (req.user.role === "business") {
-        // Business sees all tickets assigned to them
-        tickets = await db.select()
+        // Business sees all tickets assigned to their business
+        ticketsQuery = db.select()
           .from(tickets)
           .where(eq(tickets.businessId, req.user.id));
       } else if (req.user.role === "employee") {
-        // Employees see all tickets for their assigned businesses
-        const businessId = req.query.businessId;
-        if (!businessId) {
-          return res.status(400).json({ error: "Business ID is required for employees" });
-        }
-
-        // Verify employee has access to this business
-        const [hasAccess] = await db.select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, parseInt(businessId as string)),
-            eq(businessEmployees.isActive, true)
-          ))
-          .limit(1);
-
-        if (!hasAccess) {
-          return res.status(403).json({ error: "No access to this business" });
-        }
-
-        tickets = await db.select()
-          .from(tickets)
-          .where(eq(tickets.businessId, parseInt(businessId as string)));
+        // Employees see all tickets from businesses they work for
+        ticketsQuery = db.select({
+          ticket: tickets,
+          business: {
+            id: users.id,
+            username: users.username
+          }
+        })
+        .from(tickets)
+        .innerJoin(businessEmployees, eq(businessEmployees.businessId, tickets.businessId))
+        .innerJoin(users, eq(users.id, tickets.businessId))
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
       }
 
-      res.json(tickets);
+      const results = await ticketsQuery;
+      res.json(results);
     } catch (error) {
       console.error('Error fetching tickets:', error);
       res.status(500).json({ error: "Failed to fetch tickets" });
     }
   });
+
 
   app.patch("/api/tickets/:id", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");

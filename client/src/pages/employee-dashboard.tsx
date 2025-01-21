@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
-import InvitationHandler from "@/components/invitation-handler";
-import BusinessSwitcher from "@/components/business-switcher";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle } from "lucide-react";
 import { Link } from "wouter";
@@ -13,17 +11,10 @@ import type { Ticket } from "@db/schema";
 
 export default function EmployeeDashboard() {
   const { user, logout } = useUser();
-  const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
-  // Fetch businesses the employee has access to
-  const { data: businesses = [] } = useQuery<Array<{ id: number; username: string }>>({
-    queryKey: ['/api/businesses'],
-  });
-
-  // Fetch tickets for the selected business
-  const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets', currentBusinessId],
-    enabled: !!currentBusinessId,
+  // Fetch tickets
+  const { data: tickets = [] } = useQuery<Ticket[]>({
+    queryKey: ['/api/tickets'],
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -32,14 +23,7 @@ export default function EmployeeDashboard() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
 
-  // Set the first available business as default if none selected
-  useEffect(() => {
-    if (!currentBusinessId && businesses.length > 0) {
-      setCurrentBusinessId(businesses[0].id.toString());
-    }
-  }, [currentBusinessId, businesses]);
-
-  const filteredTickets = tickets?.filter((ticket) => {
+  const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch = searchTerm === "" || 
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -62,7 +46,7 @@ export default function EmployeeDashboard() {
       default:
         return 0;
     }
-  }) || [];
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -70,10 +54,6 @@ export default function EmployeeDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-gray-900">Support Dashboard</h1>
-            <BusinessSwitcher
-              onBusinessChange={setCurrentBusinessId}
-              currentBusinessId={currentBusinessId}
-            />
           </div>
           <div className="flex items-center gap-4">
             <Link href="/messages">
@@ -91,27 +71,21 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Show invitation handler if no business is selected */}
-        {!currentBusinessId && <InvitationHandler />}
-
-        {/* Show tickets when a business is selected */}
-        {currentBusinessId && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Support Tickets</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TicketFilters 
-                onSearchChange={setSearchTerm}
-                onStatusChange={setStatusFilter}
-                onCategoryChange={setCategoryFilter}
-                onPriorityChange={setPriorityFilter}
-                onSortChange={setSortBy}
-              />
-              <TicketList tickets={filteredTickets} isBusiness={true} />
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Support Tickets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TicketFilters 
+              onSearchChange={setSearchTerm}
+              onStatusChange={setStatusFilter}
+              onCategoryChange={setCategoryFilter}
+              onPriorityChange={setPriorityFilter}
+              onSortChange={setSortBy}
+            />
+            <TicketList tickets={filteredTickets} isBusiness={true} />
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

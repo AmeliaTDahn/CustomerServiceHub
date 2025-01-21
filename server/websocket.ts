@@ -16,11 +16,7 @@ interface Message {
 const connections = new Map<string, WebSocket>();
 
 export function setupWebSocket(server: Server, app: Express) {
-  const wss = new WebSocketServer({ 
-  noServer: true,
-  host: '0.0.0.0',
-  port: 5000 
-});
+  const wss = new WebSocketServer({ noServer: true });
 
   // Handle WebSocket connections
   wss.on('connection', (ws: WebSocket, userId: number, role: string) => {

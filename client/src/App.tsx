@@ -8,6 +8,10 @@ import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import BusinessDashboard from "@/pages/business-dashboard";
 import EmployeeMessages from "@/pages/employee-messages";
+import BusinessMessages from "@/pages/business-messages";
+import CustomerMessages from "@/pages/customer-messages";
+import BusinessAnalytics from "@/pages/business-analytics";
+import EmployeeOnboarding from "@/pages/employee-onboarding";
 import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
 
@@ -69,11 +73,6 @@ function Router() {
       <Route path="/analytics" component={() => (
         <ProtectedRoute>
           <BusinessAnalytics />
-        </ProtectedRoute>
-      )} />
-      <Route path="/profile" component={() => (
-        <ProtectedRoute>
-          <BusinessProfilePage />
         </ProtectedRoute>
       )} />
       <Route path="/onboarding" component={() => (

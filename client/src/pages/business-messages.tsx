@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -170,7 +170,7 @@ export default function BusinessMessages() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-4">
-        <Link href="/">
+        <Link to="/business">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard

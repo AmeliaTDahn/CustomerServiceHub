@@ -7,7 +7,6 @@ import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
-import BusinessProfile from "@/components/business-profile";
 import { useUser } from "@/hooks/use-user";
 import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
@@ -94,7 +93,7 @@ export default function BusinessDashboard() {
                 Analytics
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
+            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
             <Button variant="outline" onClick={() => logout()}>
               Logout
             </Button>
@@ -104,8 +103,6 @@ export default function BusinessDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
         {user?.role === "employee" && !currentBusinessId && <InvitationHandler />}
-
-        {user?.role === "business" && <BusinessProfile />}
 
         {user?.role === "business" && (
           <Card>

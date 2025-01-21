@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketForm from "@/components/ticket-form";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
+import UserProfile from "@/components/user-profile";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle } from "lucide-react";
@@ -70,6 +71,8 @@ export default function CustomerDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-6">
+          <UserProfile />
+
           <Card>
             <CardHeader>
               <CardTitle>Support Tickets</CardTitle>

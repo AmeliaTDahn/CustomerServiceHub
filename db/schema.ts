@@ -10,15 +10,11 @@ export const users = pgTable("users", {
   role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
   email: text("email").unique(),
   supabaseId: text("supabase_id").unique(),
-  businessProfile: jsonb("business_profile").$type<{
-    companyName: string;
-    description: string;
-    website?: string;
-    address?: string;
-    phone?: string;
-    industry?: string;
-    logo?: string;
-  }>(),
+  displayName: text("display_name"),
+  bio: text("bio"),
+  jobTitle: text("job_title"),
+  location: text("location"),
+  phoneNumber: text("phone_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

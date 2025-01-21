@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabase } from "@/components/supabase-provider";
 import { UserPlus, X } from "lucide-react";
 
 interface Employee {
@@ -35,6 +36,10 @@ interface Employee {
 interface User {
   id: number;
   username: string;
+  user_metadata: {
+    role: string;
+    username: string;
+  };
 }
 
 export default function EmployeeManagement() {
@@ -42,16 +47,30 @@ export default function EmployeeManagement() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { supabase } = useSupabase();
 
   // Fetch employees
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['/api/businesses/employees'],
   });
 
-  // Fetch available employees to invite
+  // Fetch available employees to invite based on search term
   const { data: availableEmployees = [] } = useQuery<User[]>({
-    queryKey: ['/api/employees'],
-    enabled: isInviteDialogOpen,
+    queryKey: ['/api/employees', searchTerm],
+    queryFn: async () => {
+      if (!searchTerm.trim()) return [];
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, username, user_metadata')
+        .eq('user_metadata->role', 'employee')
+        .ilike('user_metadata->username', `%${searchTerm}%`)
+        .limit(10);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: isInviteDialogOpen && !!searchTerm.trim(),
   });
 
   // Send invitation mutation
@@ -140,13 +159,24 @@ export default function EmployeeManagement() {
               <DialogTitle>Invite Employee</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              <div>
+                <Input
+                  placeholder="Search employees by username..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <p className="text-sm text-muted-foreground mt-2">
+                  Enter a username to search for employees
+                </p>
+              </div>
+
               {availableEmployees.length > 0 ? (
                 availableEmployees.map((employee) => (
                   <div
                     key={employee.id}
                     className="flex items-center justify-between p-2 rounded-lg border"
                   >
-                    <span>{employee.username}</span>
+                    <span>{employee.user_metadata.username}</span>
                     <Button
                       size="sm"
                       onClick={() => inviteEmployee.mutate(employee.id)}
@@ -156,9 +186,13 @@ export default function EmployeeManagement() {
                     </Button>
                   </div>
                 ))
+              ) : searchTerm.trim() ? (
+                <p className="text-sm text-muted-foreground">
+                  No employees found with that username
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No available employees found
+                  Start typing to search for employees
                 </p>
               )}
             </div>

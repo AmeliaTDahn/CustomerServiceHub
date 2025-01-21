@@ -4,12 +4,19 @@ import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations } from "@db/schema";
-import { eq, and, or, not, exists } from "drizzle-orm";
+import { eq, and, or, not } from "drizzle-orm";
+import { createClient } from '@supabase/supabase-js';
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase credentials. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set.');
+}
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
-  // Employee management routes
+  // Employee management routes (replaced with Supabase version)
   app.post("/api/businesses/employees/invite", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -18,45 +25,49 @@ export function registerRoutes(app: Express): Server {
 
       const { employeeId } = req.body;
 
-      if (!employeeId || typeof employeeId !== 'number') {
-        return res.status(400).json({ error: "Invalid employee ID" });
+      if (!employeeId) {
+        return res.status(400).json({ error: "Employee ID is required" });
       }
 
-      // Verify the employee exists and is of role 'employee'
-      const [employee] = await db.select()
-        .from(users)
-        .where(and(
-          eq(users.id, employeeId),
-          eq(users.role, "employee")
-        ));
+      // Check if employee exists and has role 'employee'
+      const { data: employee, error: employeeError } = await supabase
+        .from('users')
+        .select('id, role')
+        .eq('id', employeeId)
+        .eq('role', 'employee')
+        .single();
 
-      if (!employee) {
+      if (employeeError || !employee) {
         return res.status(404).json({ error: "Employee not found" });
       }
 
-      // Check if invitation already exists
-      const [existingInvitation] = await db.select()
-        .from(employeeInvitations)
-        .where(and(
-          eq(employeeInvitations.businessId, req.user.id),
-          eq(employeeInvitations.employeeId, employeeId),
-          eq(employeeInvitations.status, "pending")
-        ));
+      // Check for existing invitation
+      const { data: existingInvitation, error: inviteError } = await supabase
+        .from('employee_invitations')
+        .select()
+        .eq('business_id', req.user.id)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .single();
 
       if (existingInvitation) {
         return res.status(400).json({ error: "Invitation already sent" });
       }
 
       // Create invitation
-      const [invitation] = await db.insert(employeeInvitations)
-        .values({
-          businessId: req.user.id,
-          employeeId,
-          status: "pending",
-          createdAt: new Date(),
-          updatedAt: new Date()
+      const { data: invitation, error: createError } = await supabase
+        .from('employee_invitations')
+        .insert({
+          business_id: req.user.id,
+          employee_id: employeeId,
+          status: 'pending'
         })
-        .returning();
+        .select()
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
 
       res.json(invitation);
     } catch (error) {
@@ -79,12 +90,12 @@ export function registerRoutes(app: Express): Server {
           username: users.username
         }
       })
-      .from(employeeInvitations)
-      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
-      .where(and(
-        eq(employeeInvitations.employeeId, req.user.id),
-        eq(employeeInvitations.status, "pending")
-      ));
+        .from(employeeInvitations)
+        .innerJoin(users, eq(users.id, employeeInvitations.businessId))
+        .where(and(
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
 
       res.json(invitations);
     } catch (error) {
@@ -120,9 +131,9 @@ export function registerRoutes(app: Express): Server {
       }
 
       const [updatedInvitation] = await db.update(employeeInvitations)
-        .set({ 
-          status, 
-          updatedAt: new Date() 
+        .set({
+          status,
+          updatedAt: new Date()
         })
         .where(eq(employeeInvitations.id, parseInt(id)))
         .returning();
@@ -143,46 +154,70 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get all employees for a business
+
+  // Get all employees for a business (replaced with Supabase version)
   app.get("/api/businesses/employees", async (req, res) => {
     try {
       if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
         return res.status(403).json({ error: "Unauthorized" });
       }
 
-      const businessId = req.user.role === "business" ? req.user.id : 
-        (await db.select()
-          .from(businessEmployees)
-          .where(eq(businessEmployees.employeeId, req.user.id))
-          .limit(1))[0]?.businessId;
+      let businessId = req.user.role === "business" ? req.user.id : null;
 
-      if (!businessId) {
-        return res.status(404).json({ error: "Business not found" });
+      // If employee, get their business ID
+      if (req.user.role === "employee") {
+        const { data: employeeRelation, error } = await supabase
+          .from('business_employees')
+          .select('business_id')
+          .eq('employee_id', req.user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (error || !employeeRelation) {
+          return res.status(404).json({ error: "Business not found" });
+        }
+
+        businessId = employeeRelation.business_id;
       }
 
-      const employees = await db.select({
+      // Get employees with their details
+      const { data: employees, error } = await supabase
+        .from('business_employees')
+        .select(`
+          id,
+          is_active,
+          employee:employee_id (
+            id,
+            email,
+            role
+          )
+        `)
+        .eq('business_id', businessId);
+
+      if (error) {
+        throw error;
+      }
+
+      const formattedEmployees = employees.map(emp => ({
         employee: {
-          id: users.id,
-          username: users.username,
-          role: users.role
+          id: emp.employee.id,
+          username: emp.employee.email,
+          role: emp.employee.role
         },
         relation: {
-          id: businessEmployees.id,
-          isActive: businessEmployees.isActive
+          id: emp.id,
+          isActive: emp.is_active
         }
-      })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.employeeId))
-      .where(eq(businessEmployees.businessId, businessId));
+      }));
 
-      res.json(employees);
+      res.json(formattedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
       res.status(500).json({ error: "Failed to fetch employees" });
     }
   });
 
-  // Remove employee (business only)
+  // Remove employee (business only) (replaced with Supabase version)
   app.delete("/api/businesses/employees/:employeeId", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -191,20 +226,27 @@ export function registerRoutes(app: Express): Server {
 
       const { employeeId } = req.params;
 
-      const [relationship] = await db.select()
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.businessId, req.user.id),
-          eq(businessEmployees.employeeId, parseInt(employeeId))
-        ));
+      // Check if relationship exists
+      const { data: relationship, error: fetchError } = await supabase
+        .from('business_employees')
+        .select()
+        .eq('business_id', req.user.id)
+        .eq('employee_id', employeeId)
+        .single();
 
-      if (!relationship) {
+      if (fetchError || !relationship) {
         return res.status(404).json({ error: "Employee relationship not found" });
       }
 
-      await db.update(businessEmployees)
-        .set({ isActive: false })
-        .where(eq(businessEmployees.id, relationship.id));
+      // Update relationship to inactive
+      const { error: updateError } = await supabase
+        .from('business_employees')
+        .update({ is_active: false })
+        .eq('id', relationship.id);
+
+      if (updateError) {
+        throw updateError;
+      }
 
       res.json({ message: "Employee removed successfully" });
     } catch (error) {
@@ -223,12 +265,12 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.businessId))
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
 
       return res.json(businesses);
     }
@@ -238,8 +280,8 @@ export function registerRoutes(app: Express): Server {
       id: users.id,
       username: users.username
     })
-    .from(users)
-    .where(eq(users.role, "business"));
+      .from(users)
+      .where(eq(users.role, "business"));
 
     res.json(businesses);
   });
@@ -254,8 +296,8 @@ export function registerRoutes(app: Express): Server {
       id: users.id,
       username: users.username
     })
-    .from(users)
-    .where(eq(users.role, "customer"));
+      .from(users)
+      .where(eq(users.role, "customer"));
 
     res.json(customers);
   });
@@ -323,7 +365,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get tickets route (REPLACED)
+  // Get tickets route
   app.get("/api/tickets", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
@@ -354,13 +396,13 @@ export function registerRoutes(app: Express): Server {
           createdAt: tickets.createdAt,
           updatedAt: tickets.updatedAt
         })
-        .from(tickets)
-        .innerJoin(businessEmployees, eq(tickets.businessId, businessEmployees.businessId))
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.isActive, true)
-        ))
-        .orderBy(tickets.createdAt);
+          .from(tickets)
+          .innerJoin(businessEmployees, eq(tickets.businessId, businessEmployees.businessId))
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ))
+          .orderBy(tickets.createdAt);
       }
 
       const results = await ticketsQuery;
@@ -370,7 +412,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to fetch tickets" });
     }
   });
-
 
 
   app.patch("/api/tickets/:id", async (req, res) => {
@@ -507,7 +548,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Note routes  (UPDATED)
+  // Note routes
   app.get("/api/tickets/:id/notes", async (req, res) => {
     if (!req.user) return res.status(403).send("Not authenticated");
 
@@ -548,7 +589,7 @@ export function registerRoutes(app: Express): Server {
     res.json(notes);
   });
 
-  // Allow employees to add notes (UPDATED)
+  // Allow employees to add notes
   app.post("/api/tickets/:id/notes", async (req, res) => {
     if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
       return res.status(403).send("Only business users and employees can add notes");
@@ -592,7 +633,7 @@ export function registerRoutes(app: Express): Server {
     res.json(note);
   });
 
-  // Get chat logs for a ticket (NEW)
+  // Get chat logs for a ticket
   app.get("/api/tickets/:id/chat", async (req, res) => {
     if (!req.user) return res.status(403).send("Not authenticated");
 
@@ -638,7 +679,7 @@ export function registerRoutes(app: Express): Server {
     res.json(messages);
   });
 
-  // Allow employees to send messages in ticket chats (NEW)
+  // Allow employees to send messages in ticket chats
   app.post("/api/tickets/:id/chat", async (req, res) => {
     if (!req.user) return res.status(403).send("Not authenticated");
 
@@ -680,7 +721,7 @@ export function registerRoutes(app: Express): Server {
     res.json(message);
   });
 
-  // Update the get employees route to show all available employees for businesses
+  // Update the get employees route to show all available employees for businesses (replaced with Supabase version)
   app.get("/api/employees", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -688,26 +729,21 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get all employees that are not already connected to this business
-      const employees = await db.select({
-        id: users.id,
-        username: users.username
-      })
-      .from(users)
-      .where(
-        and(
-          eq(users.role, "employee"),
-          // Exclude employees that already have a relationship with this business
-          not(exists(
-            db.select()
-              .from(businessEmployees)
-              .where(and(
-                eq(businessEmployees.businessId, req.user.id),
-                eq(businessEmployees.employeeId, users.id),
-                eq(businessEmployees.isActive, true)
-              ))
-          ))
-        )
-      );
+      const { data: employees, error } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('role', 'employee')
+        .not('id', 'in', (sb) =>
+          sb.from('business_employees')
+            .select('employee_id')
+            .eq('business_id', req.user.id)
+            .eq('is_active', true)
+        );
+
+      if (error) {
+        console.error('Error fetching employees:', error);
+        return res.status(500).json({ error: "Failed to fetch employees" });
+      }
 
       res.json(employees);
     } catch (error) {
@@ -780,7 +816,7 @@ export function registerRoutes(app: Express): Server {
 
       // Update ticket assignment
       const [updatedTicket] = await db.update(tickets)
-        .set({ 
+        .set({
           assignedToId: assignToId || req.user.id,
           updatedAt: new Date()
         })

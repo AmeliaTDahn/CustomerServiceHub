@@ -1,43 +1,31 @@
 import { useState } from "react";
-import { useUser } from "@/hooks/use-user";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
+import { useSupabase } from "@/components/supabase-provider";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
-  const { login, register } = useUser();
+  const { signIn, signUp } = useSupabase();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (isLogin) {
-        const result = await login({ email, password });
-        if (!result.ok) {
-          toast({
-            variant: "destructive",
-            title: "Login failed",
-            description: result.message,
-          });
-        }
+        await signIn(email, password);
+        toast({
+          title: "Success",
+          description: "Logged in successfully",
+        });
       } else {
-        const result = await register({ email, password, role });
-        if (!result.ok) {
-          toast({
-            variant: "destructive",
-            title: "Registration failed",
-            description: result.message,
-          });
-          return;
-        }
-
+        await signUp(email, password, role);
         if (role === "employee") {
           toast({
             title: "Registration successful",

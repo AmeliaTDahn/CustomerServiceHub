@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -7,7 +8,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase credentials. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
@@ -32,7 +33,7 @@ export type Profile = {
   phone_number?: string;
   created_at: string;
   updated_at: string;
-}
+};
 
 // Add an auth state change listener
 supabase.auth.onAuthStateChange((event, session) => {
@@ -57,7 +58,7 @@ export async function updateProfile({
   location?: string;
   phoneNumber?: string;
 }) {
-  const user = supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     throw new Error('Not authenticated');
   }

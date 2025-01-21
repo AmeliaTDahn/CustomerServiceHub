@@ -1,7 +1,13 @@
 import { type Express } from "express";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { supabase } from "@/lib/supabase";
+import { createClient } from '@supabase/supabase-js';
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase credentials. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set.');
+}
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 export function setupAuth(app: Express) {
   const MemoryStore = createMemoryStore(session);
@@ -44,8 +50,7 @@ export function setupAuth(app: Express) {
               description: '',
             } : undefined
           },
-          emailRedirectTo: null,  // Disable email redirect
-          skipAutoConfirmEmail: true // Skip email confirmation
+          emailRedirectTo: `${process.env.VITE_PUBLIC_URL || ''}/auth/callback`
         }
       });
 
@@ -54,12 +59,28 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ error: authError.message });
       }
 
-      // Set session immediately after registration
+      // Set session
       req.session.user = {
         id: authData.user?.id,
         email: authData.user?.email,
         role: authData.user?.user_metadata?.role,
       };
+
+      // Create profile in Supabase
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user?.id,
+          username: email,
+          role: role,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        return res.status(500).json({ error: "Failed to create profile" });
+      }
 
       return res.json({
         message: "Registration successful",

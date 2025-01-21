@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ export default function AuthPage() {
   const { signIn, signUp } = useSupabase();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +29,7 @@ export default function AuthPage() {
           title: "Welcome back!",
           description: "You've successfully logged in.",
         });
+        setLocation('/dashboard');
       } else {
         await signUp(email, password, role);
         toast({
@@ -36,6 +39,7 @@ export default function AuthPage() {
             : "Your account has been created successfully.",
           duration: 5000,
         });
+        setLocation('/dashboard');
       }
     } catch (error) {
       toast({

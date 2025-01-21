@@ -11,7 +11,8 @@ import EmployeeMessages from "@/pages/employee-messages";
 import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
 
-function Router() {
+// Protected Route component to handle auth checking
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useSupabase();
 
   if (isLoading) {
@@ -23,21 +24,40 @@ function Router() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    window.location.href = '/';
+    return null;
   }
 
-  // Route based on user role
+  return <>{children}</>;
+}
+
+function Router() {
+  const { user, isLoading } = useSupabase();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-border" />
+      </div>
+    );
+  }
+
   return (
     <Switch>
-      {user.user_metadata.role === 'business' && (
-        <Route path="/" component={BusinessDashboard} />
-      )}
-      {user.user_metadata.role === 'customer' && (
-        <Route path="/" component={CustomerDashboard} />
-      )}
-      {user.user_metadata.role === 'employee' && (
-        <Route path="/" component={EmployeeMessages} />
-      )}
+      {/* Public routes */}
+      <Route path="/" component={AuthPage} />
+
+      {/* Protected routes */}
+      <Route path="/dashboard">
+        {() => (
+          <ProtectedRoute>
+            {user?.user_metadata.role === 'business' && <BusinessDashboard />}
+            {user?.user_metadata.role === 'customer' && <CustomerDashboard />}
+            {user?.user_metadata.role === 'employee' && <EmployeeMessages />}
+          </ProtectedRoute>
+        )}
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );

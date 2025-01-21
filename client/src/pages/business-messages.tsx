@@ -150,7 +150,7 @@ export default function BusinessMessages() {
         ws.close();
       }
     };
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();

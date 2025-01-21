@@ -54,20 +54,20 @@ export default function TicketNotes({ ticketId }: TicketNotesProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <h3 className="font-semibold">Private Notes</h3>
-      <ScrollArea className="h-[200px] border rounded-lg p-4">
-        <div className="space-y-4">
+    <div className="space-y-2">
+      <h3 className="font-semibold text-sm">Private Notes</h3>
+      <ScrollArea className="h-[120px] border rounded-lg p-2">
+        <div className="space-y-2">
           {notes.map((note) => (
-            <div key={note.id} className="bg-muted p-3 rounded-lg">
+            <div key={note.id} className="bg-muted p-2 rounded-lg">
               <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-xs text-muted-foreground mt-1">
                 {new Date(note.createdAt).toLocaleString()}
               </p>
             </div>
           ))}
           {notes.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
+            <p className="text-sm text-muted-foreground text-center py-2">
               No notes yet
             </p>
           )}
@@ -79,9 +79,10 @@ export default function TicketNotes({ ticketId }: TicketNotesProps) {
           onChange={(e) => setNewNote(e.target.value)}
           placeholder="Add a private note..."
           className="flex-1"
+          size="sm"
         />
-        <Button type="submit" disabled={addNote.isPending || !newNote.trim()}>
-          Add Note
+        <Button type="submit" size="sm" disabled={addNote.isPending || !newNote.trim()}>
+          Add
         </Button>
       </form>
     </div>

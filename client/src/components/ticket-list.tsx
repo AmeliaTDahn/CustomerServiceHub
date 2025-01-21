@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -163,10 +162,10 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
               </DialogHeader>
 
               <div className="flex-1 overflow-hidden">
-                <div className="h-full grid grid-cols-2 gap-6">
+                <div className="h-full grid grid-cols-2 gap-4">
                   {/* Left column: Ticket details */}
                   <div className="space-y-4">
-                    <ScrollArea className="h-full pr-4">
+                    <ScrollArea className="h-[200px] pr-4">
                       <div className="space-y-4">
                         <div>
                           <h3 className="text-sm font-medium mb-2">Description</h3>
@@ -174,56 +173,56 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                             <p>{selectedTicket.description}</p>
                           </div>
                         </div>
-                        {isBusiness && (
-                          <div className="pt-4">
-                            <h3 className="text-sm font-medium mb-2">Actions</h3>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  updateTicket.mutate({
-                                    id: selectedTicket.id,
-                                    status: "in_progress",
-                                  })
-                                }
-                                disabled={selectedTicket.status === "in_progress"}
-                              >
-                                Mark In Progress
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  updateTicket.mutate({
-                                    id: selectedTicket.id,
-                                    status: "resolved",
-                                  })
-                                }
-                                disabled={selectedTicket.status === "resolved"}
-                              >
-                                Mark Resolved
-                              </Button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </ScrollArea>
+                    {isBusiness && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-2">Actions</h3>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "in_progress",
+                              })
+                            }
+                            disabled={selectedTicket.status === "in_progress"}
+                          >
+                            Mark In Progress
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "resolved",
+                              })
+                            }
+                            disabled={selectedTicket.status === "resolved"}
+                          >
+                            Mark Resolved
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right column: Notes and Chat */}
-                  <div className="border-l pl-6 space-y-6 h-full flex flex-col">
+                  <div className="border-l pl-4 space-y-4 h-full flex flex-col">
                     {isBusiness && (
                       <>
-                        <div className="flex-1">
+                        <div className="flex-none">
                           <TicketNotes ticketId={selectedTicket.id} />
                         </div>
-                        <Separator />
+                        <Separator className="my-2" />
                       </>
                     )}
-                    <div className={isBusiness ? "flex-1" : "h-full"}>
-                      <h3 className="font-semibold mb-4">Chat</h3>
-                      <div className="h-[calc(100%-2rem)]">
+                    <div className="flex-1 min-h-0">
+                      <h3 className="font-semibold text-sm mb-2">Chat</h3>
+                      <div className="h-[calc(100%-1.5rem)]">
                         <TicketChat ticketId={selectedTicket.id} />
                       </div>
                     </div>

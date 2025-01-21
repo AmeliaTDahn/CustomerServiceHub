@@ -22,8 +22,7 @@ import { MessageCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
-import TicketNotes from "./ticket-notes";
-import TicketFeedback from "./ticket-feedback";
+import TicketDetails from "./ticket-details";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -191,60 +190,51 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     </div>
                   </div>
 
-                  {isBusiness ? (
-                    <>
-                      <div className="space-y-2">
-                        <h3 className="text-sm font-medium">Actions</h3>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "in_progress",
-                              })
-                            }
-                            disabled={selectedTicket.status === "in_progress"}
-                          >
-                            Mark In Progress
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "resolved",
-                              })
-                            }
-                            disabled={selectedTicket.status === "resolved"}
-                          >
-                            Mark Resolved
-                          </Button>
-                        </div>
+                  {isBusiness && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium">Actions</h3>
+                      <div className="flex gap-2">
                         <Button
-                          onClick={() => {
-                            handleMessageClick(selectedTicket.customerId);
-                          }}
-                          className="w-full mt-2"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateTicket.mutate({
+                              id: selectedTicket.id,
+                              status: "in_progress",
+                            })
+                          }
+                          disabled={selectedTicket.status === "in_progress"}
                         >
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Message Customer
+                          Mark In Progress
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateTicket.mutate({
+                              id: selectedTicket.id,
+                              status: "resolved",
+                            })
+                          }
+                          disabled={selectedTicket.status === "resolved"}
+                        >
+                          Mark Resolved
                         </Button>
                       </div>
-                      <Separator />
-                      <TicketNotes ticketId={selectedTicket.id} />
-                    </>
-                  ) : (
-                    <div className="space-y-4">
-                      <Separator />
-                      <TicketFeedback 
-                        ticketId={selectedTicket.id}
-                        isResolved={selectedTicket.status === "resolved"}
-                      />
+                      <Button
+                        onClick={() => {
+                          handleMessageClick(selectedTicket.customerId);
+                        }}
+                        className="w-full mt-2"
+                      >
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        Message Customer
+                      </Button>
                     </div>
                   )}
+
+                  <Separator />
+                  <TicketDetails ticketId={selectedTicket.id} />
                 </div>
               </div>
             </div>

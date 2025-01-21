@@ -365,13 +365,23 @@ export function registerRoutes(app: Express): Server {
 
     if (!ticket) return res.status(404).send("Ticket not found");
 
-    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+    // Added employee authorization check
+    if (req.user.role === "employee") {
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+      if (!hasAccess) return res.status(403).send("Not authorized to update this ticket");
+    } else if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+      return res.status(403).send("Not authorized to update this ticket");
+    } else if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
       return res.status(403).send("Not authorized to update this ticket");
     }
 
-    if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
-      return res.status(403).send("Not authorized to update this ticket");
-    }
 
     const [updated] = await db.update(tickets)
       .set({ status, updatedAt: new Date() })
@@ -453,6 +463,18 @@ export function registerRoutes(app: Express): Server {
       if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view this feedback" });
       }
+      //Added employee authorization check
+      if (req.user.role === "employee") {
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId),
+            eq(businessEmployees.isActive, true)
+          ))
+          .limit(1);
+        if (!hasAccess) return res.status(403).json({ error: "Not authorized to view this feedback" });
+      }
 
       const [feedback] = await db.select()
         .from(ticketFeedback)
@@ -466,51 +488,38 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Ticket notes routes
-  app.post("/api/tickets/:id/notes", async (req, res) => {
-    if (!req.user || req.user.role !== "business") {
-      return res.status(403).send("Only business users can add notes");
-    }
-
-    const { id } = req.params;
-    const { content } = req.body;
-
-    const [ticket] = await db.select().from(tickets)
-      .where(and(
-        eq(tickets.id, parseInt(id)),
-        eq(tickets.businessId, req.user.id)
-      ));
-
-    if (!ticket) {
-      return res.status(404).send("Ticket not found or not assigned to you");
-    }
-
-    const [note] = await db.insert(ticketNotes)
-      .values({
-        ticketId: parseInt(id),
-        businessId: req.user.id,
-        content
-      })
-      .returning();
-
-    res.json(note);
-  });
-
+  // Note routes  (UPDATED)
   app.get("/api/tickets/:id/notes", async (req, res) => {
-    if (!req.user || req.user.role !== "business") {
-      return res.status(403).send("Only business users can view notes");
-    }
+    if (!req.user) return res.status(403).send("Not authenticated");
 
     const { id } = req.params;
 
     const [ticket] = await db.select().from(tickets)
-      .where(and(
-        eq(tickets.id, parseInt(id)),
-        eq(tickets.businessId, req.user.id)
-      ));
+      .where(eq(tickets.id, parseInt(id)));
 
     if (!ticket) {
-      return res.status(404).send("Ticket not found or not assigned to you");
+      return res.status(404).send("Ticket not found");
+    }
+
+    // Check if user has access to this ticket
+    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+      return res.status(403).send("Not authorized to view these notes");
+    }
+
+    // For employees, verify they have access to this business
+    if (req.user.role === "employee") {
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+
+      if (!hasAccess) {
+        return res.status(403).send("Not authorized to view these notes");
+      }
     }
 
     const notes = await db.select()
@@ -520,33 +529,137 @@ export function registerRoutes(app: Express): Server {
     res.json(notes);
   });
 
-  // Business analytics routes
-  app.get("/api/analytics/feedback", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "business") {
-        return res.status(403).json({ error: "Only business users can access analytics" });
-      }
-
-      // Get all feedback for tickets assigned to this business
-      const feedbackData = await db
-        .select({
-          feedback: ticketFeedback,
-          ticket: {
-            title: tickets.title,
-            createdAt: tickets.createdAt
-          }
-        })
-        .from(ticketFeedback)
-        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
-        .where(eq(tickets.businessId, req.user.id));
-
-      res.json(feedbackData);
-    } catch (error) {
-      console.error('Error fetching feedback analytics:', error);
-      res.status(500).json({ error: "Failed to fetch feedback analytics" });
+  // Allow employees to add notes (UPDATED)
+  app.post("/api/tickets/:id/notes", async (req, res) => {
+    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      return res.status(403).send("Only business users and employees can add notes");
     }
+
+    const { id } = req.params;
+    const { content } = req.body;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(eq(tickets.id, parseInt(id)));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found");
+    }
+
+    // For employees, verify they have access to this business
+    if (req.user.role === "employee") {
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+
+      if (!hasAccess) {
+        return res.status(403).send("Not authorized to add notes to this ticket");
+      }
+    }
+
+    const [note] = await db.insert(ticketNotes)
+      .values({
+        ticketId: parseInt(id),
+        userId: req.user.id,
+        content,
+        userType: req.user.role // Add this to differentiate between business and employee notes
+      })
+      .returning();
+
+    res.json(note);
   });
 
+  // Get chat logs for a ticket (NEW)
+  app.get("/api/tickets/:id/chat", async (req, res) => {
+    if (!req.user) return res.status(403).send("Not authenticated");
+
+    const { id } = req.params;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(eq(tickets.id, parseInt(id)));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found");
+    }
+
+    // Check if user has access to this ticket
+    if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
+      return res.status(403).send("Not authorized to view this chat");
+    }
+
+    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+      return res.status(403).send("Not authorized to view this chat");
+    }
+
+    // For employees, verify they have access to this business
+    if (req.user.role === "employee") {
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+
+      if (!hasAccess) {
+        return res.status(403).send("Not authorized to view this chat");
+      }
+    }
+
+    const messages = await db.select()
+      .from(messages)
+      .where(eq(messages.ticketId, parseInt(id)))
+      .orderBy(messages.createdAt);
+
+    res.json(messages);
+  });
+
+  // Allow employees to send messages in ticket chats (NEW)
+  app.post("/api/tickets/:id/chat", async (req, res) => {
+    if (!req.user) return res.status(403).send("Not authenticated");
+
+    const { id } = req.params;
+    const { content } = req.body;
+
+    const [ticket] = await db.select().from(tickets)
+      .where(eq(tickets.id, parseInt(id)));
+
+    if (!ticket) {
+      return res.status(404).send("Ticket not found");
+    }
+
+    // Verify access for employees
+    if (req.user.role === "employee") {
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId),
+          eq(businessEmployees.isActive, true)
+        ))
+        .limit(1);
+
+      if (!hasAccess) {
+        return res.status(403).send("Not authorized to send messages in this ticket");
+      }
+    }
+
+    const [message] = await db.insert(messages)
+      .values({
+        ticketId: parseInt(id),
+        senderId: req.user.id,
+        content,
+        senderType: req.user.role
+      })
+      .returning();
+
+    res.json(message);
+  });
 
   // Update the get employees route to show all available employees for businesses
   app.get("/api/employees", async (req, res) => {
@@ -581,6 +694,34 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching employees:', error);
       res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
+
+
+  // Business analytics routes
+  app.get("/api/analytics/feedback", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business users can access analytics" });
+      }
+
+      // Get all feedback for tickets assigned to this business
+      const feedbackData = await db
+        .select({
+          feedback: ticketFeedback,
+          ticket: {
+            title: tickets.title,
+            createdAt: tickets.createdAt
+          }
+        })
+        .from(ticketFeedback)
+        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
+        .where(eq(tickets.businessId, req.user.id));
+
+      res.json(feedbackData);
+    } catch (error) {
+      console.error('Error fetching feedback analytics:', error);
+      res.status(500).json({ error: "Failed to fetch feedback analytics" });
     }
   });
 

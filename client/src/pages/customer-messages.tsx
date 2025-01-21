@@ -8,8 +8,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
-import { Link } from "wouter";
 import type { User } from "@db/schema";
 
 interface Message {

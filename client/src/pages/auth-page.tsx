@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
@@ -19,14 +19,35 @@ export default function AuthPage() {
     e.preventDefault();
     try {
       if (isLogin) {
-        await login({ username, password });
+        const result = await login({ email, password });
+        if (!result.ok) {
+          toast({
+            variant: "destructive",
+            title: "Login failed",
+            description: result.message,
+          });
+        }
       } else {
-        await register({ username, password, role });
+        const result = await register({ email, password, role });
+        if (!result.ok) {
+          toast({
+            variant: "destructive",
+            title: "Registration failed",
+            description: result.message,
+          });
+          return;
+        }
+
         if (role === "employee") {
           toast({
             title: "Registration successful",
             description: "Your account has been created. Wait for a business to invite you to their support system.",
             duration: 5000,
+          });
+        } else {
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created successfully.",
           });
         }
       }
@@ -55,11 +76,12 @@ export default function AuthPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>

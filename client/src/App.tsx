@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import BusinessDashboard from "@/pages/business-dashboard";
+import BusinessAnalytics from "@/pages/business-analytics";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,12 +25,19 @@ function Router() {
     return <AuthPage />;
   }
 
+  if (user.role === "business") {
+    return (
+      <Switch>
+        <Route path="/" component={BusinessDashboard} />
+        <Route path="/analytics" component={BusinessAnalytics} />
+        <Route component={NotFound} />
+      </Switch>
+    );
+  }
+
   return (
     <Switch>
-      <Route
-        path="/"
-        component={user.role === "business" ? BusinessDashboard : CustomerDashboard}
-      />
+      <Route path="/" component={CustomerDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

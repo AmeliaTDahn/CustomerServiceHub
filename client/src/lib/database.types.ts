@@ -4,96 +4,114 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[]
+  | Json[];
 
 export interface Database {
   public: {
     Tables: {
       profiles: {
         Row: {
-          id: string
-          username: string
-          role: 'business' | 'customer' | 'employee'
-          display_name: string | null
-          bio: string | null
-          job_title: string | null
-          location: string | null
-          phone_number: string | null
-          created_at: string
-          updated_at: string
-        }
+          id: string;
+          username: string;
+          role: 'business' | 'customer' | 'employee';
+          display_name: string | null;
+          bio: string | null;
+          job_title: string | null;
+          location: string | null;
+          phone_number: string | null;
+          company_name: string | null;
+          description: string | null;
+          website: string | null;
+          phone: string | null;
+          address: string | null;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          id: string
-          username: string
-          role: 'business' | 'customer' | 'employee'
-          display_name?: string | null
-          bio?: string | null
-          job_title?: string | null
-          location?: string | null
-          phone_number?: string | null
-          created_at?: string
-          updated_at?: string
-        }
+          id: string;
+          username: string;
+          role: 'business' | 'customer' | 'employee';
+          display_name?: string | null;
+          bio?: string | null;
+          job_title?: string | null;
+          location?: string | null;
+          phone_number?: string | null;
+          company_name?: string | null;
+          description?: string | null;
+          website?: string | null;
+          phone?: string | null;
+          address?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          id?: string
-          username?: string
-          role?: 'business' | 'customer' | 'employee'
-          display_name?: string | null
-          bio?: string | null
-          job_title?: string | null
-          location?: string | null
-          phone_number?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-      }
+          id?: string;
+          username?: string;
+          role?: 'business' | 'customer' | 'employee';
+          display_name?: string | null;
+          bio?: string | null;
+          job_title?: string | null;
+          location?: string | null;
+          phone_number?: string | null;
+          company_name?: string | null;
+          description?: string | null;
+          website?: string | null;
+          phone?: string | null;
+          address?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       tickets: {
         Row: {
-          id: string
-          title: string
-          description: string
-          status: 'open' | 'in_progress' | 'resolved'
-          category: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
-          priority: 'low' | 'medium' | 'high' | 'urgent'
-          customer_id: string
-          business_id: string
-          assigned_to_id: string | null
-          created_at: string
-          updated_at: string
-        }
+          id: string;
+          title: string;
+          description: string;
+          status: 'open' | 'in_progress' | 'resolved';
+          category: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report';
+          priority: 'low' | 'medium' | 'high' | 'urgent';
+          customer_id: string;
+          business_id: string;
+          assigned_to_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          title: string
-          description: string
-          status?: 'open' | 'in_progress' | 'resolved'
-          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
-          priority?: 'low' | 'medium' | 'high' | 'urgent'
-          customer_id: string
-          business_id: string
-          assigned_to_id?: string | null
-          created_at?: string
-          updated_at?: string
-        }
+          title: string;
+          description: string;
+          status?: 'open' | 'in_progress' | 'resolved';
+          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report';
+          priority?: 'low' | 'medium' | 'high' | 'urgent';
+          customer_id: string;
+          business_id: string;
+          assigned_to_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          title?: string
-          description?: string
-          status?: 'open' | 'in_progress' | 'resolved'
-          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
-          priority?: 'low' | 'medium' | 'high' | 'urgent'
-          customer_id?: string
-          business_id?: string
-          assigned_to_id?: string | null
-          updated_at?: string
-        }
-      }
-    }
+          title?: string;
+          description?: string;
+          status?: 'open' | 'in_progress' | 'resolved';
+          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report';
+          priority?: 'low' | 'medium' | 'high' | 'urgent';
+          customer_id?: string;
+          business_id?: string;
+          assigned_to_id?: string | null;
+          updated_at?: string;
+        };
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Enums: {
-      [_ in never]: never
-    }
-  }
+      [_ in never]: never;
+    };
+  };
 }
+
+export type Ticket = Database['public']['Tables']['tickets']['Row'];
+export type Profile = Database['public']['Tables']['profiles']['Row'];

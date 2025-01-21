@@ -57,6 +57,30 @@ function Router() {
           </ProtectedRoute>
         )}
       </Route>
+      <Route path="/messages">
+        {() => (
+          <ProtectedRoute>
+            {user?.user_metadata.role === 'business' && <BusinessMessages />}
+            {user?.user_metadata.role === 'customer' && <CustomerMessages />}
+            {user?.user_metadata.role === 'employee' && <EmployeeMessages />}
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/analytics" component={() => (
+        <ProtectedRoute>
+          <BusinessAnalytics />
+        </ProtectedRoute>
+      )} />
+      <Route path="/profile" component={() => (
+        <ProtectedRoute>
+          <BusinessProfilePage />
+        </ProtectedRoute>
+      )} />
+      <Route path="/onboarding" component={() => (
+        <ProtectedRoute>
+          <EmployeeOnboarding />
+        </ProtectedRoute>
+      )} />
 
       <Route component={NotFound} />
     </Switch>

@@ -24,6 +24,15 @@ export default function BusinessProfile() {
 
   const { data: profile, isLoading } = useQuery<BusinessProfile>({
     queryKey: ['/api/business/profile'],
+    queryFn: async () => {
+      const res = await fetch('/api/business/profile', {
+        credentials: 'include'
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch profile');
+      }
+      return res.json();
+    },
     enabled: !isEditing,
   });
 

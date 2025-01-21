@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
-import { useUser } from "@/hooks/use-user";
+import UserProfile from "@/components/user-profile";
+import { useSupabase } from "@/components/supabase-provider";
 import { MessageCircle } from "lucide-react";
 import { Link } from "wouter";
-import type { Ticket } from "@db/schema";
+import type { Ticket } from "@/lib/database.types";
 
 export default function EmployeeDashboard() {
-  const { user, logout } = useUser();
+  const { user, signOut } = useSupabase();
 
   // Fetch tickets
   const { data: tickets = [] } = useQuery<Ticket[]>({
@@ -36,9 +37,9 @@ export default function EmployeeDashboard() {
   }).sort((a, b) => {
     switch (sortBy) {
       case "newest":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       case "priority":
         const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
         return priorityOrder[a.priority as keyof typeof priorityOrder] - 
@@ -62,8 +63,8 @@ export default function EmployeeDashboard() {
                 Messages
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
-            <Button variant="outline" onClick={() => logout()}>
+            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
+            <Button variant="outline" onClick={() => signOut()}>
               Logout
             </Button>
           </div>
@@ -71,6 +72,8 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        <UserProfile />
+
         <Card>
           <CardHeader>
             <CardTitle>Support Tickets</CardTitle>

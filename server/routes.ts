@@ -10,13 +10,17 @@ export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
   // Employee management routes
-  app.post("/api/businesses/:businessId/employees/invite", async (req, res) => {
+  app.post("/api/businesses/employees/invite", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can invite employees" });
       }
 
       const { employeeId } = req.body;
+
+      if (!employeeId || typeof employeeId !== 'number') {
+        return res.status(400).json({ error: "Invalid employee ID" });
+      }
 
       // Verify the employee exists and is of role 'employee'
       const [employee] = await db.select()
@@ -48,7 +52,9 @@ export function registerRoutes(app: Express): Server {
         .values({
           businessId: req.user.id,
           employeeId,
-          status: "pending"
+          status: "pending",
+          createdAt: new Date(),
+          updatedAt: new Date()
         })
         .returning();
 

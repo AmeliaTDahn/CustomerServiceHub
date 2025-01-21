@@ -18,12 +18,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { MessageCircle, UserCheck } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
-import TicketDetails from "./ticket-details";
-import { useUser } from "@/hooks/use-user";
+import TicketNotes from "./ticket-notes";
+import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
   tickets: Ticket[];
@@ -35,7 +35,6 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const { user } = useUser();
 
   const updateTicket = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -53,32 +52,6 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
       toast({
         title: "Success",
         description: "Ticket status updated successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: (error as Error).message,
-      });
-    },
-  });
-
-  const assignTicket = useMutation({
-    mutationFn: async (ticketId: number) => {
-      const res = await fetch(`/api/tickets/${ticketId}/assign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({
-        title: "Success",
-        description: "Ticket assigned successfully",
       });
     },
     onError: (error) => {
@@ -129,36 +102,19 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
     setLocation(`/messages?customerId=${customerId}`);
   };
 
-  const isAssignedToCurrentUser = (ticket: Ticket) => {
-    return ticket.assignedToId === user?.id;
-  };
-
-  const canModifyTicket = (ticket: Ticket) => {
-    return !ticket.assignedToId || isAssignedToCurrentUser(ticket);
-  };
-
   return (
     <>
       <div className="space-y-4">
         {tickets.map((ticket) => (
           <Card
             key={ticket.id}
-            className={`cursor-pointer hover:shadow-md transition-shadow ${
-              !canModifyTicket(ticket) ? 'opacity-50' : ''
-            }`}
+            className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => setSelectedTicket(ticket)}
           >
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
-                  <CardTitle className="flex items-center gap-2">
-                    {ticket.title}
-                    {ticket.assignedToId && (
-                      <UserCheck className={`h-5 w-5 ${
-                        isAssignedToCurrentUser(ticket) ? 'text-green-500' : 'text-gray-400'
-                      }`} />
-                    )}
-                  </CardTitle>
+                  <CardTitle>{ticket.title}</CardTitle>
                   <CardDescription>
                     Created on {new Date(ticket.createdAt).toLocaleDateString()}
                   </CardDescription>
@@ -187,22 +143,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
               </div>
             </CardHeader>
             <CardContent>
-              <div className="flex justify-between items-center">
-                <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-                {(isBusiness || user?.role === "employee") && !ticket.assignedToId && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      assignTicket.mutate(ticket.id);
-                    }}
-                    disabled={assignTicket.isPending}
-                  >
-                    Claim Ticket
-                  </Button>
-                )}
-              </div>
+              <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
             </CardContent>
           </Card>
         ))}
@@ -222,14 +163,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
               <DialogHeader>
                 <div className="flex justify-between items-start gap-4">
                   <div className="space-y-1">
-                    <DialogTitle className="flex items-center gap-2">
-                      {selectedTicket.title}
-                      {selectedTicket.assignedToId && (
-                        <UserCheck className={`h-5 w-5 ${
-                          isAssignedToCurrentUser(selectedTicket) ? 'text-green-500' : 'text-gray-400'
-                        }`} />
-                      )}
-                    </DialogTitle>
+                    <DialogTitle>{selectedTicket.title}</DialogTitle>
                     <DialogDescription>
                       Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
                     </DialogDescription>
@@ -257,71 +191,59 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     </div>
                   </div>
 
-                  {(isBusiness || user?.role === "employee") && canModifyTicket(selectedTicket) && (
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-medium">Actions</h3>
-                      <div className="flex gap-2">
+                  {isBusiness ? (
+                    <>
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Actions</h3>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "in_progress",
+                              })
+                            }
+                            disabled={selectedTicket.status === "in_progress"}
+                          >
+                            Mark In Progress
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "resolved",
+                              })
+                            }
+                            disabled={selectedTicket.status === "resolved"}
+                          >
+                            Mark Resolved
+                          </Button>
+                        </div>
                         <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            updateTicket.mutate({
-                              id: selectedTicket.id,
-                              status: "in_progress",
-                            })
-                          }
-                          disabled={
-                            selectedTicket.status === "in_progress" ||
-                            updateTicket.isPending
-                          }
+                          onClick={() => {
+                            handleMessageClick(selectedTicket.customerId);
+                          }}
+                          className="w-full mt-2"
                         >
-                          Mark In Progress
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            updateTicket.mutate({
-                              id: selectedTicket.id,
-                              status: "resolved",
-                            })
-                          }
-                          disabled={
-                            selectedTicket.status === "resolved" ||
-                            updateTicket.isPending
-                          }
-                        >
-                          Mark Resolved
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Message Customer
                         </Button>
                       </div>
-                      {!selectedTicket.assignedToId && (
-                        <Button
-                          onClick={() => assignTicket.mutate(selectedTicket.id)}
-                          disabled={assignTicket.isPending}
-                          className="w-full"
-                        >
-                          Claim Ticket
-                        </Button>
-                      )}
-                      <Button
-                        onClick={() => {
-                          handleMessageClick(selectedTicket.customerId);
-                        }}
-                        className="w-full mt-2"
-                      >
-                        <MessageCircle className="mr-2 h-4 w-4" />
-                        Message Customer
-                      </Button>
-                    </div>
-                  )}
-
-                  <Separator />
-                  {canModifyTicket(selectedTicket) ? (
-                    <TicketDetails ticketId={selectedTicket.id} />
+                      <Separator />
+                      <TicketNotes ticketId={selectedTicket.id} />
+                    </>
                   ) : (
-                    <p className="text-center text-muted-foreground py-4">
-                      This ticket is assigned to another employee
-                    </p>
+                    <div className="space-y-4">
+                      <Separator />
+                      <TicketFeedback 
+                        ticketId={selectedTicket.id}
+                        isResolved={selectedTicket.status === "resolved"}
+                      />
+                    </div>
                   )}
                 </div>
               </div>

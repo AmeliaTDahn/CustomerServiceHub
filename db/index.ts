@@ -1,7 +1,15 @@
-import { createClient } from '@supabase/supabase-js';
+import { drizzle } from "drizzle-orm/neon-serverless";
+import ws from "ws";
+import * as schema from "@db/schema";
 
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-  throw new Error('Missing Supabase credentials. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set.');
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
 }
 
-export const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+export const db = drizzle({
+  connection: process.env.DATABASE_URL,
+  schema,
+  ws: ws,
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
@@ -6,90 +6,47 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useSupabase } from "@/components/supabase-provider";
+import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import type { Profile } from "@/lib/database.types";
+import type { User } from "@db/schema";
 
 interface Message {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
+  id: number;
+  senderId: number;
+  receiverId: number;
   content: string;
-  created_at: string;
+  createdAt: string;
 }
 
 export default function CustomerMessages() {
-  const { user, supabase } = useSupabase();
+  const { user } = useUser();
   const { toast } = useToast();
-  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [hasBusinessMessage, setHasBusinessMessage] = useState(false);
   const queryClient = useQueryClient();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Fetch all businesses that have tickets with this customer
-  const { data: businesses } = useQuery<Profile[]>({
+  // Fetch all businesses
+  const { data: businesses } = useQuery<User[]>({
     queryKey: ['/api/businesses'],
-    queryFn: async () => {
-      if (!user) throw new Error('User not authenticated');
-
-      // First get all tickets for this customer
-      const { data: tickets, error: ticketsError } = await supabase
-        .from('tickets')
-        .select('business_id')
-        .eq('customer_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (ticketsError) throw ticketsError;
-
-      // Get unique business IDs
-      const businessIds = [...new Set(tickets.map(t => t.business_id))];
-
-      if (businessIds.length === 0) return [];
-
-      // Then get the business profiles
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', businessIds)
-        .eq('role', 'business');
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user
   });
 
-  // Fetch messages for selected business
+  // Fetch messages for selected user
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUser?.id],
-    enabled: !!selectedUser && !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${user?.id},receiver_id.eq.${selectedUser?.id}),and(sender_id.eq.${selectedUser?.id},receiver_id.eq.${user?.id})`)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      return data;
-    }
+    enabled: !!selectedUser,
   });
 
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
+  const filteredBusinesses = businesses?.filter(business =>
+    business.username.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Check if there's a business message in conversation
   useEffect(() => {
     if (selectedUser && messages.length > 0) {
-      const hasBusinessMsg = messages.some(msg => msg.sender_id === selectedUser.id);
+      const hasBusinessMsg = messages.some(msg => msg.senderId === selectedUser.id);
       setHasBusinessMessage(hasBusinessMsg);
     } else {
       setHasBusinessMessage(false);
@@ -100,113 +57,109 @@ export default function CustomerMessages() {
   useEffect(() => {
     if (!user || !selectedUser) return;
 
+    let reconnectTimeout: NodeJS.Timeout;
     const connectWebSocket = () => {
-      try {
-        console.log('Connecting WebSocket...');
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/ws?userId=${user.id}`;
-        const wsInstance = new WebSocket(wsUrl);
+      console.log('Connecting WebSocket...');
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+      const wsInstance = new WebSocket(wsUrl);
 
-        wsInstance.onopen = () => {
-          console.log('WebSocket Connected');
-          toast({
-            title: "Connected",
-            description: "Message connection established",
-          });
-        };
+      wsInstance.onopen = () => {
+        console.log('WebSocket Connected');
+        toast({
+          title: "Connected",
+          description: "Message connection established",
+        });
+      };
 
-        wsInstance.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('Received WebSocket message:', data);
+      wsInstance.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Received WebSocket message:', data);
 
-            // Handle connection status message
-            if (data.type === 'connection') {
-              console.log('Connection status:', data.status);
-              return;
-            }
-
-            // Handle error message
-            if (data.error) {
-              toast({
-                variant: "destructive",
-                title: "Error",
-                description: data.error,
-              });
-              return;
-            }
-
-            // Handle regular message
-            if (selectedUser && (data.sender_id === selectedUser.id || data.receiver_id === selectedUser.id)) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
-              if (data.sender_id === selectedUser.id) {
-                setHasBusinessMessage(true);
-              }
-            }
-          } catch (error) {
-            console.error('Error parsing message:', error);
+          // Handle connection status message
+          if (data.type === 'connection') {
+            console.log('Connection status:', data.status);
+            return;
           }
-        };
 
-        wsInstance.onerror = (error) => {
-          console.error('WebSocket Error:', error);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Connection error. Attempting to reconnect...",
-          });
-        };
+          // Handle error message
+          if (data.error) {
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: data.error,
+            });
+            return;
+          }
 
-        wsInstance.onclose = () => {
-          console.log('WebSocket Closed');
-          setWs(null);
-          // Attempt to reconnect after 3 seconds
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-        };
+          // Handle regular message
+          if (data.senderId === selectedUser.id || data.receiverId === selectedUser.id) {
+            queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+            if (data.senderId === selectedUser.id) {
+              setHasBusinessMessage(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing message:', error);
+        }
+      };
 
-        setWs(wsInstance);
-      } catch (error) {
-        console.error('Error setting up WebSocket:', error);
+      wsInstance.onerror = (error) => {
+        console.error('WebSocket Error:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to setup chat connection. Retrying...",
+          description: "Connection error. Attempting to reconnect...",
         });
+      };
+
+      wsInstance.onclose = () => {
+        console.log('WebSocket Closed');
+        setWs(null);
         // Attempt to reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-      }
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      };
+
+      setWs(wsInstance);
     };
 
     connectWebSocket();
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
+      clearTimeout(reconnectTimeout);
       if (ws) {
         ws.close();
       }
     };
   }, [user?.id, selectedUser?.id]);
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUser || !user || !supabase) return;
+    if (!newMessage.trim() || !selectedUser || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Check if customer can send message
+    if (!hasBusinessMessage) {
+      toast({
+        variant: "destructive",
+        title: "Cannot send message",
+        description: "Please wait for the business to message you first.",
+      });
+      return;
+    }
+
+    const message = {
+      type: "message",
+      senderId: user.id,
+      receiverId: selectedUser.id,
+      content: newMessage.trim(),
+      timestamp: new Date().toISOString()
+    };
 
     try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          content: newMessage.trim(),
-          sender_id: user.id,
-          receiver_id: selectedUser.id,
-        });
-
-      if (error) throw error;
-
+      console.log('Sending message:', message);
+      ws.send(JSON.stringify(message));
       setNewMessage("");
-      // Invalidate messages query to refresh the list
-      queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -217,21 +170,17 @@ export default function CustomerMessages() {
     }
   };
 
-  const filteredBusinesses = businesses?.filter(business =>
-    business.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <div className="p-2">
-        <Link href="/dashboard">
+        <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </Button>
         </Link>
       </div>
-      <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
+      <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)] bg-gray-50">
         <Card className="col-span-4 flex flex-col">
           <div className="p-4 border-b">
             <Input
@@ -252,14 +201,9 @@ export default function CustomerMessages() {
                   }`}
                   onClick={() => setSelectedUser(business)}
                 >
-                  <div className="font-medium">{business.company_name || business.username}</div>
+                  <div className="font-medium">{business.username}</div>
                 </div>
               ))}
-              {filteredBusinesses?.length === 0 && (
-                <p className="text-center text-muted-foreground p-4">
-                  No businesses found. Create a support ticket first to start messaging.
-                </p>
-              )}
             </div>
           </ScrollArea>
         </Card>
@@ -268,7 +212,12 @@ export default function CustomerMessages() {
           {selectedUser ? (
             <>
               <div className="p-4 border-b">
-                <h2 className="font-semibold">{selectedUser.company_name || selectedUser.username}</h2>
+                <h2 className="font-semibold">{selectedUser.username}</h2>
+                {!hasBusinessMessage && (
+                  <p className="text-sm text-muted-foreground">
+                    Wait for business to initiate the conversation
+                  </p>
+                )}
               </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
@@ -276,24 +225,23 @@ export default function CustomerMessages() {
                     <div
                       key={message.id}
                       className={`flex ${
-                        message.sender_id === user?.id ? "justify-end" : "justify-start"
+                        message.senderId === user?.id ? "justify-end" : "justify-start"
                       }`}
                     >
                       <div
                         className={`max-w-[80%] rounded-lg p-3 ${
-                          message.sender_id === user?.id
+                          message.senderId === user?.id
                             ? "bg-primary text-primary-foreground"
                             : "bg-muted"
                         }`}
                       >
                         <p className="text-sm">{message.content}</p>
                         <p className="text-xs opacity-70 mt-1">
-                          {new Date(message.created_at).toLocaleTimeString()}
+                          {new Date(message.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
                     </div>
                   ))}
-                  <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
               <form onSubmit={sendMessage} className="p-4 border-t">
@@ -301,10 +249,18 @@ export default function CustomerMessages() {
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Type your message..."
+                    placeholder={
+                      hasBusinessMessage
+                        ? "Type your message..."
+                        : "Wait for business to message first..."
+                    }
                     className="flex-1"
+                    disabled={!hasBusinessMessage}
                   />
-                  <Button type="submit" disabled={!newMessage.trim()}>
+                  <Button
+                    type="submit"
+                    disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !hasBusinessMessage}
+                  >
                     Send
                   </Button>
                 </div>

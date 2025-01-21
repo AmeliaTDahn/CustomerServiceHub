@@ -19,12 +19,24 @@ interface BusinessSwitcherProps {
 }
 
 export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }: BusinessSwitcherProps) {
+  // Fetch businesses where the employee has active relationships
   const { data: businesses = [] } = useQuery<Business[]>({
-    queryKey: ['/api/businesses'],
+    queryKey: ['/api/employees/businesses'],
+    queryFn: async () => {
+      const res = await fetch('/api/employees/businesses', {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   });
 
   if (businesses.length === 0) {
-    return null;
+    return (
+      <div className="text-sm text-muted-foreground">
+        No businesses available. Accept invitations to see businesses here.
+      </div>
+    );
   }
 
   return (

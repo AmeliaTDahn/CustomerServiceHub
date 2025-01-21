@@ -1,20 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-
-type UserData = {
-  email: string;
-  password: string;
-  role?: string;
-};
-
-type User = {
-  id: string;
-  email: string;
-  role: string;
-};
+import type { InsertUser, SelectUser } from "@db/schema";
 
 type RequestResult = {
   ok: true;
-  user?: User;
 } | {
   ok: false;
   message: string;
@@ -23,7 +11,7 @@ type RequestResult = {
 async function handleRequest(
   url: string,
   method: string,
-  body?: UserData
+  body?: InsertUser
 ): Promise<RequestResult> {
   try {
     const response = await fetch(url, {
@@ -42,21 +30,20 @@ async function handleRequest(
       return { ok: false, message };
     }
 
-    const data = await response.json();
-    return { ok: true, user: data.user };
+    return { ok: true };
   } catch (e: any) {
     return { ok: false, message: e.toString() };
   }
 }
 
-async function fetchUser(): Promise<User | null> {
+async function fetchUser(): Promise<SelectUser | null> {
   const response = await fetch('/api/user', {
     credentials: 'include'
   });
 
   if (!response.ok) {
     if (response.status === 401) {
-      return null;
+      return null; // Return null on 401, indicating unauthenticated user.
     }
 
     if (response.status >= 500) {
@@ -72,36 +59,32 @@ async function fetchUser(): Promise<User | null> {
 export function useUser() {
   const queryClient = useQueryClient();
 
-  const { data: user, error, isLoading, refetch } = useQuery<User | null, Error>({
+  const { data: user, error, isLoading, refetch } = useQuery<SelectUser | null, Error>({ // Added refetch
     queryKey: ['user'],
     queryFn: fetchUser,
     staleTime: Infinity,
     retry: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false // Added to prevent refetches on window focus
   });
 
-  const loginMutation = useMutation<RequestResult, Error, UserData>({
+  const loginMutation = useMutation<RequestResult, Error, InsertUser>({
     mutationFn: (userData) => handleRequest('/api/login', 'POST', userData),
-    onSuccess: (result) => {
-      if (result.ok && result.user) {
-        queryClient.setQueryData(['user'], result.user);
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
 
   const logoutMutation = useMutation<RequestResult, Error>({
     mutationFn: () => handleRequest('/api/logout', 'POST'),
     onSuccess: () => {
-      queryClient.setQueryData(['user'], null);
+      queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
 
-  const registerMutation = useMutation<RequestResult, Error, UserData>({
+  const registerMutation = useMutation<RequestResult, Error, InsertUser>({
     mutationFn: (userData) => handleRequest('/api/register', 'POST', userData),
-    onSuccess: (result) => {
-      if (result.ok && result.user) {
-        queryClient.setQueryData(['user'], result.user);
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
 
@@ -112,6 +95,6 @@ export function useUser() {
     login: loginMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     register: registerMutation.mutateAsync,
-    refetch
+    refetch // Added refetch to the returned object
   };
 }

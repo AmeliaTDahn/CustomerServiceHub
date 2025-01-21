@@ -5,22 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import type { NewTicket } from "@db/schema";
-import { useState } from "react";
 
 interface Business {
   id: number;
@@ -44,8 +36,6 @@ export default function TicketForm() {
   const { register, handleSubmit, reset, setValue } = useForm<TicketFormData>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
 
   // Fetch available businesses
   const { data: businesses } = useQuery<Business[]>({
@@ -70,7 +60,6 @@ export default function TicketForm() {
         description: "Ticket created successfully",
       });
       reset();
-      setSelectedBusiness(null);
     },
     onError: (error) => {
       toast({
@@ -88,61 +77,41 @@ export default function TicketForm() {
     >
       <div className="space-y-2">
         <Label htmlFor="businessId">Select Business</Label>
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={open}
-              className="w-full justify-between"
-            >
-              {selectedBusiness ? selectedBusiness.username : "Search for a business..."}
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-full p-0">
-            <Command>
-              <CommandInput placeholder="Search for a business..." />
-              <CommandEmpty>No business found.</CommandEmpty>
-              <CommandGroup>
-                {businesses?.map((business) => (
-                  <CommandItem
-                    key={business.id}
-                    onSelect={() => {
-                      setSelectedBusiness(business);
-                      setValue('businessId', business.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedBusiness?.id === business.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {business.username}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </Command>
-          </PopoverContent>
-        </Popover>
+        <Select
+          onValueChange={(value) => setValue('businessId', parseInt(value))}
+          required
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a business" />
+          </SelectTrigger>
+          <SelectContent>
+            {businesses?.map((business) => (
+              <SelectItem key={business.id} value={business.id.toString()}>
+                {business.username}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="category">Category</Label>
-        <select
-          className="w-full rounded-md border border-input bg-background px-3 py-2"
-          onChange={(e) => setValue('category', e.target.value)}
+        <Select
+          onValueChange={(value) => setValue('category', value)}
           required
           defaultValue="general_inquiry"
         >
-          {CATEGORIES.map((category) => (
-            <option key={category.value} value={category.value}>
-              {category.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger>
+            <SelectValue placeholder="Select ticket category" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((category) => (
+              <SelectItem key={category.value} value={category.value}>
+                {category.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

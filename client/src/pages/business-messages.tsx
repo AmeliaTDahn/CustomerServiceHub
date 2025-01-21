@@ -6,23 +6,23 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useSupabase } from "@/components/supabase-provider";
+import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import type { Profile } from "@/lib/database.types";
+import type { User } from "@db/schema";
 
 interface Message {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
+  id: number;
+  senderId: number;
+  receiverId: number;
   content: string;
-  created_at: string;
+  createdAt: string;
 }
 
 export default function BusinessMessages() {
   const customerId = new URLSearchParams(window.location.search).get('customerId');
-  const { user, supabase } = useSupabase();
+  const { user } = useUser();
   const { toast } = useToast();
-  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -31,39 +31,20 @@ export default function BusinessMessages() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch all customers
-  const { data: customers } = useQuery<Profile[]>({
+  const { data: customers } = useQuery<User[]>({
     queryKey: ['/api/customers'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'customer');
-
-      if (error) throw error;
-      return data;
-    }
   });
 
   // Fetch messages for selected user
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUser?.id],
-    enabled: !!selectedUser && !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`sender_id.eq.${user?.id},receiver_id.eq.${user?.id}`)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      return data;
-    }
+    enabled: !!selectedUser,
   });
 
   // When loading the page with a customerId, find and select that customer
   useEffect(() => {
     if (customerId && customers) {
-      const customer = customers.find(c => c.id === customerId);
+      const customer = customers.find(c => c.id === parseInt(customerId));
       if (customer) {
         setSelectedUser(customer);
       }
@@ -89,7 +70,7 @@ export default function BusinessMessages() {
       try {
         console.log('Connecting WebSocket...');
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/ws?userId=${user.id}`;
+        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.role}`;
         const wsInstance = new WebSocket(wsUrl);
 
         wsInstance.onopen = () => {
@@ -122,7 +103,7 @@ export default function BusinessMessages() {
             }
 
             // Handle regular message - update messages if it's from/to current selected user
-            if (selectedUser && (data.sender_id === selectedUser.id || data.receiver_id === selectedUser.id)) {
+            if (selectedUser && (data.senderId === selectedUser.id || data.receiverId === selectedUser.id)) {
               queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
             }
           } catch (error) {
@@ -171,24 +152,22 @@ export default function BusinessMessages() {
     };
   }, [user?.id]);
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUser || !user) return;
+    if (!newMessage.trim() || !selectedUser || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const message = {
+      type: "message",
+      senderId: user.id,
+      receiverId: selectedUser.id,
+      content: newMessage.trim(),
+      timestamp: new Date().toISOString()
+    };
 
     try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          content: newMessage.trim(),
-          sender_id: user.id,
-          receiver_id: selectedUser.id,
-        });
-
-      if (error) throw error;
-
+      console.log('Sending message:', message);
+      ws.send(JSON.stringify(message));
       setNewMessage("");
-      // Invalidate messages query to refresh the list
-      queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -202,7 +181,7 @@ export default function BusinessMessages() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-2">
-        <Link href="/dashboard">
+        <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
@@ -251,19 +230,19 @@ export default function BusinessMessages() {
                     <div
                       key={message.id}
                       className={`flex ${
-                        message.sender_id === user?.id ? "justify-end" : "justify-start"
+                        message.senderId === user?.id ? "justify-end" : "justify-start"
                       }`}
                     >
                       <div
                         className={`max-w-[80%] rounded-lg p-3 ${
-                          message.sender_id === user?.id
+                          message.senderId === user?.id
                             ? "bg-primary text-primary-foreground"
                             : "bg-muted"
                         }`}
                       >
                         <p className="text-sm">{message.content}</p>
                         <p className="text-xs opacity-70 mt-1">
-                          {new Date(message.created_at).toLocaleTimeString()}
+                          {new Date(message.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
                     </div>
@@ -279,7 +258,7 @@ export default function BusinessMessages() {
                     placeholder="Type your message..."
                     className="flex-1"
                   />
-                  <Button type="submit" disabled={!newMessage.trim()}>
+                  <Button type="submit" disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN}>
                     Send
                   </Button>
                 </div>

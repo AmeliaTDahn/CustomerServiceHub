@@ -4,18 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
-import UserProfile from "@/components/user-profile";
-import { useSupabase } from "@/components/supabase-provider";
+import BusinessSwitcher from "@/components/business-switcher";
+import InvitationHandler from "@/components/invitation-handler";
+import { useUser } from "@/hooks/use-user";
 import { MessageCircle } from "lucide-react";
 import { Link } from "wouter";
-import type { Ticket } from "@/lib/database.types";
+import type { Ticket } from "@db/schema";
 
 export default function EmployeeDashboard() {
-  const { user, signOut } = useSupabase();
+  const { user, logout } = useUser();
+  const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
-  // Fetch tickets
-  const { data: tickets = [] } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets'],
+  const { data: tickets } = useQuery<Ticket[]>({
+    queryKey: ['/api/tickets', currentBusinessId],
+    enabled: !!currentBusinessId
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -24,7 +26,7 @@ export default function EmployeeDashboard() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
 
-  const filteredTickets = tickets.filter((ticket) => {
+  const filteredTickets = tickets?.filter((ticket) => {
     const matchesSearch = searchTerm === "" || 
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -37,9 +39,9 @@ export default function EmployeeDashboard() {
   }).sort((a, b) => {
     switch (sortBy) {
       case "newest":
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       case "oldest":
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       case "priority":
         const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
         return priorityOrder[a.priority as keyof typeof priorityOrder] - 
@@ -47,14 +49,18 @@ export default function EmployeeDashboard() {
       default:
         return 0;
     }
-  });
+  }) || [];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold text-gray-900">Support Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Employee Dashboard</h1>
+            <BusinessSwitcher
+              onBusinessChange={setCurrentBusinessId}
+              currentBusinessId={currentBusinessId}
+            />
           </div>
           <div className="flex items-center gap-4">
             <Link href="/messages">
@@ -63,8 +69,8 @@ export default function EmployeeDashboard() {
                 Messages
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
-            <Button variant="outline" onClick={() => signOut()}>
+            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
+            <Button variant="outline" onClick={() => logout()}>
               Logout
             </Button>
           </div>
@@ -72,23 +78,33 @@ export default function EmployeeDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        <UserProfile />
+        <InvitationHandler />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Support Tickets</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TicketFilters 
-              onSearchChange={setSearchTerm}
-              onStatusChange={setStatusFilter}
-              onCategoryChange={setCategoryFilter}
-              onPriorityChange={setPriorityFilter}
-              onSortChange={setSortBy}
-            />
-            <TicketList tickets={filteredTickets} isBusiness={true} />
-          </CardContent>
-        </Card>
+        {currentBusinessId ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Tickets</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TicketFilters 
+                onSearchChange={setSearchTerm}
+                onStatusChange={setStatusFilter}
+                onCategoryChange={setCategoryFilter}
+                onPriorityChange={setPriorityFilter}
+                onSortChange={setSortBy}
+              />
+              <TicketList tickets={filteredTickets} isEmployee />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="py-6">
+              <p className="text-center text-muted-foreground">
+                Select a business to view and manage tickets
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,31 +7,17 @@ import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
-import { useSupabase } from "@/components/supabase-provider";
+import { useUser } from "@/hooks/use-user";
 import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
-import type { Ticket } from "@/lib/database.types";
+import type { Ticket } from "@db/schema";
 
 export default function BusinessDashboard() {
-  const { user, signOut } = useSupabase();
+  const { user, logout } = useUser();
   const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
-  // For employees, fetch the first available business ID if none is selected
-  const { data: businesses = [] } = useQuery<Array<{ id: number; username: string }>>({
-    queryKey: ['/api/businesses'],
-  });
-
-  useEffect(() => {
-    if (user?.user_metadata.role === "employee" && !currentBusinessId && businesses.length > 0) {
-      setCurrentBusinessId(businesses[0].id.toString());
-    }
-  }, [user?.user_metadata.role, currentBusinessId, businesses]);
-
-  const effectiveBusinessId = user?.user_metadata.role === "business" ? user.id.toString() : currentBusinessId;
-
   const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets', effectiveBusinessId],
-    enabled: !!effectiveBusinessId,
+    queryKey: ['/api/tickets', currentBusinessId],
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,9 +39,9 @@ export default function BusinessDashboard() {
   }).sort((a, b) => {
     switch (sortBy) {
       case "newest":
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       case "oldest":
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       case "priority":
         const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
         return priorityOrder[a.priority as keyof typeof priorityOrder] - 
@@ -71,9 +57,9 @@ export default function BusinessDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-gray-900">
-              {user?.user_metadata.role === "business" ? "Business" : "Employee"} Dashboard
+              {user?.role === "business" ? "Business" : "Employee"} Dashboard
             </h1>
-            {user?.user_metadata.role === "employee" && (
+            {user?.role === "employee" && (
               <BusinessSwitcher
                 onBusinessChange={setCurrentBusinessId}
                 currentBusinessId={currentBusinessId}
@@ -93,8 +79,8 @@ export default function BusinessDashboard() {
                 Analytics
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
-            <Button variant="outline" onClick={() => signOut()}>
+            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
+            <Button variant="outline" onClick={() => logout()}>
               Logout
             </Button>
           </div>
@@ -102,9 +88,9 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {user?.user_metadata.role === "employee" && !currentBusinessId && <InvitationHandler />}
+        {user?.role === "employee" && <InvitationHandler />}
 
-        {user?.user_metadata.role === "business" && (
+        {user?.role === "business" && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -118,23 +104,21 @@ export default function BusinessDashboard() {
           </Card>
         )}
 
-        {effectiveBusinessId && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer Tickets</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TicketFilters 
-                onSearchChange={setSearchTerm}
-                onStatusChange={setStatusFilter}
-                onCategoryChange={setCategoryFilter}
-                onPriorityChange={setPriorityFilter}
-                onSortChange={setSortBy}
-              />
-              <TicketList tickets={filteredTickets} isBusiness />
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Tickets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TicketFilters 
+              onSearchChange={setSearchTerm}
+              onStatusChange={setStatusFilter}
+              onCategoryChange={setCategoryFilter}
+              onPriorityChange={setPriorityFilter}
+              onSortChange={setSortBy}
+            />
+            <TicketList tickets={filteredTickets} isBusiness />
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

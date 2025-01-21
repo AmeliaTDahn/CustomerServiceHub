@@ -13,6 +13,8 @@ interface TicketFiltersProps {
   onSearchChange: (search: string) => void;
   onStatusChange: (status: string) => void;
   onCategoryChange: (category: string) => void;
+  onPriorityChange: (priority: string) => void;
+  onSortChange: (sort: string) => void;
 }
 
 const STATUSES = [
@@ -29,6 +31,14 @@ const CATEGORIES = [
   { value: "feature_request", label: "Feature Request" },
   { value: "general_inquiry", label: "General Inquiry" },
   { value: "bug_report", label: "Bug Report" },
+];
+
+const PRIORITIES = [
+  { value: "all", label: "All Priorities" },
+  { value: "urgent", label: "Urgent" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
 ];
 
 export default function TicketFilters({
@@ -80,6 +90,34 @@ export default function TicketFilters({
                   {category.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+      <div className="space-y-2">
+          <Label>Priority</Label>
+          <Select onValueChange={onPriorityChange} defaultValue="all">
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by priority" />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITIES.map((priority) => (
+                <SelectItem key={priority.value} value={priority.value}>
+                  {priority.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Sort By</Label>
+          <Select onValueChange={onSortChange} defaultValue="newest">
+            <SelectTrigger>
+              <SelectValue placeholder="Sort tickets" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="priority">Priority (High to Low)</SelectItem>
             </SelectContent>
           </Select>
         </div>

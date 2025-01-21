@@ -18,6 +18,8 @@ export default function BusinessDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
 
   const filteredTickets = tickets?.filter((ticket) => {
     const matchesSearch = searchTerm === "" || 
@@ -26,8 +28,22 @@ export default function BusinessDashboard() {
 
     const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
     const matchesCategory = categoryFilter === "all" || ticket.category === categoryFilter;
+    const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
 
-    return matchesSearch && matchesStatus && matchesCategory;
+    return matchesSearch && matchesStatus && matchesCategory && matchesPriority;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "newest":
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      case "oldest":
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      case "priority":
+        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+        return priorityOrder[a.priority as keyof typeof priorityOrder] - 
+               priorityOrder[b.priority as keyof typeof priorityOrder];
+      default:
+        return 0;
+    }
   }) || [];
 
   return (

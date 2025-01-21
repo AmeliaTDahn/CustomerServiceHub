@@ -148,7 +148,7 @@ export default function BusinessMessages() {
   return (
     <div className="min-h-screen">
       <div className="p-4">
-        <Link to="/business/dashboard">
+        <Link to="/">
           <Button variant="outline" size="sm">
             Back to Dashboard
           </Button>

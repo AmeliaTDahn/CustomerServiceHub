@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { useUser } from "@/hooks/use-user";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ export default function AuthPage() {
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,9 +22,12 @@ export default function AuthPage() {
         await login({ username, password });
       } else {
         await register({ username, password, role });
-        // Redirect employees to onboarding page after registration
         if (role === "employee") {
-          setLocation("/employee-onboarding");
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created. Wait for a business to invite you to their support system.",
+            duration: 5000,
+          });
         }
       }
     } catch (error) {
@@ -94,7 +95,7 @@ export default function AuthPage() {
                 </RadioGroup>
                 {role === "employee" && (
                   <p className="text-sm text-muted-foreground mt-2">
-                    After registration, you'll be prompted to search and request to join a business.
+                    After registration, wait for a business to invite you to their support system.
                   </p>
                 )}
               </div>

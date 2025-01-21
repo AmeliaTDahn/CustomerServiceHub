@@ -4,7 +4,7 @@ import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations } from "@db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, not, exists } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -500,6 +500,42 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+
+  // Update the get employees route to show all available employees for businesses
+  app.get("/api/employees", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can view employees" });
+      }
+
+      // Get all employees that are not already connected to this business
+      const employees = await db.select({
+        id: users.id,
+        username: users.username
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.role, "employee"),
+          // Exclude employees that already have a relationship with this business
+          not(exists(
+            db.select()
+              .from(businessEmployees)
+              .where(and(
+                eq(businessEmployees.businessId, req.user.id),
+                eq(businessEmployees.employeeId, users.id),
+                eq(businessEmployees.isActive, true)
+              ))
+          ))
+        )
+      );
+
+      res.json(employees);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
 
   const httpServer = createServer(app);
 

@@ -10,7 +10,6 @@ import CustomerMessages from "@/pages/customer-messages";
 import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
-import EmployeeOnboarding from "@/pages/employee-onboarding";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -42,7 +41,6 @@ function Router() {
   if (user.role === "employee") {
     return (
       <Switch>
-        <Route path="/employee-onboarding" component={EmployeeOnboarding} />
         <Route path="/" component={BusinessDashboard} />
         <Route path="/analytics" component={BusinessAnalytics} />
         <Route path="/messages" component={BusinessMessages} />

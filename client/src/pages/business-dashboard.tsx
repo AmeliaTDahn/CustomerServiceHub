@@ -7,6 +7,7 @@ import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
+import BusinessProfile from "@/components/business-profile";
 import { useUser } from "@/hooks/use-user";
 import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
@@ -27,7 +28,6 @@ export default function BusinessDashboard() {
     }
   }, [user?.role, currentBusinessId, businesses]);
 
-  // Use the current user's ID for business owners, or the selected business ID for employees
   const effectiveBusinessId = user?.role === "business" ? user.id.toString() : currentBusinessId;
 
   const { data: tickets } = useQuery<Ticket[]>({
@@ -94,7 +94,7 @@ export default function BusinessDashboard() {
                 Analytics
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
+            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
             <Button variant="outline" onClick={() => logout()}>
               Logout
             </Button>
@@ -103,10 +103,10 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Show invitation handler only for employees with no business selected */}
         {user?.role === "employee" && !currentBusinessId && <InvitationHandler />}
 
-        {/* Show employee management only for business owners */}
+        {user?.role === "business" && <BusinessProfile />}
+
         {user?.role === "business" && (
           <Card>
             <CardHeader>
@@ -121,7 +121,6 @@ export default function BusinessDashboard() {
           </Card>
         )}
 
-        {/* Show tickets only when there's an effective business ID */}
         {effectiveBusinessId && (
           <Card>
             <CardHeader>

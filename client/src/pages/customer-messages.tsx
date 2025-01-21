@@ -172,7 +172,7 @@ export default function CustomerMessages() {
 
   return (
     <div className="min-h-screen">
-      <div className="p-4">
+      <div className="p-2">
         <Link to="/customer">
           <Button variant="outline" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -180,7 +180,7 @@ export default function CustomerMessages() {
           </Button>
         </Link>
       </div>
-      <div className="grid grid-cols-12 gap-6 p-6 bg-gray-50">
+      <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)] bg-gray-50">
       {/* Business List */}
       <Card className="col-span-4 flex flex-col">
         <div className="p-4 border-b">

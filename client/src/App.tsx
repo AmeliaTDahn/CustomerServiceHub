@@ -6,15 +6,11 @@ import { useSupabase } from "@/components/supabase-provider";
 import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
-import CustomerMessages from "@/pages/customer-messages";
-import BusinessDashboard from "@/pages/business-dashboard";
-import BusinessAnalytics from "@/pages/business-analytics";
-import BusinessMessages from "@/pages/business-messages";
 import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
 
 function Router() {
-  const { user, profile, isLoading } = useSupabase();
+  const { user, isLoading } = useSupabase();
 
   if (isLoading) {
     return (
@@ -24,27 +20,14 @@ function Router() {
     );
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return <AuthPage />;
   }
 
-  // Show business interface for both business owners and employees
-  if (profile.role === "business" || profile.role === "employee") {
-    return (
-      <Switch>
-        <Route path="/" component={BusinessDashboard} />
-        <Route path="/analytics" component={BusinessAnalytics} />
-        <Route path="/messages" component={BusinessMessages} />
-        <Route component={NotFound} />
-      </Switch>
-    );
-  }
-
-  // Customer interface
+  // Simple router for now
   return (
     <Switch>
       <Route path="/" component={CustomerDashboard} />
-      <Route path="/messages" component={CustomerMessages} />
       <Route component={NotFound} />
     </Switch>
   );

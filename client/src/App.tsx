@@ -10,7 +10,6 @@ import CustomerMessages from "@/pages/customer-messages";
 import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
-import BusinessProfilePage from "@/pages/business-profile-page";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -35,7 +34,6 @@ function Router() {
         <Route path="/" component={BusinessDashboard} />
         <Route path="/analytics" component={BusinessAnalytics} />
         <Route path="/messages" component={BusinessMessages} />
-        <Route path="/profile" component={BusinessProfilePage} />
         <Route component={NotFound} />
       </Switch>
     );

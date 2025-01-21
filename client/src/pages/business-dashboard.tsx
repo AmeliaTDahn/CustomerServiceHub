@@ -8,7 +8,7 @@ import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
 import { useUser } from "@/hooks/use-user";
-import { BarChart, MessageCircle, Users, Building2 } from "lucide-react";
+import { BarChart, MessageCircle, Users } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -86,12 +86,6 @@ export default function BusinessDashboard() {
               <Button variant="outline" className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4" />
                 Messages
-              </Button>
-            </Link>
-            <Link href="/profile">
-              <Button variant="outline" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
-                Business Profile
               </Button>
             </Link>
             <Link href="/analytics">

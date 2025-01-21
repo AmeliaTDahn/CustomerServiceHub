@@ -341,20 +341,14 @@ export function registerRoutes(app: Express): Server {
           .where(eq(tickets.businessId, req.user.id));
       } else if (req.user.role === "employee") {
         // Employees see all tickets from businesses they work for
-        ticketsQuery = db.select({
-          ticket: tickets,
-          business: {
-            id: users.id,
-            username: users.username
-          }
-        })
-        .from(tickets)
-        .innerJoin(businessEmployees, eq(businessEmployees.businessId, tickets.businessId))
-        .innerJoin(users, eq(users.id, tickets.businessId))
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.isActive, true)
-        ));
+        ticketsQuery = db.select()
+          .from(tickets)
+          .innerJoin(businessEmployees, eq(tickets.businessId, businessEmployees.businessId))
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ))
+          .orderBy(tickets.createdAt);
       }
 
       const results = await ticketsQuery;

@@ -12,12 +12,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    }
+    detectSessionInUrl: true
   }
 });
 
@@ -34,15 +29,6 @@ export type Profile = {
   created_at: string;
   updated_at: string;
 };
-
-// Add an auth state change listener
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN') {
-    console.log('User signed in:', session?.user);
-  } else if (event === 'SIGNED_OUT') {
-    console.log('User signed out');
-  }
-});
 
 // Helper functions for profile management
 export async function updateProfile({

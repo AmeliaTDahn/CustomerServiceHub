@@ -47,6 +47,44 @@ export interface Database {
           updated_at?: string
         }
       }
+      tickets: {
+        Row: {
+          id: string
+          title: string
+          description: string
+          status: 'open' | 'in_progress' | 'resolved'
+          category: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
+          priority: 'low' | 'medium' | 'high' | 'urgent'
+          customer_id: string
+          business_id: string
+          assigned_to_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          title: string
+          description: string
+          status?: 'open' | 'in_progress' | 'resolved'
+          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
+          priority?: 'low' | 'medium' | 'high' | 'urgent'
+          customer_id: string
+          business_id: string
+          assigned_to_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          title?: string
+          description?: string
+          status?: 'open' | 'in_progress' | 'resolved'
+          category?: 'technical' | 'billing' | 'feature_request' | 'general_inquiry' | 'bug_report'
+          priority?: 'low' | 'medium' | 'high' | 'urgent'
+          customer_id?: string
+          business_id?: string
+          assigned_to_id?: string | null
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

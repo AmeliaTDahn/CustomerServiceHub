@@ -7,6 +7,8 @@ import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useUser } from "@/hooks/use-user";
+import { MessageCircle } from "lucide-react";
+import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
 export default function CustomerDashboard() {
@@ -52,6 +54,12 @@ export default function CustomerDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-900">Customer Dashboard</h1>
           <div className="flex items-center gap-4">
+            <Link href="/messages">
+              <Button variant="outline" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                Messages
+              </Button>
+            </Link>
             <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
             <Button variant="outline" onClick={() => logout()}>
               Logout

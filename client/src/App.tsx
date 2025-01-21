@@ -6,6 +6,7 @@ import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
+import CustomerMessages from "@/pages/customer-messages";
 import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessMessages from "@/pages/business-messages";
@@ -40,6 +41,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={CustomerDashboard} />
+      <Route path="/messages" component={CustomerMessages} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
+import TicketAnalytics from "@/components/ticket-analytics";
 import { useUser } from "@/hooks/use-user";
 import type { Ticket } from "@db/schema";
 
@@ -42,7 +43,9 @@ export default function BusinessDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        {tickets && <TicketAnalytics tickets={tickets} />}
+
         <Card>
           <CardHeader>
             <CardTitle>Customer Tickets</CardTitle>

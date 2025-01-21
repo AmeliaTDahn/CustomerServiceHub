@@ -139,9 +139,9 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
       </div>
 
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="max-w-4xl h-[90vh]">
+        <DialogContent className="max-w-2xl">
           {selectedTicket && (
-            <div className="h-full flex flex-col">
+            <div className="flex flex-col">
               <DialogHeader>
                 <div className="flex justify-between items-start gap-4">
                   <div className="space-y-1">
@@ -164,70 +164,61 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                 </div>
               </DialogHeader>
 
-              <div className="flex-1 overflow-hidden">
-                <div className="h-full grid grid-cols-2 gap-4">
-                  {/* Left column: Ticket details */}
-                  <div className="space-y-4">
-                    <ScrollArea className="h-[300px] pr-4">
-                      <div className="space-y-4">
-                        <div>
-                          <h3 className="text-sm font-medium mb-2">Description</h3>
-                          <div className="prose prose-sm max-w-none">
-                            <p>{selectedTicket.description}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </ScrollArea>
-                    {isBusiness && (
-                      <>
-                        <div>
-                          <h3 className="text-sm font-medium mb-2">Actions</h3>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                updateTicket.mutate({
-                                  id: selectedTicket.id,
-                                  status: "in_progress",
-                                })
-                              }
-                              disabled={selectedTicket.status === "in_progress"}
-                            >
-                              Mark In Progress
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                updateTicket.mutate({
-                                  id: selectedTicket.id,
-                                  status: "resolved",
-                                })
-                              }
-                              disabled={selectedTicket.status === "resolved"}
-                            >
-                              Mark Resolved
-                            </Button>
-                          </div>
+              <div className="mt-4">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Description</h3>
+                    <div className="prose prose-sm max-w-none bg-muted p-3 rounded-lg">
+                      <p>{selectedTicket.description}</p>
+                    </div>
+                  </div>
+
+                  {isBusiness && (
+                    <>
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Actions</h3>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "in_progress",
+                              })
+                            }
+                            disabled={selectedTicket.status === "in_progress"}
+                          >
+                            Mark In Progress
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateTicket.mutate({
+                                id: selectedTicket.id,
+                                status: "resolved",
+                              })
+                            }
+                            disabled={selectedTicket.status === "resolved"}
+                          >
+                            Mark Resolved
+                          </Button>
                         </div>
                         <Button
                           onClick={() => {
                             setLocation("/messages");
                           }}
-                          className="w-full"
+                          className="w-full mt-2"
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
                           Message Customer
                         </Button>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Right column: Notes */}
-                  <div className="border-l pl-4 space-y-4">
-                    {isBusiness && <TicketNotes ticketId={selectedTicket.id} />}
-                  </div>
+                      </div>
+                      <Separator />
+                      <TicketNotes ticketId={selectedTicket.id} />
+                    </>
+                  )}
                 </div>
               </div>
             </div>

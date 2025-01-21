@@ -44,8 +44,6 @@ export const tickets = pgTable("tickets", {
   assignedToId: integer("assigned_to_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
 export const ticketFeedback = pgTable("ticket_feedback", {

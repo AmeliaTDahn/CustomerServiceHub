@@ -105,6 +105,13 @@ export function useUser() {
     },
   });
 
+  const deleteAccountMutation = useMutation<RequestResult, Error>({
+    mutationFn: () => handleRequest('/api/account', 'DELETE'),
+    onSuccess: () => {
+      queryClient.setQueryData(['user'], null);
+    },
+  });
+
   return {
     user,
     isLoading,
@@ -112,6 +119,7 @@ export function useUser() {
     login: loginMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     register: registerMutation.mutateAsync,
+    deleteAccount: deleteAccountMutation.mutateAsync,
     refetch
   };
 }

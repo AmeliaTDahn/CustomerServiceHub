@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import BusinessDashboard from "@/pages/business-dashboard";
+import EmployeeDashboard from "@/pages/employee-dashboard";
 import EmployeeMessages from "@/pages/employee-messages";
 import BusinessMessages from "@/pages/business-messages";
 import CustomerMessages from "@/pages/customer-messages";
@@ -57,7 +58,7 @@ function Router() {
           <ProtectedRoute>
             {user?.user_metadata.role === 'business' && <BusinessDashboard />}
             {user?.user_metadata.role === 'customer' && <CustomerDashboard />}
-            {user?.user_metadata.role === 'employee' && <EmployeeMessages />}
+            {user?.user_metadata.role === 'employee' && <EmployeeDashboard />}
           </ProtectedRoute>
         )}
       </Route>

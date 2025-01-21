@@ -34,7 +34,7 @@ export default function EmployeeMessages() {
             />
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href="/dashboard">
               <Button variant="outline" className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4" />
                 Dashboard

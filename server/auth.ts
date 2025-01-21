@@ -44,7 +44,8 @@ export function setupAuth(app: Express) {
               description: '',
             } : undefined
           },
-          emailRedirectTo: undefined,  // Disable email redirect
+          emailRedirectTo: null,  // Disable email redirect
+          skipAutoConfirmEmail: true // Skip email confirmation
         }
       });
 

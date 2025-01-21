@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 
 type UserData = {
   email: string;
@@ -50,23 +51,17 @@ async function handleRequest(
 }
 
 async function fetchUser(): Promise<User | null> {
-  const response = await fetch('/api/user', {
-    credentials: 'include'
-  });
+  const { data: { session }, error } = await supabase.auth.getSession();
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      return null;
-    }
-
-    if (response.status >= 500) {
-      throw new Error(`${response.status}: ${response.statusText}`);
-    }
-
-    throw new Error(`${response.status}: ${await response.text()}`);
+  if (error || !session?.user) {
+    return null;
   }
 
-  return response.json();
+  return {
+    id: session.user.id,
+    email: session.user.email!,
+    role: session.user.user_metadata.role
+  };
 }
 
 export function useUser() {
@@ -81,7 +76,25 @@ export function useUser() {
   });
 
   const loginMutation = useMutation<RequestResult, Error, UserData>({
-    mutationFn: (userData) => handleRequest('/api/login', 'POST', userData),
+    mutationFn: async ({ email, password }) => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+
+      return { 
+        ok: true, 
+        user: {
+          id: data.user.id,
+          email: data.user.email!,
+          role: data.user.user_metadata.role
+        }
+      };
+    },
     onSuccess: (result) => {
       if (result.ok && result.user) {
         queryClient.setQueryData(['user'], result.user);
@@ -90,14 +103,42 @@ export function useUser() {
   });
 
   const logoutMutation = useMutation<RequestResult, Error>({
-    mutationFn: () => handleRequest('/api/logout', 'POST'),
+    mutationFn: async () => {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+      return { ok: true };
+    },
     onSuccess: () => {
       queryClient.setQueryData(['user'], null);
     },
   });
 
   const registerMutation = useMutation<RequestResult, Error, UserData>({
-    mutationFn: (userData) => handleRequest('/api/register', 'POST', userData),
+    mutationFn: async ({ email, password, role }) => {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { role },
+          emailRedirectTo: `${window.location.origin}/verify`
+        }
+      });
+
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+
+      return { 
+        ok: true,
+        user: data.user ? {
+          id: data.user.id,
+          email: data.user.email!,
+          role: data.user.user_metadata.role
+        } : undefined
+      };
+    },
     onSuccess: (result) => {
       if (result.ok && result.user) {
         queryClient.setQueryData(['user'], result.user);
@@ -106,7 +147,13 @@ export function useUser() {
   });
 
   const deleteAccountMutation = useMutation<RequestResult, Error>({
-    mutationFn: () => handleRequest('/api/account', 'DELETE'),
+    mutationFn: async () => {
+      const { error } = await supabase.auth.admin.deleteUser(user?.id!);
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+      return { ok: true };
+    },
     onSuccess: () => {
       queryClient.setQueryData(['user'], null);
     },

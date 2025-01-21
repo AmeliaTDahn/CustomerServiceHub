@@ -1,13 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 
+// Get environment variables with fallbacks and validation
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Validate environment variables
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase credentials. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.');
+  throw new Error(
+    'Missing Supabase credentials. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file.'
+  );
 }
 
+// Initialize Supabase client with proper typing
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
@@ -17,18 +22,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
 });
 
 // Define database types
-export type Profile = {
-  id: string;
-  username: string;
-  role: 'business' | 'customer' | 'employee';
-  display_name?: string;
-  bio?: string;
-  job_title?: string;
-  location?: string;
-  phone_number?: string;
-  created_at: string;
-  updated_at: string;
-};
+export type Profile = Database['public']['Tables']['profiles']['Row'];
 
 // Helper functions for profile management
 export async function updateProfile({
@@ -44,36 +38,46 @@ export async function updateProfile({
   location?: string;
   phoneNumber?: string;
 }) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error('Not authenticated');
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        display_name: displayName,
+        bio,
+        job_title: jobTitle,
+        location,
+        phone_number: phoneNumber,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    throw error;
   }
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({
-      display_name: displayName,
-      bio,
-      job_title: jobTitle,
-      location,
-      phone_number: phoneNumber,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', user.id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
 }
 
 export async function getProfile(userId: string) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-  if (error) throw error;
-  return data as Profile;
+    if (error) throw error;
+    return data as Profile;
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    throw error;
+  }
 }

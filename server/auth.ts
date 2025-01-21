@@ -39,6 +39,10 @@ export function setupAuth(app: Express) {
         options: {
           data: {
             role: role,
+            business_profile: role === 'business' ? {
+              companyName: '',
+              description: '',
+            } : undefined
           },
           emailRedirectTo: undefined,  // Disable email redirect
         }

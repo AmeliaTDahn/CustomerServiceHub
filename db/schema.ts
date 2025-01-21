@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -8,9 +8,19 @@ export const users = pgTable("users", {
   username: text("username").unique().notNull(),
   password: text("password").notNull(),
   role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
+  email: text("email").unique(),
+  supabaseId: text("supabase_id").unique(),
+  businessProfile: jsonb("business_profile").$type<{
+    companyName: string;
+    description: string;
+    website?: string;
+    address?: string;
+    phone?: string;
+    industry?: string;
+    logo?: string;
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  supabaseId: text("supabase_id").unique(), // Add Supabase user ID
-  email: text("email").unique(), // Add email for Supabase auth
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const businessEmployees = pgTable("business_employees", {

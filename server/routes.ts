@@ -16,6 +16,68 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add business profile routes
+  app.get("/api/business/profile", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can view their profile" });
+      }
+
+      const { data: profile, error } = await supabase
+        .from('users')
+        .select('business_profile')
+        .eq('id', req.user.id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      res.json(profile?.business_profile || {});
+    } catch (error) {
+      console.error('Error fetching business profile:', error);
+      res.status(500).json({ error: "Failed to fetch business profile" });
+    }
+  });
+
+  app.put("/api/business/profile", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can update their profile" });
+      }
+
+      const { companyName, description, website, address, phone, industry, logo } = req.body;
+
+      if (!companyName || !description) {
+        return res.status(400).json({ error: "Company name and description are required" });
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          business_profile: {
+            companyName,
+            description,
+            website,
+            address,
+            phone,
+            industry,
+            logo
+          }
+        })
+        .eq('id', req.user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      res.json({ message: "Profile updated successfully" });
+    } catch (error) {
+      console.error('Error updating business profile:', error);
+      res.status(500).json({ error: "Failed to update business profile" });
+    }
+  });
+
   // Employee management routes (replaced with Supabase version)
   app.post("/api/businesses/employees/invite", async (req, res) => {
     try {

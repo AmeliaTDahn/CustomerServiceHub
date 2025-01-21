@@ -8,6 +8,7 @@ import AuthPage from "@/pages/auth-page";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import BusinessDashboard from "@/pages/business-dashboard";
 import BusinessAnalytics from "@/pages/business-analytics";
+import BusinessMessages from "@/pages/business-messages";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -30,6 +31,7 @@ function Router() {
       <Switch>
         <Route path="/" component={BusinessDashboard} />
         <Route path="/analytics" component={BusinessAnalytics} />
+        <Route path="/messages" component={BusinessMessages} />
         <Route component={NotFound} />
       </Switch>
     );

@@ -1,10 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { tickets, users, ticketNotes } from "@db/schema";
-import { eq, and } from "drizzle-orm";
+import { tickets, users, ticketNotes, messages } from "@db/schema";
+import { eq, and, or } from "drizzle-orm";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -21,6 +20,62 @@ export function registerRoutes(app: Express): Server {
     .where(eq(users.role, "business"));
 
     res.json(businesses);
+  });
+
+  // Get all customers
+  app.get("/api/customers", async (req, res) => {
+    if (!req.user || req.user.role !== "business") {
+      return res.status(403).send("Only business users can view customers");
+    }
+
+    const customers = await db.select({
+      id: users.id,
+      username: users.username
+    })
+    .from(users)
+    .where(eq(users.role, "customer"));
+
+    res.json(customers);
+  });
+
+  // Messages routes
+  app.get("/api/messages/:userId", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { userId } = req.params;
+    const conversationMessages = await db.select()
+      .from(messages)
+      .where(
+        or(
+          and(
+            eq(messages.senderId, req.user.id),
+            eq(messages.receiverId, parseInt(userId))
+          ),
+          and(
+            eq(messages.senderId, parseInt(userId)),
+            eq(messages.receiverId, req.user.id)
+          )
+        )
+      )
+      .orderBy(messages.createdAt);
+
+    res.json(conversationMessages);
+  });
+
+  app.post("/api/messages", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { content, receiverId } = req.body;
+
+    const [message] = await db.insert(messages)
+      .values({
+        content,
+        senderId: req.user.id,
+        receiverId: parseInt(receiverId)
+      })
+      .returning();
+
+    res.json(message);
   });
 
   // Ticket management routes
@@ -150,9 +205,5 @@ export function registerRoutes(app: Express): Server {
   });
 
   const httpServer = createServer(app);
-
-  // Setup WebSocket server
-  setupWebSocket(httpServer, app);
-
   return httpServer;
 }

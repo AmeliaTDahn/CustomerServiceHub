@@ -28,6 +28,14 @@ export const tickets = pgTable("tickets", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  senderId: integer("sender_id").references(() => users.id).notNull(),
+  receiverId: integer("receiver_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const ticketNotes = pgTable("ticket_notes", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
@@ -36,6 +44,7 @@ export const ticketNotes = pgTable("ticket_notes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Relations
 export const ticketsRelations = relations(tickets, ({ one, many }) => ({
   customer: one(users, {
     fields: [tickets.customerId],
@@ -59,12 +68,26 @@ export const ticketNotesRelations = relations(ticketNotes, ({ one }) => ({
   })
 }));
 
+export const messagesRelations = relations(messages, ({ one }) => ({
+  sender: one(users, {
+    fields: [messages.senderId],
+    references: [users.id]
+  }),
+  receiver: one(users, {
+    fields: [messages.receiverId],
+    references: [users.id]
+  })
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
   customerTickets: many(tickets, { relationName: "customer" }),
   businessTickets: many(tickets, { relationName: "business" }),
-  ticketNotes: many(ticketNotes)
+  ticketNotes: many(ticketNotes),
+  sentMessages: many(messages, { relationName: "sender" }),
+  receivedMessages: many(messages, { relationName: "receiver" })
 }));
 
+// Schemas
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -77,7 +100,10 @@ export const insertTicketSchema = createInsertSchema(tickets);
 export const selectTicketSchema = createSelectSchema(tickets);
 export const insertTicketNoteSchema = createInsertSchema(ticketNotes);
 export const selectTicketNoteSchema = createSelectSchema(ticketNotes);
+export const insertMessageSchema = createInsertSchema(messages);
+export const selectMessageSchema = createSelectSchema(messages);
 
+// Types
 export type User = {
   id: number;
   username: string;
@@ -91,3 +117,5 @@ export type Ticket = typeof tickets.$inferSelect;
 export type NewTicket = typeof tickets.$inferInsert;
 export type TicketNote = typeof ticketNotes.$inferSelect;
 export type NewTicketNote = typeof ticketNotes.$inferInsert;
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;

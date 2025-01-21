@@ -18,9 +18,10 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { MessageCircle } from "lucide-react";
+import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
-import TicketChat from "./ticket-chat";
 import TicketNotes from "./ticket-notes";
 
 interface TicketListProps {
@@ -32,6 +33,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const updateTicket = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -177,56 +179,54 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                       </div>
                     </ScrollArea>
                     {isBusiness && (
-                      <div>
-                        <h3 className="text-sm font-medium mb-2">Actions</h3>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "in_progress",
-                              })
-                            }
-                            disabled={selectedTicket.status === "in_progress"}
-                          >
-                            Mark In Progress
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "resolved",
-                              })
-                            }
-                            disabled={selectedTicket.status === "resolved"}
-                          >
-                            Mark Resolved
-                          </Button>
+                      <>
+                        <div>
+                          <h3 className="text-sm font-medium mb-2">Actions</h3>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                updateTicket.mutate({
+                                  id: selectedTicket.id,
+                                  status: "in_progress",
+                                })
+                              }
+                              disabled={selectedTicket.status === "in_progress"}
+                            >
+                              Mark In Progress
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                updateTicket.mutate({
+                                  id: selectedTicket.id,
+                                  status: "resolved",
+                                })
+                              }
+                              disabled={selectedTicket.status === "resolved"}
+                            >
+                              Mark Resolved
+                            </Button>
+                          </div>
                         </div>
-                      </div>
+                        <Button
+                          onClick={() => {
+                            setLocation("/messages");
+                          }}
+                          className="w-full"
+                        >
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Message Customer
+                        </Button>
+                      </>
                     )}
                   </div>
 
-                  {/* Right column: Notes and Chat */}
-                  <div className="border-l pl-4 space-y-4 h-full flex flex-col">
-                    {isBusiness && (
-                      <>
-                        <div className="flex-none">
-                          <TicketNotes ticketId={selectedTicket.id} />
-                        </div>
-                        <Separator className="my-2" />
-                      </>
-                    )}
-                    <div className="flex-1 min-h-0">
-                      <h3 className="font-semibold text-sm mb-2">Chat</h3>
-                      <div className="h-[calc(100%-1.5rem)] overflow-y-auto">
-                        <TicketChat ticketId={selectedTicket.id} />
-                      </div>
-                    </div>
+                  {/* Right column: Notes */}
+                  <div className="border-l pl-4 space-y-4">
+                    {isBusiness && <TicketNotes ticketId={selectedTicket.id} />}
                   </div>
                 </div>
               </div>

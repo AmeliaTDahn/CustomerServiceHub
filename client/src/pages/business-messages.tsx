@@ -22,6 +22,7 @@ export default function BusinessMessages() {
   const [, setLocation] = useLocation();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch all customers
   const { data: customers } = useQuery<User[]>({
@@ -34,10 +35,14 @@ export default function BusinessMessages() {
     enabled: !!selectedUser,
   });
 
+  const filteredCustomers = customers?.filter(customer =>
+    customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedUser) return;
-    
+
     // TODO: Implement send message mutation
     setNewMessage("");
   };
@@ -67,14 +72,13 @@ export default function BusinessMessages() {
             <div className="p-4 border-b">
               <Input
                 placeholder="Search customers..."
-                onChange={(e) => {
-                  // TODO: Implement customer search
-                }}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-2">
-                {customers?.map((customer) => (
+                {filteredCustomers?.map((customer) => (
                   <div
                     key={customer.id}
                     className={`p-3 rounded-lg cursor-pointer transition-colors ${

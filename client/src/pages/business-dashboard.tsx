@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import { useUser } from "@/hooks/use-user";
-import { BarChart } from "lucide-react";
+import { BarChart, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -52,6 +52,12 @@ export default function BusinessDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-900">Business Dashboard</h1>
           <div className="flex items-center gap-4">
+            <Link href="/messages">
+              <Button variant="outline" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                Messages
+              </Button>
+            </Link>
             <Link href="/analytics">
               <Button variant="outline" className="flex items-center gap-2">
                 <BarChart className="h-4 w-4" />

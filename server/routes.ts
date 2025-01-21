@@ -689,7 +689,8 @@ export function registerRoutes(app: Express): Server {
       // Get all employees that are not already connected to this business
       const employees = await db.select({
         id: users.id,
-        username: users.username
+        username: users.username,
+        assignedToId: tickets.assignedToId  // Use camelCase to match schema
       })
       .from(users)
       .where(

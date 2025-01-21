@@ -45,6 +45,8 @@ export default function TicketFilters({
   onSearchChange,
   onStatusChange,
   onCategoryChange,
+  onPriorityChange,
+  onSortChange,
 }: TicketFiltersProps) {
   const [search, setSearch] = useState("");
 
@@ -62,7 +64,7 @@ export default function TicketFilters({
           }}
         />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="space-y-2">
           <Label>Status</Label>
           <Select onValueChange={onStatusChange} defaultValue="all">
@@ -93,7 +95,7 @@ export default function TicketFilters({
             </SelectContent>
           </Select>
         </div>
-      <div className="space-y-2">
+        <div className="space-y-2">
           <Label>Priority</Label>
           <Select onValueChange={onPriorityChange} defaultValue="all">
             <SelectTrigger>

@@ -137,7 +137,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
       </div>
 
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="max-w-4xl h-[80vh]">
+        <DialogContent className="max-w-4xl h-[90vh]">
           {selectedTicket && (
             <div className="h-full flex flex-col">
               <DialogHeader>
@@ -166,7 +166,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                 <div className="h-full grid grid-cols-2 gap-4">
                   {/* Left column: Ticket details */}
                   <div className="space-y-4">
-                    <ScrollArea className="h-[200px] pr-4">
+                    <ScrollArea className="h-[300px] pr-4">
                       <div className="space-y-4">
                         <div>
                           <h3 className="text-sm font-medium mb-2">Description</h3>
@@ -223,7 +223,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     )}
                     <div className="flex-1 min-h-0">
                       <h3 className="font-semibold text-sm mb-2">Chat</h3>
-                      <div className="h-[calc(100%-1.5rem)]">
+                      <div className="h-[calc(100%-1.5rem)] overflow-y-auto">
                         <TicketChat ticketId={selectedTicket.id} />
                       </div>
                     </div>

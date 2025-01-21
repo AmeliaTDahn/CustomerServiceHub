@@ -76,6 +76,8 @@ export default function BusinessDashboard() {
               onSearchChange={setSearchTerm}
               onStatusChange={setStatusFilter}
               onCategoryChange={setCategoryFilter}
+              onPriorityChange={setPriorityFilter}
+              onSortChange={setSortBy}
             />
             <TicketList tickets={filteredTickets} isBusiness />
           </CardContent>

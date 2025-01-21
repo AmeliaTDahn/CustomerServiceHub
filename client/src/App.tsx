@@ -2,63 +2,20 @@ import { Switch, Route } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
-import { useSupabase } from "@/components/supabase-provider";
-import { Loader2 } from "lucide-react";
-import AuthPage from "@/pages/auth-page";
-import CustomerDashboard from "@/pages/customer-dashboard";
-import CustomerMessages from "@/pages/customer-messages";
-import BusinessDashboard from "@/pages/business-dashboard";
-import BusinessMessages from "@/pages/business-messages";
-import NotFound from "@/pages/not-found";
 import { SupabaseProvider } from "@/components/supabase-provider";
 
+// Basic router component
 function Router() {
-  const { user, profile, isLoading } = useSupabase();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Always show auth page when no user
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  // Wait for profile to load
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Route based on role
-  switch (profile.role) {
-    case 'business':
-    case 'employee':
-      return (
-        <Switch>
-          <Route path="/" component={BusinessDashboard} />
-          <Route path="/messages" component={BusinessMessages} />
-          <Route component={NotFound} />
-        </Switch>
-      );
-    case 'customer':
-      return (
-        <Switch>
-          <Route path="/" component={CustomerDashboard} />
-          <Route path="/messages" component={CustomerMessages} />
-          <Route component={NotFound} />
-        </Switch>
-      );
-    default:
-      return <AuthPage />;
-  }
+  return (
+    <Switch>
+      {/* Add routes here after we confirm app loads */}
+      <Route path="/">
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <h1 className="text-2xl font-bold">App is loading!</h1>
+        </div>
+      </Route>
+    </Switch>
+  );
 }
 
 function App() {

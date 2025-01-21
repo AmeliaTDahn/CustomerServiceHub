@@ -97,6 +97,10 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
       .join(" ");
   };
 
+  const handleMessageClick = (customerId: number) => {
+    setLocation(`/messages?customerId=${customerId}`);
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -121,6 +125,19 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                   <Badge className={getPriorityColor(ticket.priority)}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
+                  {isBusiness && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMessageClick(ticket.customerId);
+                      }}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -207,7 +224,7 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                         </div>
                         <Button
                           onClick={() => {
-                            setLocation("/messages");
+                            handleMessageClick(selectedTicket.customerId);
                           }}
                           className="w-full mt-2"
                         >

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import type { User } from "@db/schema";
 
 interface Message {
@@ -18,6 +18,8 @@ interface Message {
 }
 
 export default function BusinessMessages() {
+  const [, params] = useLocation();
+  const customerId = new URLSearchParams(window.location.search).get('customerId');
   const { user } = useUser();
   const { toast } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -36,6 +38,16 @@ export default function BusinessMessages() {
     queryKey: ['/api/messages', selectedUser?.id],
     enabled: !!selectedUser,
   });
+
+  // When loading the page with a customerId, find and select that customer
+  useEffect(() => {
+    if (customerId && customers) {
+      const customer = customers.find(c => c.id === parseInt(customerId));
+      if (customer) {
+        setSelectedUser(customer);
+      }
+    }
+  }, [customerId, customers]);
 
   const filteredCustomers = customers?.filter(customer =>
     customer.username.toLowerCase().includes(searchTerm.toLowerCase())
@@ -146,15 +158,7 @@ export default function BusinessMessages() {
   };
 
   return (
-    <div className="min-h-screen">
-      <div className="p-4">
-        <Link to="/">
-          <Button variant="outline" size="sm">
-            Back to Dashboard
-          </Button>
-        </Link>
-      </div>
-      <div className="grid grid-cols-12 gap-6 p-6 bg-gray-50">
+    <div className="min-h-screen grid grid-cols-12 gap-6 p-6 bg-gray-50">
       {/* Customer List */}
       <Card className="col-span-4 flex flex-col">
         <div className="p-4 border-b">
@@ -235,7 +239,6 @@ export default function BusinessMessages() {
           </div>
         )}
       </Card>
-    </div>
     </div>
   );
 }

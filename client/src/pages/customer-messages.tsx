@@ -173,8 +173,9 @@ export default function CustomerMessages() {
   return (
     <div className="min-h-screen">
       <div className="p-4">
-        <Link to="/">
+        <Link to="/customer">
           <Button variant="outline" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>
         </Link>

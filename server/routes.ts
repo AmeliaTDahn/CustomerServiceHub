@@ -25,21 +25,24 @@ export function registerRoutes(app: Express): Server {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
+      // Check if the user is a business
       if (session.user.user_metadata.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can view their profile" });
       }
 
+      // Get the business profile
       const { data: profile, error } = await supabase
-        .from('users')
-        .select('business_profile')
+        .from('profiles')
+        .select('*')
         .eq('id', session.user.id)
         .single();
 
       if (error) {
+        console.error('Error fetching business profile:', error);
         throw error;
       }
 
-      res.json(profile?.business_profile || {});
+      res.json(profile || {});
     } catch (error) {
       console.error('Error fetching business profile:', error);
       res.status(500).json({ error: "Failed to fetch business profile" });
@@ -48,38 +51,37 @@ export function registerRoutes(app: Express): Server {
 
   app.put("/api/business/profile", async (req, res) => {
     try {
+      // Get the current session
       const { data: { session }, error: authError } = await supabase.auth.getSession();
 
       if (authError || !session) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
+      // Verify user is a business
       if (session.user.user_metadata.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can update their profile" });
       }
 
       const { companyName, description, website, address, phone, industry, logo } = req.body;
 
-      if (!companyName || !description) {
-        return res.status(400).json({ error: "Company name and description are required" });
-      }
-
+      // Update the business profile
       const { error } = await supabase
-        .from('users')
-        .update({
-          business_profile: {
-            companyName,
-            description,
-            website,
-            address,
-            phone,
-            industry,
-            logo
-          }
-        })
-        .eq('id', session.user.id);
+        .from('profiles')
+        .upsert({
+          id: session.user.id,
+          company_name: companyName,
+          description,
+          website,
+          address,
+          phone,
+          industry,
+          logo,
+          updated_at: new Date().toISOString()
+        });
 
       if (error) {
+        console.error('Profile update error:', error);
         throw error;
       }
 

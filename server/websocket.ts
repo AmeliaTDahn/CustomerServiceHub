@@ -27,7 +27,12 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.on('message', async (data: string) => {
       try {
         const message: Message = JSON.parse(data);
-        console.log(`Received message from ${message.senderId} to ${message.receiverId}:`, message);
+        console.log(`Received message:`, message);
+
+        if (message.type !== 'message') {
+          console.log('Ignoring non-message type:', message.type);
+          return;
+        }
 
         // Save message to database
         const [savedMessage] = await db.insert(messages)
@@ -39,32 +44,33 @@ export function setupWebSocket(server: Server, app: Express) {
           })
           .returning();
 
-        console.log('Message saved to database:', savedMessage);
+        console.log('Saved message to database:', savedMessage);
 
-        // Forward message to receiver if online
-        const receiverWs = connections.get(message.receiverId);
-        if (receiverWs?.readyState === WebSocket.OPEN) {
-          console.log('Forwarding message to receiver');
-          receiverWs.send(JSON.stringify({
-            id: savedMessage.id,
-            content: savedMessage.content,
-            senderId: savedMessage.senderId,
-            receiverId: savedMessage.receiverId,
-            createdAt: savedMessage.createdAt
-          }));
-        }
-
-        // Send confirmation back to sender
-        ws.send(JSON.stringify({
+        // Create response message
+        const responseMessage = {
           id: savedMessage.id,
           content: savedMessage.content,
           senderId: savedMessage.senderId,
           receiverId: savedMessage.receiverId,
-          createdAt: savedMessage.createdAt
-        }));
+          createdAt: savedMessage.createdAt.toISOString()
+        };
+
+        // Forward message to receiver if online
+        const receiverWs = connections.get(message.receiverId);
+        if (receiverWs?.readyState === WebSocket.OPEN) {
+          console.log('Forwarding message to receiver:', message.receiverId);
+          receiverWs.send(JSON.stringify(responseMessage));
+        }
+
+        // Send confirmation back to sender
+        ws.send(JSON.stringify(responseMessage));
+
       } catch (error) {
         console.error('Error handling message:', error);
-        ws.send(JSON.stringify({ error: 'Failed to process message' }));
+        ws.send(JSON.stringify({ 
+          type: 'error',
+          error: 'Failed to process message' 
+        }));
       }
     });
 
@@ -75,7 +81,11 @@ export function setupWebSocket(server: Server, app: Express) {
     });
 
     // Send initial connection success message
-    ws.send(JSON.stringify({ type: 'connection', status: 'connected' }));
+    ws.send(JSON.stringify({ 
+      type: 'connection', 
+      status: 'connected',
+      userId: userId
+    }));
   });
 
   // Handle upgrade requests

@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
 import type { User } from "@db/schema";
 
 interface Message {
@@ -20,7 +19,6 @@ interface Message {
 }
 
 export default function BusinessMessages() {
-  const [, params] = useLocation();
   const customerId = new URLSearchParams(window.location.search).get('customerId');
   const { user } = useUser();
   const { toast } = useToast();
@@ -30,6 +28,7 @@ export default function BusinessMessages() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch all customers
   const { data: customers } = useQuery<User[]>({
@@ -65,81 +64,93 @@ export default function BusinessMessages() {
 
   // WebSocket setup
   useEffect(() => {
-    if (!user || !selectedUser) return;
+    if (!user) return;
 
-    let reconnectTimeout: NodeJS.Timeout;
     const connectWebSocket = () => {
-      console.log('Connecting WebSocket...');
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
-      const wsInstance = new WebSocket(wsUrl);
+      try {
+        console.log('Connecting WebSocket...');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+        const wsInstance = new WebSocket(wsUrl);
 
-      wsInstance.onopen = () => {
-        console.log('WebSocket Connected');
-        toast({
-          title: "Connected",
-          description: "Message connection established",
-        });
-      };
+        wsInstance.onopen = () => {
+          console.log('WebSocket Connected');
+          toast({
+            title: "Connected",
+            description: "Message connection established",
+          });
+        };
 
-      wsInstance.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Received WebSocket message:', data);
+        wsInstance.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('Received WebSocket message:', data);
 
-          // Handle connection status message
-          if (data.type === 'connection') {
-            console.log('Connection status:', data.status);
-            return;
+            // Handle connection status message
+            if (data.type === 'connection') {
+              console.log('Connection status:', data.status);
+              return;
+            }
+
+            // Handle error message
+            if (data.error) {
+              toast({
+                variant: "destructive",
+                title: "Error",
+                description: data.error,
+              });
+              return;
+            }
+
+            // Handle regular message - update messages if it's from/to current selected user
+            if (selectedUser && (data.senderId === selectedUser.id || data.receiverId === selectedUser.id)) {
+              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+            }
+          } catch (error) {
+            console.error('Error parsing message:', error);
           }
+        };
 
-          // Handle error message
-          if (data.error) {
-            toast({
-              variant: "destructive",
-              title: "Error",
-              description: data.error,
-            });
-            return;
-          }
+        wsInstance.onerror = (error) => {
+          console.error('WebSocket Error:', error);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Connection error. Attempting to reconnect...",
+          });
+        };
 
-          // Handle regular message
-          if (data.senderId === selectedUser.id || data.receiverId === selectedUser.id) {
-            queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
-          }
-        } catch (error) {
-          console.error('Error parsing message:', error);
-        }
-      };
+        wsInstance.onclose = () => {
+          console.log('WebSocket Closed');
+          setWs(null);
+          // Attempt to reconnect after 3 seconds
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
+        };
 
-      wsInstance.onerror = (error) => {
-        console.error('WebSocket Error:', error);
+        setWs(wsInstance);
+      } catch (error) {
+        console.error('Error setting up WebSocket:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Connection error. Attempting to reconnect...",
+          description: "Failed to setup chat connection. Retrying...",
         });
-      };
-
-      wsInstance.onclose = () => {
-        console.log('WebSocket Closed');
-        setWs(null);
         // Attempt to reconnect after 3 seconds
-        reconnectTimeout = setTimeout(connectWebSocket, 3000);
-      };
-
-      setWs(wsInstance);
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
+      }
     };
 
     connectWebSocket();
 
     return () => {
-      clearTimeout(reconnectTimeout);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       if (ws) {
         ws.close();
       }
     };
-  }, [user?.id, selectedUser?.id]);
+  }, [user?.id]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +181,7 @@ export default function BusinessMessages() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-2">
-        <Link to="/business">
+        <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard

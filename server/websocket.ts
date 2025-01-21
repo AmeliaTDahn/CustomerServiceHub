@@ -105,7 +105,7 @@ export function setupWebSocket(server: Server, app: Express) {
       const userId = parseInt(url.searchParams.get('userId') || '');
       const role = url.searchParams.get('role') || '';
 
-      if (!userId || isNaN(userId) || !role || !['business', 'customer'].includes(role)) {
+      if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
         console.error('Invalid WebSocket connection parameters:', { userId, role });
         socket.destroy();
         return;

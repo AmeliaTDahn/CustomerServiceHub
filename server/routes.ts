@@ -372,6 +372,7 @@ export function registerRoutes(app: Express): Server {
   });
 
 
+
   app.patch("/api/tickets/:id", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 

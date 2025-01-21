@@ -7,8 +7,9 @@ import TicketFilters from "@/components/ticket-filters";
 import EmployeeManagement from "@/components/employee-management";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
+import BusinessProfile from "@/components/business-profile";
 import { useUser } from "@/hooks/use-user";
-import { BarChart, MessageCircle, Users } from "lucide-react";
+import { BarChart, MessageCircle, Users, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -94,7 +95,7 @@ export default function BusinessDashboard() {
                 Analytics
               </Button>
             </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
+            <span className="text-sm text-gray-500">Welcome, {user?.email}</span>
             <Button variant="outline" onClick={() => logout()}>
               Logout
             </Button>
@@ -103,6 +104,21 @@ export default function BusinessDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        {/* Show business profile management only for business owners */}
+        {user?.role === "business" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Business Profile
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BusinessProfile />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Show invitation handler only for employees with no business selected */}
         {user?.role === "employee" && !currentBusinessId && <InvitationHandler />}
 

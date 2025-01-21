@@ -1,189 +1,89 @@
-import { pgTable, text, serial, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").unique().notNull(),
-  password: text("password").notNull(),
-  role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
-  email: text("email").unique(),
-  supabaseId: text("supabase_id").unique(),
-  displayName: text("display_name"),
-  bio: text("bio"),
-  jobTitle: text("job_title"),
-  location: text("location"),
-  phoneNumber: text("phone_number"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const businessEmployees = pgTable("business_employees", {
-  id: serial("id").primaryKey(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
-  employeeId: integer("employee_id").references(() => users.id).notNull(),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-
-export const employeeInvitations = pgTable("employee_invitations", {
-  id: serial("id").primaryKey(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
-  employeeId: integer("employee_id").references(() => users.id).notNull(),
-  status: text("status", { enum: ["pending", "accepted", "rejected"] }).default("pending").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
-
-export const tickets = pgTable("tickets", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  status: text("status", { enum: ["open", "in_progress", "resolved"] }).default("open").notNull(),
-  category: text("category", {
-    enum: ["technical", "billing", "feature_request", "general_inquiry", "bug_report"]
-  }).default("general_inquiry").notNull(),
-  priority: text("priority", {
-    enum: ["low", "medium", "high", "urgent"]
-  }).default("medium").notNull(),
-  customerId: integer("customer_id").references(() => users.id).notNull(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
-  assignedToId: integer("assigned_to_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
-
-export const ticketFeedback = pgTable("ticket_feedback", {
-  id: serial("id").primaryKey(),
-  ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
-  rating: integer("rating").notNull(),
-  comment: text("comment"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  content: text("content").notNull(),
-  senderId: integer("sender_id").references(() => users.id).notNull(),
-  receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const ticketNotes = pgTable("ticket_notes", {
-  id: serial("id").primaryKey(),
-  ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Relations
-export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
-  business: one(users, {
-    fields: [businessEmployees.businessId],
-    references: [users.id]
-  }),
-  employee: one(users, {
-    fields: [businessEmployees.employeeId],
-    references: [users.id]
-  })
-}));
-
-export const employeeInvitationsRelations = relations(employeeInvitations, ({ one }) => ({
-  business: one(users, {
-    fields: [employeeInvitations.businessId],
-    references: [users.id]
-  }),
-  employee: one(users, {
-    fields: [employeeInvitations.employeeId],
-    references: [users.id]
-  })
-}));
-
-export const ticketsRelations = relations(tickets, ({ one, many }) => ({
-  customer: one(users, {
-    fields: [tickets.customerId],
-    references: [users.id]
-  }),
-  business: one(users, {
-    fields: [tickets.businessId],
-    references: [users.id]
-  }),
-  assignedTo: one(users, {
-    fields: [tickets.assignedToId],
-    references: [users.id]
-  }),
-  notes: many(ticketNotes),
-  feedback: many(ticketFeedback)
-}));
-
-export const ticketFeedbackRelations = relations(ticketFeedback, ({ one }) => ({
-  ticket: one(tickets, {
-    fields: [ticketFeedback.ticketId],
-    references: [tickets.id]
-  })
-}));
-
-export const ticketNotesRelations = relations(ticketNotes, ({ one }) => ({
-  ticket: one(tickets, {
-    fields: [ticketNotes.ticketId],
-    references: [tickets.id]
-  }),
-  business: one(users, {
-    fields: [ticketNotes.businessId],
-    references: [users.id]
-  })
-}));
-
-export const messagesRelations = relations(messages, ({ one }) => ({
-  sender: one(users, {
-    fields: [messages.senderId],
-    references: [users.id]
-  }),
-  receiver: one(users, {
-    fields: [messages.receiverId],
-    references: [users.id]
-  })
-}));
-
-export const usersRelations = relations(users, ({ many }) => ({
-  customerTickets: many(tickets, { relationName: "customer" }),
-  businessTickets: many(tickets, { relationName: "business" }),
-  ticketNotes: many(ticketNotes),
-  sentMessages: many(messages, { relationName: "sender" }),
-  receivedMessages: many(messages, { relationName: "receiver" }),
-  employeeOf: many(businessEmployees, { relationName: "employee" }),
-  employees: many(businessEmployees, { relationName: "business" }),
-  sentInvitations: many(employeeInvitations, { relationName: "business" }),
-  receivedInvitations: many(employeeInvitations, { relationName: "employee" })
-}));
-
-const baseUserSchema = {
+export const userSchema = z.object({
+  id: z.string(),
   username: z.string().min(1, "Username is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["business", "customer", "employee"])
-};
+  role: z.enum(["business", "customer", "employee"]),
+  displayName: z.string().optional(),
+  bio: z.string().optional(),
+  jobTitle: z.string().optional(),
+  location: z.string().optional(),
+  phoneNumber: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 
-export const insertUserSchema = z.object(baseUserSchema);
-export const selectUserSchema = createSelectSchema(users);
-export const insertBusinessEmployeeSchema = createInsertSchema(businessEmployees);
-export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees);
-export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
-export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
+export type User = z.infer<typeof userSchema>;
 
-// Types
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type BusinessEmployee = typeof businessEmployees.$inferSelect;
-export type NewBusinessEmployee = typeof businessEmployees.$inferInsert;
-export type EmployeeInvitation = typeof employeeInvitations.$inferSelect;
-export type NewEmployeeInvitation = typeof employeeInvitations.$inferInsert;
-export type Ticket = typeof tickets.$inferSelect;
-export type NewTicket = typeof tickets.$inferInsert;
-export type TicketNote = typeof ticketNotes.$inferSelect;
-export type NewTicketNote = typeof ticketNotes.$inferInsert;
-export type Message = typeof messages.$inferSelect;
-export type NewMessage = typeof messages.$inferInsert;
-export type TicketFeedback = typeof ticketFeedback.$inferSelect;
-export type NewTicketFeedback = typeof ticketFeedback.$inferInsert;
+export const ticketSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Description is required"),
+  status: z.enum(["open", "in_progress", "resolved"]).default("open"),
+  category: z.enum([
+    "technical",
+    "billing",
+    "feature_request",
+    "general_inquiry",
+    "bug_report"
+  ]).default("general_inquiry"),
+  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+  customerId: z.string(),
+  businessId: z.string(),
+  assignedToId: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type Ticket = z.infer<typeof ticketSchema>;
+
+export const messageSchema = z.object({
+  id: z.string(),
+  content: z.string().min(1, "Message content is required"),
+  senderId: z.string(),
+  receiverId: z.string(),
+  createdAt: z.string(),
+});
+
+export type Message = z.infer<typeof messageSchema>;
+
+export const ticketNoteSchema = z.object({
+  id: z.string(),
+  ticketId: z.string(),
+  businessId: z.string(),
+  content: z.string().min(1, "Note content is required"),
+  createdAt: z.string(),
+});
+
+export type TicketNote = z.infer<typeof ticketNoteSchema>;
+
+export const ticketFeedbackSchema = z.object({
+  id: z.string(),
+  ticketId: z.string(),
+  rating: z.number().min(1).max(5),
+  comment: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export type TicketFeedback = z.infer<typeof ticketFeedbackSchema>;
+
+export const businessEmployeeSchema = z.object({
+    id: z.string(),
+    businessId: z.string(),
+    employeeId: z.string(),
+    isActive: z.boolean().default(true),
+    createdAt: z.string()
+})
+
+export type BusinessEmployee = z.infer<typeof businessEmployeeSchema>
+
+export const employeeInvitationSchema = z.object({
+    id: z.string(),
+    businessId: z.string(),
+    employeeId: z.string(),
+    status: z.enum(["pending", "accepted", "rejected"]).default("pending"),
+    createdAt: z.string(),
+    updatedAt: z.string()
+})
+
+export type EmployeeInvitation = z.infer<typeof employeeInvitationSchema>

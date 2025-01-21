@@ -55,7 +55,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
   const connectWebSocket = () => {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?ticketId=${ticketId}&role=${user?.role}`;
+      const wsUrl = `${protocol}//0.0.0.0:5000?ticketId=${ticketId}&role=${user?.role}`;
       const wsInstance = new WebSocket(wsUrl);
 
       wsInstance.onopen = () => {

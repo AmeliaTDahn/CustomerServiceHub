@@ -44,42 +44,77 @@ export default function BusinessMessages() {
   useEffect(() => {
     if (!user || !selectedUser) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
-    const wsInstance = new WebSocket(wsUrl);
+    let reconnectTimeout: NodeJS.Timeout;
+    const connectWebSocket = () => {
+      console.log('Connecting WebSocket...');
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+      const wsInstance = new WebSocket(wsUrl);
 
-    wsInstance.onopen = () => {
-      console.log('WebSocket Connected');
-      toast({
-        title: "Connected",
-        description: "Message connection established",
-      });
-    };
+      wsInstance.onopen = () => {
+        console.log('WebSocket Connected');
+        toast({
+          title: "Connected",
+          description: "Message connection established",
+        });
+      };
 
-    wsInstance.onmessage = (event) => {
-      try {
-        const message: Message = JSON.parse(event.data);
-        if (message.senderId === selectedUser.id || message.receiverId === selectedUser.id) {
-          queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+      wsInstance.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Received WebSocket message:', data);
+
+          // Handle connection status message
+          if (data.type === 'connection') {
+            console.log('Connection status:', data.status);
+            return;
+          }
+
+          // Handle error message
+          if (data.error) {
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: data.error,
+            });
+            return;
+          }
+
+          // Handle regular message
+          if (data.senderId === selectedUser.id || data.receiverId === selectedUser.id) {
+            queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+          }
+        } catch (error) {
+          console.error('Error parsing message:', error);
         }
-      } catch (error) {
-        console.error('Error parsing message:', error);
-      }
+      };
+
+      wsInstance.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Connection error. Attempting to reconnect...",
+        });
+      };
+
+      wsInstance.onclose = () => {
+        console.log('WebSocket Closed');
+        setWs(null);
+        // Attempt to reconnect after 3 seconds
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      };
+
+      setWs(wsInstance);
     };
 
-    wsInstance.onerror = (error) => {
-      console.error('WebSocket Error:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Connection error. Please try again.",
-      });
-    };
-
-    setWs(wsInstance);
+    connectWebSocket();
 
     return () => {
-      wsInstance.close();
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.close();
+      }
     };
   }, [user?.id, selectedUser?.id]);
 
@@ -95,6 +130,7 @@ export default function BusinessMessages() {
     };
 
     try {
+      console.log('Sending message:', message);
       ws.send(JSON.stringify(message));
       setNewMessage("");
     } catch (error) {

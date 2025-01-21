@@ -19,14 +19,14 @@ export function setupWebSocket(server: Server, app: Express) {
 
   // Handle WebSocket connections
   wss.on('connection', (ws: WebSocket, userId: number) => {
-    console.log(`New connection for user ${userId}`);
+    console.log(`New WebSocket connection for user ${userId}`);
     connections.set(userId, ws);
 
     // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
         const message: Message = JSON.parse(data);
-        console.log(`Received message:`, message);
+        console.log(`Received message from ${message.senderId} to ${message.receiverId}:`, message);
 
         // Save message to database
         const [savedMessage] = await db.insert(messages)
@@ -38,13 +38,20 @@ export function setupWebSocket(server: Server, app: Express) {
           })
           .returning();
 
+        console.log('Message saved to database:', savedMessage);
+
         // Forward message to receiver if online
         const receiverWs = connections.get(message.receiverId);
         if (receiverWs?.readyState === WebSocket.OPEN) {
+          console.log('Forwarding message to receiver');
           receiverWs.send(JSON.stringify(savedMessage));
         }
+
+        // Send confirmation back to sender
+        ws.send(JSON.stringify(savedMessage));
       } catch (error) {
         console.error('Error handling message:', error);
+        ws.send(JSON.stringify({ error: 'Failed to process message' }));
       }
     });
 
@@ -53,6 +60,9 @@ export function setupWebSocket(server: Server, app: Express) {
       console.log(`User ${userId} disconnected`);
       connections.delete(userId);
     });
+
+    // Send initial connection success message
+    ws.send(JSON.stringify({ type: 'connection', status: 'connected' }));
   });
 
   // Handle upgrade requests
@@ -66,12 +76,13 @@ export function setupWebSocket(server: Server, app: Express) {
       const url = new URL(request.url!, `http://${request.headers.host}`);
       const userId = parseInt(url.searchParams.get('userId') || '');
 
-      if (!userId) {
+      if (!userId || isNaN(userId)) {
         console.error('Invalid WebSocket connection parameters:', { userId });
         socket.destroy();
         return;
       }
 
+      console.log('Upgrading connection for user:', userId);
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, userId);
       });

@@ -34,12 +34,9 @@ interface Employee {
 }
 
 interface User {
-  id: number;
+  id: string;
   username: string;
-  user_metadata: {
-    role: string;
-    username: string;
-  };
+  role: string;
 }
 
 export default function EmployeeManagement() {
@@ -61,10 +58,10 @@ export default function EmployeeManagement() {
       if (!searchTerm.trim()) return [];
 
       const { data, error } = await supabase
-        .from('users')
-        .select('id, username, user_metadata')
-        .eq('user_metadata->role', 'employee')
-        .ilike('user_metadata->username', `%${searchTerm}%`)
+        .from('profiles')
+        .select('id, username, role')
+        .eq('role', 'employee')
+        .ilike('username', `%${searchTerm}%`)
         .limit(10);
 
       if (error) throw error;
@@ -75,7 +72,7 @@ export default function EmployeeManagement() {
 
   // Send invitation mutation
   const inviteEmployee = useMutation({
-    mutationFn: async (employeeId: number) => {
+    mutationFn: async (employeeId: string) => {
       const res = await fetch(`/api/businesses/employees/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,7 +173,7 @@ export default function EmployeeManagement() {
                     key={employee.id}
                     className="flex items-center justify-between p-2 rounded-lg border"
                   >
-                    <span>{employee.user_metadata.username}</span>
+                    <span>{employee.username}</span>
                     <Button
                       size="sm"
                       onClick={() => inviteEmployee.mutate(employee.id)}

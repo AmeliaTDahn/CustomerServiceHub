@@ -249,5 +249,6 @@ export default function BusinessMessages() {
         )}
       </Card>
     </div>
+    </div>
   );
 }

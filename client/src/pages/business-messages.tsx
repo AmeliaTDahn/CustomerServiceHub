@@ -145,7 +145,15 @@ export default function BusinessMessages() {
   };
 
   return (
-    <div className="min-h-screen grid grid-cols-12 gap-6 p-6 bg-gray-50">
+    <div className="min-h-screen">
+      <div className="p-4">
+        <Link to="/business/dashboard">
+          <Button variant="outline" size="sm">
+            Back to Dashboard
+          </Button>
+        </Link>
+      </div>
+      <div className="grid grid-cols-12 gap-6 p-6 bg-gray-50">
       {/* Customer List */}
       <Card className="col-span-4 flex flex-col">
         <div className="p-4 border-b">
@@ -226,6 +234,7 @@ export default function BusinessMessages() {
           </div>
         )}
       </Card>
+    </div>
     </div>
   );
 }

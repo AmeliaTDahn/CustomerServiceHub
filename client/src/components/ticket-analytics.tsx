@@ -21,6 +21,14 @@ interface TicketAnalyticsProps {
   tickets: Ticket[];
 }
 
+// Helper function to format category names
+const formatCategory = (category: string) => {
+  return category
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
 export default function TicketAnalytics({ tickets }: TicketAnalyticsProps) {
   const analytics = useMemo(() => {
     const categoryCount: Record<string, number> = {};
@@ -69,13 +77,6 @@ export default function TicketAnalytics({ tickets }: TicketAnalyticsProps) {
       averageResolutionTimes,
     };
   }, [tickets]);
-
-  const formatCategory = (category: string) => {
-    return category
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

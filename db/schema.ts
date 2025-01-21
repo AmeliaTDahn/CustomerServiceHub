@@ -8,7 +8,9 @@ export const users = pgTable("users", {
   username: text("username").unique().notNull(),
   password: text("password").notNull(),
   role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  supabaseId: text("supabase_id").unique(), // Add Supabase user ID
+  email: text("email").unique(), // Add email for Supabase auth
 });
 
 export const businessEmployees = pgTable("business_employees", {

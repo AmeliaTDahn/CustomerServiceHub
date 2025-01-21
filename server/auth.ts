@@ -1,44 +1,12 @@
-import passport from "passport";
-import { IVerifyOptions, Strategy as LocalStrategy } from "passport-local";
 import { type Express } from "express";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
-import { promisify } from "util";
-import { users, insertUserSchema, type User as SelectUser } from "@db/schema";
-import { db } from "@db";
-import { eq } from "drizzle-orm";
-
-const scryptAsync = promisify(scrypt);
-const crypto = {
-  hash: async (password: string) => {
-    const salt = randomBytes(16).toString("hex");
-    const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-    return `${buf.toString("hex")}.${salt}`;
-  },
-  compare: async (suppliedPassword: string, storedPassword: string) => {
-    const [hashedPassword, salt] = storedPassword.split(".");
-    const hashedPasswordBuf = Buffer.from(hashedPassword, "hex");
-    const suppliedPasswordBuf = (await scryptAsync(
-      suppliedPassword,
-      salt,
-      64
-    )) as Buffer;
-    return timingSafeEqual(hashedPasswordBuf, suppliedPasswordBuf);
-  },
-};
-
-// extend express user object with our schema
-declare global {
-  namespace Express {
-    interface User extends SelectUser {}
-  }
-}
+import { supabase } from "@/lib/supabase";
 
 export function setupAuth(app: Express) {
   const MemoryStore = createMemoryStore(session);
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.REPL_ID || "porygon-supremacy",
+    secret: process.env.REPL_ID || "support-ticket-system",
     resave: false,
     saveUninitialized: false,
     cookie: {},
@@ -55,151 +23,133 @@ export function setupAuth(app: Express) {
   }
 
   app.use(session(sessionSettings));
-  app.use(passport.initialize());
-  app.use(passport.session());
 
-  passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      try {
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.username, username))
-          .limit(1);
-
-        if (!user) {
-          return done(null, false, { message: "Incorrect username." });
-        }
-        const isMatch = await crypto.compare(password, user.password);
-        if (!isMatch) {
-          return done(null, false, { message: "Incorrect password." });
-        }
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
-    })
-  );
-
-  passport.serializeUser((user, done) => {
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: number, done) => {
+  app.post("/api/register", async (req, res) => {
     try {
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, id))
-        .limit(1);
-      done(null, user);
-    } catch (err) {
-      done(err);
-    }
-  });
+      const { email, password, role } = req.body;
 
-  app.post("/api/register", async (req, res, next) => {
-    try {
-      const result = insertUserSchema.safeParse(req.body);
-      if (!result.success) {
-        return res
-          .status(400)
-          .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
+      if (!email || !password || !role) {
+        return res.status(400).send("Email, password, and role are required");
       }
 
-      const { username, password, role } = result.data;
-
-      // Check if user already exists
-      const [existingUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
-
-      if (existingUser) {
-        return res.status(400).send("Username already exists");
-      }
-
-      // Hash the password
-      const hashedPassword = await crypto.hash(password);
-
-      // Create the new user in PostgreSQL
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          username,
-          password: hashedPassword,
-          role,
-        })
-        .returning();
-
-      // Log the user in after registration
-      req.login(newUser, (err) => {
-        if (err) {
-          return next(err);
+      // Create user in Supabase with custom user metadata
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role: role,
+          }
         }
-        return res.json({
-          message: "Registration successful",
-          user: { id: newUser.id, username: newUser.username, role: newUser.role },
-        });
+      });
+
+      if (authError) {
+        console.error('Registration error:', authError);
+        return res.status(400).json({ error: authError.message });
+      }
+
+      // Set session
+      req.session.user = {
+        id: authData.user?.id,
+        email: authData.user?.email,
+        role: authData.user?.user_metadata?.role,
+      };
+
+      return res.json({
+        message: "Registration successful",
+        user: {
+          id: authData.user?.id,
+          email: authData.user?.email,
+          role: authData.user?.user_metadata?.role,
+        },
       });
     } catch (error) {
       console.error('Registration error:', error);
-      next(error);
+      res.status(500).json({ error: "Registration failed" });
     }
   });
 
-  app.post("/api/login", async (req, res, next) => {
+  app.post("/api/login", async (req, res) => {
     try {
-      const result = insertUserSchema.safeParse(req.body);
-      if (!result.success) {
-        return res
-          .status(400)
-          .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).send("Email and password are required");
       }
 
-      const { username, password } = result.data;
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      passport.authenticate("local", (err: any, user: Express.User, info: IVerifyOptions) => {
-        if (err) {
-          return next(err);
-        }
+      if (authError) {
+        console.error('Login error:', authError);
+        return res.status(400).json({ error: authError.message });
+      }
 
-        if (!user) {
-          return res.status(400).send(info.message ?? "Login failed");
-        }
+      // Set session
+      req.session.user = {
+        id: authData.user?.id,
+        email: authData.user?.email,
+        role: authData.user?.user_metadata?.role,
+      };
 
-        req.logIn(user, (err) => {
-          if (err) {
-            return next(err);
-          }
-
-          return res.json({
-            message: "Login successful",
-            user: { id: user.id, username: user.username, role: user.role },
-          });
-        });
-      })(req, res, next);
+      return res.json({
+        message: "Login successful",
+        user: {
+          id: authData.user?.id,
+          email: authData.user?.email,
+          role: authData.user?.user_metadata?.role,
+        },
+      });
     } catch (error) {
       console.error('Login error:', error);
-      next(error);
+      res.status(500).json({ error: "Login failed" });
     }
   });
 
-  app.post("/api/logout", (req, res) => {
-    req.logout((err) => {
-      if (err) {
-        return res.status(500).send("Logout failed");
+  app.post("/api/logout", async (req, res) => {
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
+
+      if (signOutError) {
+        console.error('Logout error:', signOutError);
+        return res.status(500).json({ error: signOutError.message });
       }
-      res.json({ message: "Logout successful" });
-    });
+
+      req.session.destroy((err) => {
+        if (err) {
+          console.error('Session destruction error:', err);
+          return res.status(500).json({ error: "Logout failed" });
+        }
+        res.json({ message: "Logout successful" });
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ error: "Logout failed" });
+    }
   });
 
-  app.get("/api/user", (req, res) => {
-    if (req.isAuthenticated()) {
-      return res.json(req.user);
-    }
+  app.get("/api/user", async (req, res) => {
+    try {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
 
-    res.status(401).send("Not logged in");
+      if (authError) {
+        return res.status(401).json({ error: authError.message });
+      }
+
+      if (!session) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      res.json({
+        id: session.user.id,
+        email: session.user.email,
+        role: session.user.user_metadata.role,
+      });
+    } catch (error) {
+      console.error('Get user error:', error);
+      res.status(500).json({ error: "Failed to get user information" });
+    }
   });
 }

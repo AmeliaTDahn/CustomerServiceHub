@@ -14,29 +14,21 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
-  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showVerification, setShowVerification] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
-  const { login, register, verifyRegistration, deleteAccount, user } = useUser();
+  const { login, register, deleteAccount, user } = useUser();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const identifier = authMethod === "email" ? email : phone;
-
       if (isLogin) {
-        const result = await login({ identifier, password, authMethod });
+        const result = await login({ email, password });
         if (!result.ok) {
           toast({
             variant: "destructive",
@@ -45,7 +37,7 @@ export default function AuthPage() {
           });
         }
       } else {
-        const result = await register({ identifier, password, role, authMethod });
+        const result = await register({ email, password, role });
         if (!result.ok) {
           toast({
             variant: "destructive",
@@ -55,47 +47,18 @@ export default function AuthPage() {
           return;
         }
 
-        setShowVerification(true);
-        toast({
-          title: "Verification Required",
-          description: `Please enter the verification code sent to your ${authMethod === "email" ? "email" : "phone"}.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: (error as Error).message,
-      });
-    }
-  };
-
-  const handleVerification = async () => {
-    try {
-      const identifier = authMethod === "email" ? email : phone;
-      const result = await verifyRegistration({ identifier, code: verificationCode, authMethod });
-
-      if (!result.ok) {
-        toast({
-          variant: "destructive",
-          title: "Verification failed",
-          description: result.message,
-        });
-        return;
-      }
-
-      setShowVerification(false);
-      if (role === "employee") {
-        toast({
-          title: "Registration successful",
-          description: "Your account has been created. Wait for a business to invite you to their support system.",
-          duration: 5000,
-        });
-      } else {
-        toast({
-          title: "Registration successful",
-          description: "Your account has been created successfully.",
-        });
+        if (role === "employee") {
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created. Wait for a business to invite you to their support system.",
+            duration: 5000,
+          });
+        } else {
+          toast({
+            title: "Registration successful",
+            description: "Your account has been created successfully.",
+          });
+        }
       }
     } catch (error) {
       toast({
@@ -147,37 +110,16 @@ export default function AuthPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Tabs value={authMethod} onValueChange={(v) => setAuthMethod(v as "email" | "phone")}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="email">Email</TabsTrigger>
-                <TabsTrigger value="phone">Phone</TabsTrigger>
-              </TabsList>
-              <TabsContent value="email">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required={authMethod === "email"}
-                  />
-                </div>
-              </TabsContent>
-              <TabsContent value="phone">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+1234567890"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required={authMethod === "phone"}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -243,36 +185,6 @@ export default function AuthPage() {
           </div>
         </CardContent>
       </Card>
-
-      <Dialog open={showVerification} onOpenChange={setShowVerification}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Verify Your Account</DialogTitle>
-            <DialogDescription>
-              Enter the verification code sent to your {authMethod === "email" ? "email" : "phone"}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-center py-4">
-            <InputOTP
-              maxLength={6}
-              value={verificationCode}
-              onChange={(value) => setVerificationCode(value)}
-              render={({ slots }) => (
-                <InputOTPGroup>
-                  {slots.map((slot, index) => (
-                    <InputOTPSlot key={index} {...slot} />
-                  ))}
-                </InputOTPGroup>
-              )}
-            />
-          </div>
-          <DialogFooter>
-            <Button onClick={handleVerification} className="w-full">
-              Verify Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>

@@ -149,7 +149,7 @@ export default function CustomerMessages() {
     }
 
     const message = {
-      type: "message", 
+      type: "message",
       senderId: user.id,
       receiverId: selectedUser.id,
       content: newMessage.trim(),
@@ -173,108 +173,106 @@ export default function CustomerMessages() {
   return (
     <div className="min-h-screen">
       <div className="p-2">
-        <Link to="/customer">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+        <Link href="/">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </Button>
         </Link>
       </div>
       <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)] bg-gray-50">
-      {/* Business List */}
-      <Card className="col-span-4 flex flex-col">
-        <div className="p-4 border-b">
-          <Input
-            placeholder="Search businesses..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-2">
-            {filteredBusinesses?.map((business) => (
-              <div
-                key={business.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                  selectedUser?.id === business.id
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted"
-                }`}
-                onClick={() => setSelectedUser(business)}
-              >
-                <div className="font-medium">{business.username}</div>
-              </div>
-            ))}
+        <Card className="col-span-4 flex flex-col">
+          <div className="p-4 border-b">
+            <Input
+              placeholder="Search businesses..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-        </ScrollArea>
-      </Card>
-
-      {/* Chat Area */}
-      <Card className="col-span-8 flex flex-col">
-        {selectedUser ? (
-          <>
-            <div className="p-4 border-b">
-              <h2 className="font-semibold">{selectedUser.username}</h2>
-              {!hasBusinessMessage && (
-                <p className="text-sm text-muted-foreground">
-                  Wait for business to initiate the conversation
-                </p>
-              )}
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-2">
+              {filteredBusinesses?.map((business) => (
+                <div
+                  key={business.id}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedUser?.id === business.id
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                  onClick={() => setSelectedUser(business)}
+                >
+                  <div className="font-medium">{business.username}</div>
+                </div>
+              ))}
             </div>
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {messages?.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${
-                      message.senderId === user?.id ? "justify-end" : "justify-start"
-                    }`}
-                  >
+          </ScrollArea>
+        </Card>
+
+        <Card className="col-span-8 flex flex-col">
+          {selectedUser ? (
+            <>
+              <div className="p-4 border-b">
+                <h2 className="font-semibold">{selectedUser.username}</h2>
+                {!hasBusinessMessage && (
+                  <p className="text-sm text-muted-foreground">
+                    Wait for business to initiate the conversation
+                  </p>
+                )}
+              </div>
+              <ScrollArea className="flex-1 p-4">
+                <div className="space-y-4">
+                  {messages?.map((message) => (
                     <div
-                      className={`max-w-[80%] rounded-lg p-3 ${
-                        message.senderId === user?.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
+                      key={message.id}
+                      className={`flex ${
+                        message.senderId === user?.id ? "justify-end" : "justify-start"
                       }`}
                     >
-                      <p className="text-sm">{message.content}</p>
-                      <p className="text-xs opacity-70 mt-1">
-                        {new Date(message.createdAt).toLocaleTimeString()}
-                      </p>
+                      <div
+                        className={`max-w-[80%] rounded-lg p-3 ${
+                          message.senderId === user?.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted"
+                        }`}
+                      >
+                        <p className="text-sm">{message.content}</p>
+                        <p className="text-xs opacity-70 mt-1">
+                          {new Date(message.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-            <form onSubmit={sendMessage} className="p-4 border-t">
-              <div className="flex gap-2">
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={
-                    hasBusinessMessage
-                      ? "Type your message..."
-                      : "Wait for business to message first..."
-                  }
-                  className="flex-1"
-                  disabled={!hasBusinessMessage}
-                />
-                <Button
-                  type="submit"
-                  disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !hasBusinessMessage}
-                >
-                  Send
-                </Button>
-              </div>
-            </form>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            Select a business to start messaging
-          </div>
-        )}
-      </Card>
-    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <form onSubmit={sendMessage} className="p-4 border-t">
+                <div className="flex gap-2">
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder={
+                      hasBusinessMessage
+                        ? "Type your message..."
+                        : "Wait for business to message first..."
+                    }
+                    className="flex-1"
+                    disabled={!hasBusinessMessage}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !hasBusinessMessage}
+                  >
+                    Send
+                  </Button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              Select a business to start messaging
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

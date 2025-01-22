@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Send, Users, User } from "lucide-react";
+import { MessageCircle, Send, Users, User, Search } from "lucide-react";
 import type { User as UserType } from "@db/schema";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,7 @@ export default function EmployeeMessages() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [businessSearchTerm, setBusinessSearchTerm] = useState("");
   const queryClient = useQueryClient();
   const { isConnected, sendMessage: sendWebSocketMessage } = useWebSocket(user?.id, user?.role);
 
@@ -33,26 +34,19 @@ export default function EmployeeMessages() {
     queryKey: ['/api/customers'],
   });
 
-  // Fetch employees and business users
-  const { data: employees = [] } = useQuery<UserType[]>({
-    queryKey: ['/api/employees'],
-  });
-
-  // Get the business account separately
+  // Fetch businesses
   const { data: businesses = [] } = useQuery<UserType[]>({
     queryKey: ['/api/businesses'],
   });
 
-  // Combine employees and business accounts
-  const allStaff = [...employees, ...businesses];
-
-  // Filter users based on search term
-  const filteredCustomers = customers.filter(customer =>
-    customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+  // Filter businesses based on search term
+  const filteredBusinesses = businesses.filter(business =>
+    business.username.toLowerCase().includes(businessSearchTerm.toLowerCase())
   );
 
-  const filteredStaff = allStaff.filter(staff =>
-    staff.username.toLowerCase().includes(searchTerm.toLowerCase())
+  // Filter customers based on search term
+  const filteredCustomers = customers.filter(customer =>
+    customer.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Fetch messages for selected user
@@ -143,9 +137,9 @@ export default function EmployeeMessages() {
               <User className="h-4 w-4" />
               Customers
             </TabsTrigger>
-            <TabsTrigger value="employees" className="flex items-center gap-2">
+            <TabsTrigger value="businesses" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Employees & Business
+              Businesses
             </TabsTrigger>
           </TabsList>
 
@@ -153,11 +147,21 @@ export default function EmployeeMessages() {
             {/* Sidebar */}
             <Card className="col-span-4">
               <CardHeader>
-                <Input
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={`Search ${
+                      selectedUserId ? "customers" : "businesses"
+                    }...`}
+                    value={selectedUserId ? searchTerm : businessSearchTerm}
+                    onChange={(e) =>
+                      selectedUserId
+                        ? setSearchTerm(e.target.value)
+                        : setBusinessSearchTerm(e.target.value)
+                    }
+                    className="pl-9"
+                  />
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <TabsContent value="customers" className="m-0">
@@ -177,22 +181,25 @@ export default function EmployeeMessages() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="employees" className="m-0">
+                <TabsContent value="businesses" className="m-0">
                   <div className="divide-y">
-                    {filteredStaff.map((staff) => (
+                    {filteredBusinesses.map((business) => (
                       <button
-                        key={staff.id}
-                        onClick={() => setSelectedUserId(staff.id)}
+                        key={business.id}
+                        onClick={() => setSelectedUserId(business.id)}
                         className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedUserId === staff.id ? "bg-primary/5" : ""
+                          selectedUserId === business.id ? "bg-primary/5" : ""
                         }`}
                       >
-                        <p className="font-medium">{staff.username}</p>
-                        <p className="text-sm text-muted-foreground capitalize">
-                          {staff.role}
-                        </p>
+                        <p className="font-medium">{business.username}</p>
+                        <p className="text-sm text-muted-foreground">Business</p>
                       </button>
                     ))}
+                    {filteredBusinesses.length === 0 && businessSearchTerm && (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">
+                        No businesses found matching "{businessSearchTerm}"
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               </CardContent>

@@ -17,8 +17,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, X } from "lucide-react";
+import { UserPlus, X, Search, Check } from "lucide-react";
 
 interface Employee {
   employee: {
@@ -38,7 +45,8 @@ interface User {
 }
 
 export default function EmployeeManagement() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [currentEmployeeSearch, setCurrentEmployeeSearch] = useState("");
+  const [existingEmployeeSearch, setExistingEmployeeSearch] = useState("");
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -71,7 +79,6 @@ export default function EmployeeManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
-      setIsInviteDialogOpen(false);
       toast({
         title: "Success",
         description: "Invitation sent successfully",
@@ -115,19 +122,28 @@ export default function EmployeeManagement() {
     },
   });
 
+  // Filter current employees based on search term
   const filteredEmployees = employees.filter((emp) =>
-    emp.employee.username.toLowerCase().includes(searchTerm.toLowerCase())
+    emp.employee.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
+  );
+
+  // Filter available employees based on search term
+  const filteredAvailableEmployees = availableEmployees.filter((emp) =>
+    emp.username.toLowerCase().includes(currentEmployeeSearch.toLowerCase())
   );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Input
-          placeholder="Search employees..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search current employees..."
+            value={existingEmployeeSearch}
+            onChange={(e) => setExistingEmployeeSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
         <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
           <DialogTrigger asChild>
             <Button className="flex items-center gap-2">
@@ -140,27 +156,38 @@ export default function EmployeeManagement() {
               <DialogTitle>Invite Employee</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {availableEmployees.length > 0 ? (
-                availableEmployees.map((employee) => (
-                  <div
-                    key={employee.id}
-                    className="flex items-center justify-between p-2 rounded-lg border"
-                  >
-                    <span>{employee.username}</span>
-                    <Button
-                      size="sm"
-                      onClick={() => inviteEmployee.mutate(employee.id)}
-                      disabled={inviteEmployee.isPending}
+              <Command>
+                <CommandInput
+                  placeholder="Search employees..."
+                  value={currentEmployeeSearch}
+                  onValueChange={setCurrentEmployeeSearch}
+                />
+                <CommandEmpty>No employees found</CommandEmpty>
+                <CommandGroup>
+                  {filteredAvailableEmployees.map((employee) => (
+                    <CommandItem
+                      key={employee.id}
+                      onSelect={() => {
+                        inviteEmployee.mutate(employee.id);
+                        setCurrentEmployeeSearch("");
+                      }}
+                      className="flex items-center justify-between p-2"
                     >
-                      Invite
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No available employees found
-                </p>
-              )}
+                      <span>{employee.username}</span>
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          inviteEmployee.mutate(employee.id);
+                        }}
+                        disabled={inviteEmployee.isPending}
+                      >
+                        Invite
+                      </Button>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </Command>
             </div>
           </DialogContent>
         </Dialog>
@@ -202,6 +229,15 @@ export default function EmployeeManagement() {
                 </TableCell>
               </TableRow>
             ))}
+            {filteredEmployees.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  {existingEmployeeSearch
+                    ? `No employees found matching "${existingEmployeeSearch}"`
+                    : "No employees yet"}
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>

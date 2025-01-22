@@ -25,7 +25,6 @@ function Router() {
     );
   }
 
-  // Show login page when no user is authenticated
   if (!user) {
     return <AuthPage />;
   }

@@ -92,7 +92,7 @@ export default function EmployeeMessages() {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
+          filter: `or(and(sender_id.eq.${selectedUserId},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${selectedUserId}))`,
         },
         (payload) => {
           console.log('Received new message:', payload);

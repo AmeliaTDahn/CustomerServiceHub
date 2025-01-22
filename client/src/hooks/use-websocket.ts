@@ -152,8 +152,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           queryClient.invalidateQueries({ queryKey: ['messages', data.senderId] });
           queryClient.invalidateQueries({ queryKey: ['/api/tickets', data.ticketId, 'messages'] });
 
-          // Show notification for new messages if not from current user
-          if (data.senderId !== userId) {
+          // Only show notification for messages received from other users
+          if (data.senderId !== userId && data.receiverId === userId) {
             const notificationTitle = `New Message`;
             const notificationBody = `You have received a new message: ${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`;
 
@@ -163,10 +163,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
               title: notificationTitle,
               description: notificationBody,
             });
-          }
 
-          // Send delivery confirmation
-          if (data.senderId !== userId) {
+            // Send delivery confirmation
             const deliveryConfirmation: StatusUpdate = {
               type: 'status_update',
               messageId: data.id,

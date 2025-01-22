@@ -12,7 +12,7 @@ interface Message {
   content: string;
   timestamp: string;
   messageId?: number;
-  ticketId: number; // Added ticketId
+  ticketId: number;
 }
 
 interface StatusUpdate {
@@ -22,17 +22,49 @@ interface StatusUpdate {
   timestamp: string;
 }
 
+interface ExtendedWebSocket extends WebSocket {
+  userId?: number;
+  role?: string;
+  isAlive?: boolean;
+}
+
 // Store active connections with role information
-const connections = new Map<string, WebSocket>();
+const connections = new Map<string, ExtendedWebSocket>();
 
 export function setupWebSocket(server: Server, app: Express) {
   const wss = new WebSocketServer({ noServer: true });
 
+  // Heartbeat interval (30 seconds)
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws: ExtendedWebSocket) => {
+      if (ws.isAlive === false) {
+        console.log(`Terminating inactive connection for user ${ws.userId}`);
+        return ws.terminate();
+      }
+
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+  });
+
   // Handle WebSocket connections
-  wss.on('connection', (ws: WebSocket, userId: number, role: string) => {
+  wss.on('connection', (ws: ExtendedWebSocket, userId: number, role: string) => {
     console.log(`New WebSocket connection for ${role} user ${userId}`);
+    ws.userId = userId;
+    ws.role = role;
+    ws.isAlive = true;
+
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
+
+    // Handle pong messages for heartbeat
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
 
     // Update all undelivered messages to this user as delivered
     (async () => {
@@ -76,6 +108,10 @@ export function setupWebSocket(server: Server, app: Express) {
         }
       } catch (error) {
         console.error('Error updating message status:', error);
+        ws.send(JSON.stringify({ 
+          type: 'error',
+          error: 'Failed to update message status'
+        }));
       }
     })();
 
@@ -84,6 +120,11 @@ export function setupWebSocket(server: Server, app: Express) {
       try {
         const message = JSON.parse(data);
         console.log(`Received message:`, message);
+
+        // Validate message sender matches connection user
+        if (message.senderId !== userId) {
+          throw new Error('Invalid sender ID');
+        }
 
         if (message.type === 'status_update') {
           // Handle status update
@@ -125,7 +166,7 @@ export function setupWebSocket(server: Server, app: Express) {
             status: 'sent',
             sentAt: new Date(),
             createdAt: new Date(message.timestamp),
-            ticketId: message.ticketId // Added ticketId
+            ticketId: message.ticketId
           })
           .returning();
 
@@ -207,6 +248,14 @@ export function setupWebSocket(server: Server, app: Express) {
     // Handle connection close
     ws.on('close', () => {
       console.log(`User ${userId} (${role}) disconnected`);
+      ws.isAlive = false;
+      connections.delete(`${userId}-${role}`);
+    });
+
+    // Handle connection errors
+    ws.on('error', (error) => {
+      console.error(`WebSocket error for user ${userId}:`, error);
+      ws.isAlive = false;
       connections.delete(`${userId}-${role}`);
     });
 
@@ -236,6 +285,9 @@ export function setupWebSocket(server: Server, app: Express) {
         socket.destroy();
         return;
       }
+
+      // Validate user authentication here if needed
+      // You can check session/token validity
 
       console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {

@@ -8,9 +8,8 @@ interface Message {
   receiverId: number;
   content: string;
   timestamp: string;
-  id?: number; // Added id field to Message interface
-  ticketId?: number; // Added ticketId field to Message interface
-
+  id?: number;
+  ticketId?: number;
 }
 
 interface StatusUpdate {
@@ -26,6 +25,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+  const pingInterval = useRef<NodeJS.Timer>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -56,10 +56,30 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}?userId=${userId}&role=${role}`);
 
+    // Set up ping interval
+    const setupPing = () => {
+      // Clear any existing interval
+      if (pingInterval.current) {
+        clearInterval(pingInterval.current);
+      }
+      // Send ping every 15 seconds
+      pingInterval.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 15000);
+    };
+
     ws.onopen = () => {
       console.log('WebSocket connected');
       setIsConnected(true);
       reconnectAttempts.current = 0;
+      setupPing();
+
+      toast({
+        title: "Connected",
+        description: "Message connection established",
+      });
     };
 
     ws.onclose = () => {
@@ -67,11 +87,27 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       setIsConnected(false);
       wsRef.current = null;
 
+      // Clear ping interval
+      if (pingInterval.current) {
+        clearInterval(pingInterval.current);
+      }
+
       // Attempt to reconnect with exponential backoff
       if (reconnectAttempts.current < maxReconnectAttempts) {
         const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
         reconnectAttempts.current++;
         setTimeout(connect, timeout);
+
+        toast({
+          title: "Disconnected",
+          description: `Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Connection Failed",
+          description: "Please refresh the page to try again.",
+        });
       }
     };
 
@@ -82,6 +118,21 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         // Handle connection status message
         if (data.type === 'connection') {
           console.log('Connection status:', data.status);
+          return;
+        }
+
+        // Handle ping response
+        if (data.type === 'pong') {
+          return;
+        }
+
+        // Handle error message
+        if (data.error) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: data.error,
+          });
           return;
         }
 
@@ -96,7 +147,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           // Invalidate the messages query to update the UI
           queryClient.invalidateQueries({ queryKey: ['messages', data.senderId] });
           queryClient.invalidateQueries({ queryKey: ['/api/tickets', data.ticketId, 'messages'] });
-
 
           // Show notification for new messages if not from current user
           if (data.senderId !== userId) {
@@ -127,6 +177,15 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       }
     };
 
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      toast({
+        variant: "destructive",
+        title: "Connection Error",
+        description: "Please check your internet connection.",
+      });
+    };
+
     wsRef.current = ws;
   }, [userId, role, queryClient, toast, showNotification]);
 
@@ -135,6 +194,9 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      if (pingInterval.current) {
+        clearInterval(pingInterval.current);
       }
     };
   }, [connect]);

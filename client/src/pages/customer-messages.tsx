@@ -4,17 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, ArrowLeft, UserCheck } from "lucide-react";
+import { MessageCircle, ArrowLeft, UserCheck, Lock } from "lucide-react";
 import { Link } from "wouter";
 import TicketChat from "@/components/ticket-chat";
 import type { Ticket } from "@db/schema";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TicketWithClaimInfo extends Ticket {
   claimedBy?: {
     id: number;
     username: string;
   };
-  unreadMessages: number;
 }
 
 export default function CustomerMessages() {
@@ -34,8 +34,8 @@ export default function CustomerMessages() {
       if (!res.ok) throw new Error(await res.text());
       const tickets = await res.json();
 
-      // For each ticket, get the claimed employee info and unread count
-      const ticketsWithDetails = await Promise.all(
+      // Get claiming employee info for each ticket
+      const ticketsWithClaimInfo = await Promise.all(
         tickets.map(async (ticket: Ticket) => {
           let claimedBy;
           if (ticket.claimedById) {
@@ -46,31 +46,16 @@ export default function CustomerMessages() {
               claimedBy = await userRes.json();
             }
           }
-
-          // Get unread message count
-          const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`, {
-            credentials: 'include'
-          });
-          if (!messagesRes.ok) throw new Error(await messagesRes.text());
-          const messages = await messagesRes.json();
-
-          const unreadMessages = messages.filter((m: any) =>
-            m.message.receiverId === user?.id &&
-            m.message.status !== 'read'
-          ).length;
-
-          return {
-            ...ticket,
-            claimedBy,
-            unreadMessages
-          };
+          return { ...ticket, claimedBy };
         })
       );
 
-      return ticketsWithDetails;
+      return ticketsWithClaimInfo;
     },
-    refetchInterval: 5000 // Refresh every 5 seconds to check for new messages
+    refetchInterval: 5000
   });
+
+  const selectedTicket = tickets.find(t => t.id === selectedTicketId);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -97,7 +82,7 @@ export default function CustomerMessages() {
         </Link>
         <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
           <MessageCircle className="h-5 w-5" />
-          Message Center
+          Support Messages
         </h1>
         <div className="w-[88px]" /> {/* Spacer */}
       </div>
@@ -115,8 +100,8 @@ export default function CustomerMessages() {
                       Loading tickets...
                     </div>
                   ) : tickets.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">
-                      No tickets found
+                    <div className="p-4 text-sm text-muted-foreground text-center">
+                      No support tickets found. Create a ticket from the dashboard to get help.
                     </div>
                   ) : (
                     tickets.map((ticket) => (
@@ -128,14 +113,7 @@ export default function CustomerMessages() {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{ticket.title}</p>
-                            {ticket.unreadMessages > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
-                                {ticket.unreadMessages}
-                              </span>
-                            )}
-                          </div>
+                          <p className="font-medium">{ticket.title}</p>
                           <span className={`px-2 py-1 rounded text-xs ${getStatusBadge(ticket.status)}`}>
                             {ticket.status.replace("_", " ")}
                           </span>
@@ -147,7 +125,8 @@ export default function CustomerMessages() {
                               Assigned to {ticket.claimedBy.username}
                             </p>
                           ) : (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Lock className="h-3 w-3" />
                               Waiting for assignment
                             </p>
                           )}
@@ -167,10 +146,22 @@ export default function CustomerMessages() {
           <Card className="col-span-8 flex flex-col h-full">
             <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
-                <TicketChat
-                  ticketId={selectedTicketId}
-                  readonly={false}
-                />
+                selectedTicket?.claimedById ? (
+                  <TicketChat
+                    ticketId={selectedTicketId}
+                    readonly={false}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center p-4">
+                    <Alert>
+                      <AlertDescription className="flex items-center gap-2 text-muted-foreground">
+                        <Lock className="h-4 w-4" />
+                        This ticket hasn't been claimed by an employee yet. 
+                        You'll be able to chat once an employee is assigned.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                   Select a ticket to view messages

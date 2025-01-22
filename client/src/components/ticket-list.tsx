@@ -321,7 +321,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       <div className="space-y-2">
                         <h3 className="text-sm font-medium">Actions</h3>
                         <div className="flex gap-2">
-                          {isEmployee && (
+                          {(isEmployee || isBusiness) && (
                             selectedTicket.claimedById === null ? (
                               <Button
                                 variant="outline"

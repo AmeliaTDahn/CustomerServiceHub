@@ -68,22 +68,19 @@ export function setupWebSocket(server: Server, app: Express) {
       client.on('notification', async (msg) => {
         if (msg.channel === 'new_message' && msg.payload) {
           const payload = JSON.parse(msg.payload);
-          const receiverRole = await determineUserRole(payload.receiver_id);
-          if (receiverRole) {
-            const receiverWs = connections.get(`${payload.receiver_id}-${receiverRole}`);
-            if (receiverWs?.readyState === WebSocket.OPEN) {
-              receiverWs.send(JSON.stringify({
-                type: 'message',
-                id: payload.id,
-                senderId: payload.sender_id,
-                receiverId: payload.receiver_id,
-                content: payload.content,
-                status: payload.status,
-                ticketId: payload.ticket_id,
-                sentAt: payload.sent_at,
-                createdAt: payload.created_at
-              }));
-            }
+          const receiverWs = connections.get(`${payload.receiver_id}-${payload.receiver_role}`);
+          if (receiverWs?.readyState === WebSocket.OPEN) {
+            receiverWs.send(JSON.stringify({
+              type: 'message',
+              id: payload.id,
+              senderId: payload.sender_id,
+              receiverId: payload.receiver_id,
+              content: payload.content,
+              status: payload.status,
+              ticketId: payload.ticket_id,
+              sentAt: payload.sent_at,
+              createdAt: payload.created_at
+            }));
           }
         }
       });
@@ -116,17 +113,28 @@ export function setupWebSocket(server: Server, app: Express) {
 
   async function determineUserRole(userId: number): Promise<string | null> {
     try {
-      const [user] = await db.select()
+      // Check if user is a customer
+      const [customer] = await db.select()
         .from(tickets)
         .where(eq(tickets.customerId, userId))
         .limit(1);
-      if (user) return 'customer';
+      if (customer) return 'customer';
+
+      // Check if user is a business
       const [business] = await db.select()
         .from(tickets)
         .where(eq(tickets.businessId, userId))
         .limit(1);
       if (business) return 'business';
-      return 'employee';
+
+      // If not customer or business, must be employee
+      const [employee] = await db.select()
+        .from(businessEmployees)
+        .where(eq(businessEmployees.employeeId, userId))
+        .limit(1);
+      if (employee) return 'employee';
+
+      return null;
     } catch (error) {
       console.error('Error determining user role:', error);
       return null;
@@ -140,13 +148,15 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.isAlive = true;
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
+
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
+    // Check for undelivered messages on connection
     (async () => {
       try {
-        const [undeliveredMessages] = await db
+        const undeliveredMessages = await db
           .select()
           .from(messages)
           .where(
@@ -155,26 +165,24 @@ export function setupWebSocket(server: Server, app: Express) {
               eq(messages.status, 'sent')
             )
           );
-        if (undeliveredMessages) {
+
+        for (const message of undeliveredMessages) {
           await db
             .update(messages)
             .set({
               status: 'delivered',
               deliveredAt: new Date()
             })
-            .where(
-              and(
-                eq(messages.receiverId, userId),
-                eq(messages.status, 'sent')
-              )
-            );
+            .where(eq(messages.id, message.id));
+
           const statusUpdate: StatusUpdate = {
             type: 'status_update',
-            messageId: undeliveredMessages.id,
+            messageId: message.id,
             status: 'delivered',
             timestamp: new Date().toISOString()
           };
-          const senderWs = connections.get(`${undeliveredMessages.senderId}-${role}`);
+
+          const senderWs = connections.get(`${message.senderId}-${role}`);
           if (senderWs?.readyState === WebSocket.OPEN) {
             senderWs.send(JSON.stringify(statusUpdate));
           }
@@ -191,11 +199,13 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.on('message', async (data: string) => {
       try {
         const message = JSON.parse(data);
+
         if (message.type === 'ping') {
           ws.isAlive = true;
           ws.send(JSON.stringify({ type: 'pong' }));
           return;
         }
+
         if (message.type === 'status_update') {
           const update = message as StatusUpdate;
           await db
@@ -205,10 +215,12 @@ export function setupWebSocket(server: Server, app: Express) {
               ...(update.status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
             })
             .where(eq(messages.id, update.messageId));
+
           const [updatedMessage] = await db
             .select()
             .from(messages)
             .where(eq(messages.id, update.messageId));
+
           if (updatedMessage) {
             const senderWs = connections.get(`${updatedMessage.senderId}-${role}`);
             if (senderWs?.readyState === WebSocket.OPEN) {
@@ -217,6 +229,7 @@ export function setupWebSocket(server: Server, app: Express) {
           }
           return;
         }
+
         if (message.type === 'message') {
           if (message.senderId !== userId) {
             throw new Error('Invalid sender ID');
@@ -226,14 +239,8 @@ export function setupWebSocket(server: Server, app: Express) {
           let ticketId: number | undefined = message.ticketId;
           let isInitiator = message.chatInitiator || false;
 
-          if (message.directMessageUserId) {
-            receiverId = message.directMessageUserId;
-            ticketId = undefined;
-            const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
-            if (!isValidDirectMessage) {
-              throw new Error('Unauthorized direct message');
-            }
-          } else if (message.ticketId) {
+          if (message.ticketId) {
+            // Get ticket details to determine the receiver
             const [ticket] = await db
               .select()
               .from(tickets)
@@ -250,6 +257,12 @@ export function setupWebSocket(server: Server, app: Express) {
               receiverId = ticket.customerId;
             }
             ticketId = ticket.id;
+          } else if (message.directMessageUserId) {
+            receiverId = message.directMessageUserId;
+            const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
+            if (!isValidDirectMessage) {
+              throw new Error('Unauthorized direct message');
+            }
           } else {
             throw new Error('Either ticketId or directMessageUserId is required');
           }
@@ -258,13 +271,13 @@ export function setupWebSocket(server: Server, app: Express) {
             .values({
               content: message.content,
               senderId: message.senderId,
-              receiverId: receiverId,
+              receiverId,
               status: 'sent',
               chatInitiator: isInitiator,
               initiatedAt: isInitiator ? new Date() : null,
               sentAt: new Date(),
-              createdAt: new Date(message.timestamp),
-              ticketId: ticketId
+              createdAt: new Date(),
+              ticketId
             })
             .returning();
 
@@ -273,7 +286,7 @@ export function setupWebSocket(server: Server, app: Express) {
             type: 'message',
             content: savedMessage.content,
             senderId: savedMessage.senderId,
-            receiverId: receiverId,
+            receiverId,
             status: savedMessage.status,
             chatInitiator: savedMessage.chatInitiator,
             initiatedAt: savedMessage.initiatedAt?.toISOString(),
@@ -285,7 +298,7 @@ export function setupWebSocket(server: Server, app: Express) {
           // Send message back to sender
           ws.send(JSON.stringify(responseMessage));
 
-          // Send message to receiver
+          // Get receiver's role and send message
           const receiverRole = await determineUserRole(receiverId);
           if (receiverRole) {
             const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
@@ -302,16 +315,19 @@ export function setupWebSocket(server: Server, app: Express) {
         }));
       }
     });
+
     ws.on('close', () => {
       console.log(`User ${userId} (${role}) disconnected`);
       ws.isAlive = false;
       connections.delete(`${userId}-${role}`);
     });
+
     ws.on('error', (error) => {
       console.error(`WebSocket error for user ${userId}:`, error);
       ws.isAlive = false;
       connections.delete(`${userId}-${role}`);
     });
+
     ws.send(JSON.stringify({
       type: 'connection',
       status: 'connected',
@@ -319,19 +335,23 @@ export function setupWebSocket(server: Server, app: Express) {
       role: role
     }));
   });
+
   server.on('upgrade', (request, socket, head) => {
     if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
       return;
     }
+
     try {
       const url = new URL(request.url!, `http://${request.headers.host}`);
       const userId = parseInt(url.searchParams.get('userId') || '');
       const role = url.searchParams.get('role') || '';
+
       if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
         console.error('Invalid WebSocket connection parameters:', { userId, role });
         socket.destroy();
         return;
       }
+
       console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, userId, role);

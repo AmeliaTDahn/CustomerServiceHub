@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Loader2, Check, CheckCheck, Lock } from "lucide-react";
+import { Loader2, Check, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
@@ -63,7 +63,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: !!(directMessageUserId || ticketId)
+    enabled: !!(directMessageUserId || ticketId),
+    refetchInterval: 5000 // Poll every 5 seconds for new messages
   });
 
   const { data: ticket } = useQuery<Ticket>({
@@ -78,7 +79,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     }
   }, [messages, optimisticMessages]);
 
-  const isChatInitiated = messages?.some(msg => msg.message.chatInitiator);
   const isEmployee = user?.role === 'employee';
   const isBusiness = user?.role === 'business';
   const isCustomer = user?.role === 'customer';
@@ -87,7 +87,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (readonly) return false;
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
-    if (isCustomer && ticketId) return true; 
+    if (isCustomer && ticketId) return true;
     return false;
   };
 
@@ -109,8 +109,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           senderId: user!.id,
           receiverId,
           status: 'sending',
-          chatInitiator: messages?.length === 0,
-          initiatedAt: messages?.length === 0 ? new Date().toISOString() : null,
+          chatInitiator: messages.length === 0,
+          initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
           sentAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         },
@@ -131,7 +131,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         timestamp: new Date().toISOString(),
         ticketId: ticketId || undefined,
         directMessageUserId,
-        chatInitiator: messages?.length === 0,
+        chatInitiator: messages.length === 0,
       });
 
       return optimisticMessage;
@@ -153,7 +153,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       setOptimisticMessages([]);
       toast({
         variant: "destructive",
-        title: "Error",
+        title: "Error sending message",
         description: (error as Error).message
       });
     }
@@ -172,16 +172,10 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       <div className="absolute inset-0 bottom-[4.5rem]">
         <ScrollArea 
           ref={scrollAreaRef} 
-          className="h-full relative"
+          className="h-full relative scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
         >
           <div className="space-y-4 p-4 pb-6">
             <AnimatePresence initial={false}>
-              {!isChatInitiated && isCustomer && (
-                <div className="text-center p-4 text-muted-foreground">
-                  <Lock className="w-4 h-4 mx-auto mb-2" />
-                  <p>Waiting for support to initiate chat</p>
-                </div>
-              )}
               {allMessages?.map((messageData) => (
                 <motion.div
                   key={messageData.message.id}
@@ -206,7 +200,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
                         ({messageData.sender.role})
                       </span>
                     </div>
-                    <p className="text-sm">{messageData.message.content}</p>
+                    <p className="text-sm whitespace-pre-wrap break-words">{messageData.message.content}</p>
                     <div className="flex items-center justify-between mt-1 text-xs opacity-70">
                       <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
                       {messageData.sender.id === user?.id && (

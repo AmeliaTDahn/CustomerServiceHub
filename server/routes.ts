@@ -356,6 +356,26 @@ export function registerRoutes(app: Express): Server {
       .where(eq(messages.ticketId, parseInt(ticketId)))
       .orderBy(messages.createdAt);
 
+      // Mark messages as read if the user is the receiver
+      const unreadMessages = ticketMessages.filter(
+        msg => msg.message.receiverId === req.user!.id && msg.message.status !== 'read'
+      );
+
+      if (unreadMessages.length > 0) {
+        await db.update(messages)
+          .set({
+            status: 'read',
+            readAt: new Date()
+          })
+          .where(
+            and(
+              eq(messages.ticketId, parseInt(ticketId)),
+              eq(messages.receiverId, req.user!.id),
+              not(eq(messages.status, 'read'))
+            )
+          );
+      }
+
       res.json(ticketMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -410,19 +430,41 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Invalid user role" });
       }
 
+      // Check if this is the first message in the ticket
+      const [existingMessage] = await db.select()
+        .from(messages)
+        .where(eq(messages.ticketId, parseInt(ticketId)))
+        .limit(1);
+
+      const isFirstMessage = !existingMessage;
+
       const [message] = await db.insert(messages)
         .values({
           content,
           ticketId: parseInt(ticketId),
           senderId: req.user.id,
           receiverId,
-          status: "sent",
+          status: 'sent',
+          chatInitiator: isFirstMessage,
+          initiatedAt: isFirstMessage ? new Date() : null,
           sentAt: new Date(),
           createdAt: new Date()
         })
         .returning();
 
-      res.json(message);
+      // Get sender information for the response
+      const [sender] = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id));
+
+      res.json({
+        message,
+        sender
+      });
     } catch (error) {
       console.error('Error sending message:', error);
       res.status(500).json({ error: "Failed to send message" });

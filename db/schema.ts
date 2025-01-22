@@ -58,6 +58,7 @@ export const ticketFeedback = pgTable("ticket_feedback", {
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
+  ticketId: integer("ticket_id").references(() => tickets.id),  
   senderId: integer("sender_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
   status: text("status", { enum: ["sent", "delivered", "read"] }).default("sent").notNull(),
@@ -107,6 +108,7 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
     fields: [tickets.businessId],
     references: [users.id]
   }),
+  messages: many(messages),
   notes: many(ticketNotes),
   feedback: many(ticketFeedback)
 }));
@@ -137,6 +139,10 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   receiver: one(users, {
     fields: [messages.receiverId],
     references: [users.id]
+  }),
+  ticket: one(tickets, {
+    fields: [messages.ticketId],
+    references: [tickets.id]
   })
 }));
 

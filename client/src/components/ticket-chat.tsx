@@ -4,88 +4,100 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface Message {
-  ticketId: number;
-  sender: string;
-  content: string;
-  timestamp: string;
+  message: {
+    id: number;
+    content: string;
+    ticketId: number;
+    senderId: number;
+    receiverId: number;
+    status: string;
+    sentAt: string;
+    createdAt: string;
+  };
+  sender: {
+    id: number;
+    username: string;
+    role: string;
+  };
 }
 
 interface TicketChatProps {
   ticketId: number;
+  readonly?: boolean;
 }
 
-const STORAGE_KEY = 'ticket-chat-messages';
-const RECONNECT_DELAY = 3000; // 3 seconds
-
-export default function TicketChat({ ticketId }: TicketChatProps) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    // Load messages from localStorage on component mount
-    const storedMessages = localStorage.getItem(STORAGE_KEY);
-    if (storedMessages) {
-      const allMessages = JSON.parse(storedMessages);
-      // Filter out any system messages when loading from storage
-      return (allMessages[ticketId] || []).filter((msg: Message) => msg.sender !== 'system');
-    }
-    return [];
-  });
+export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [hasBusinessMessage, setHasBusinessMessage] = useState(false);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const queryClient = useQueryClient();
 
-  // Check if there's a business message in stored messages
-  useEffect(() => {
-    const hasBusinessMsg = messages.some(msg => msg.sender !== user?.username);
-    setHasBusinessMessage(hasBusinessMsg);
-  }, [messages, user?.username]);
+  // Fetch messages
+  const { data: messages = [] } = useQuery<Message[]>({
+    queryKey: ['/api/tickets', ticketId, 'messages'],
+    queryFn: async () => {
+      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+  });
 
-  // Save messages to localStorage whenever they change
-  useEffect(() => {
-    const storedMessages = localStorage.getItem(STORAGE_KEY);
-    const allMessages = storedMessages ? JSON.parse(storedMessages) : {};
-    allMessages[ticketId] = messages;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(allMessages));
-  }, [messages, ticketId]);
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
+      setNewMessage("");
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message
+      });
+    }
+  });
 
   const connectWebSocket = () => {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?ticketId=${ticketId}&role=${user?.role}`;
+      const wsUrl = `${protocol}//${window.location.host}/ws?ticketId=${ticketId}`;
       const wsInstance = new WebSocket(wsUrl);
 
       wsInstance.onopen = () => {
         console.log('WebSocket Connected');
-        toast({
-          title: "Connected",
-          description: "Chat connection established",
-        });
       };
 
       wsInstance.onmessage = (event) => {
         try {
-          const message: Message = JSON.parse(event.data);
-          if (message.sender !== 'system') {
-            setMessages((prev) => [...prev, message]);
+          const message = JSON.parse(event.data);
+          queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
 
-            // If it's a business message and customer hasn't received one yet
-            if (message.sender !== user?.username && user?.role === 'customer') {
-              setHasBusinessMessage(true);
-            }
-
-            // Scroll to bottom on new message
-            if (scrollAreaRef.current) {
-              setTimeout(() => {
-                const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-                if (scrollArea) {
-                  scrollArea.scrollTop = scrollArea.scrollHeight;
-                }
-              }, 100);
-            }
+          // Scroll to bottom on new message
+          if (scrollAreaRef.current) {
+            setTimeout(() => {
+              const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+              if (scrollArea) {
+                scrollArea.scrollTop = scrollArea.scrollHeight;
+              }
+            }, 100);
           }
         } catch (error) {
           console.error('Error parsing message:', error);
@@ -105,7 +117,7 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
         console.log('WebSocket Disconnected');
         setWs(null);
         // Attempt to reconnect after delay
-        reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
       };
 
       setWs(wsInstance);
@@ -118,84 +130,59 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
         description: "Failed to setup chat connection. Retrying...",
       });
       // Attempt to reconnect after delay
-      reconnectTimeoutRef.current = setTimeout(connectWebSocket, RECONNECT_DELAY);
+      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
       return null;
     }
   };
 
   useEffect(() => {
-    const wsInstance = connectWebSocket();
+    if (!readonly) {
+      const wsInstance = connectWebSocket();
 
-    return () => {
-      if (wsInstance) {
-        wsInstance.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, [ticketId, user?.role]);
+      return () => {
+        if (wsInstance) {
+          wsInstance.close();
+        }
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+      };
+    }
+  }, [ticketId, readonly]);
 
-  const sendMessage = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || !user) return;
-
-    // If user is a customer and hasn't received a business message yet, prevent sending
-    if (user.role === 'customer' && !hasBusinessMessage) {
-      toast({
-        variant: "destructive",
-        title: "Cannot send message",
-        description: "Please wait for a business representative to message first.",
-      });
-      return;
-    }
-
-    const message: Message = {
-      ticketId,
-      sender: user.username,
-      content: newMessage.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    try {
-      ws.send(JSON.stringify(message));
-      setMessages((prev) => [...prev, message]);
-      setNewMessage("");
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-      });
-    }
+    if (!newMessage.trim() || readonly) return;
+    sendMessageMutation.mutate(newMessage.trim());
   };
-
-  // Check if user is customer and hasn't received a business message
-  const isMessageInputDisabled = user?.role === 'customer' && !hasBusinessMessage;
 
   return (
     <div className="flex flex-col h-full">
       <ScrollArea ref={scrollAreaRef} className="flex-1 pr-4">
         <div className="space-y-4 min-h-0">
-          {messages.map((message, index) => (
+          {messages.map((messageData, index) => (
             <div
-              key={index}
+              key={messageData.message.id}
               className={`flex flex-col ${
-                message.sender === user?.username ? "items-end" : "items-start"
+                messageData.sender.id === user?.id ? "items-end" : "items-start"
               }`}
             >
               <div
                 className={`max-w-[80%] rounded-lg p-3 ${
-                  message.sender === user?.username
+                  messageData.sender.id === user?.id
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted"
                 }`}
               >
-                <p className="text-sm font-medium mb-1">{message.sender}</p>
-                <p className="text-sm">{message.content}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-medium">{messageData.sender.username}</p>
+                  <span className="text-xs opacity-70">
+                    ({messageData.sender.role})
+                  </span>
+                </div>
+                <p className="text-sm">{messageData.message.content}</p>
                 <p className="text-xs opacity-70 mt-1">
-                  {new Date(message.timestamp).toLocaleTimeString()}
+                  {new Date(messageData.message.sentAt).toLocaleTimeString()}
                 </p>
               </div>
             </div>
@@ -207,23 +194,25 @@ export default function TicketChat({ ticketId }: TicketChatProps) {
           )}
         </div>
       </ScrollArea>
-      <form onSubmit={sendMessage} className="pt-4">
-        <div className="flex gap-2">
-          <Input
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder={isMessageInputDisabled ? "Wait for business representative to message first..." : "Type your message..."}
-            className="flex-1"
-            disabled={isMessageInputDisabled}
-          />
-          <Button 
-            type="submit" 
-            disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN || isMessageInputDisabled}
-          >
-            Send
-          </Button>
-        </div>
-      </form>
+      {!readonly && (
+        <form onSubmit={handleSubmit} className="pt-4">
+          <div className="flex gap-2">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1"
+              disabled={sendMessageMutation.isPending}
+            />
+            <Button 
+              type="submit" 
+              disabled={!newMessage.trim() || sendMessageMutation.isPending}
+            >
+              Send
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -304,27 +304,135 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Messages routes
-  app.get("/api/messages/:userId", async (req, res) => {
+  app.get("/api/tickets/:ticketId/messages", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
-    const { userId } = req.params;
-    const conversationMessages = await db.select()
+    const { ticketId } = req.params;
+
+    try {
+      // Get the ticket to verify access
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(ticketId)));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Verify user has access to this ticket
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to view these messages" });
+      }
+
+      if (req.user.role === "employee") {
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId!),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket's messages" });
+        }
+      }
+
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to view these messages" });
+      }
+
+      // Fetch all messages for this ticket
+      const messages = await db.select({
+        message: messages,
+        sender: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        }
+      })
       .from(messages)
-      .where(
+      .innerJoin(users, eq(users.id, messages.senderId))
+      .where(and(
+        eq(messages.ticketId, parseInt(ticketId)),
         or(
-          and(
-            eq(messages.senderId, req.user.id),
-            eq(messages.receiverId, parseInt(userId))
-          ),
-          and(
-            eq(messages.senderId, parseInt(userId)),
-            eq(messages.receiverId, req.user.id)
-          )
+          eq(messages.senderId, req.user.id),
+          eq(messages.receiverId, req.user.id)
         )
-      )
+      ))
       .orderBy(messages.createdAt);
 
-    res.json(conversationMessages);
+      res.json(messages);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  app.post("/api/tickets/:ticketId/messages", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { ticketId } = req.params;
+    const { content } = req.body;
+
+    try {
+      // Get the ticket to verify access and determine receiver
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(ticketId)));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      let receiverId: number;
+
+      // Determine the message receiver based on sender's role
+      if (req.user.role === "customer") {
+        if (ticket.customerId !== req.user.id) {
+          return res.status(403).json({ error: "Not authorized to send messages for this ticket" });
+        }
+        receiverId = ticket.businessId!;
+      } else if (req.user.role === "employee") {
+        // Verify employee has access
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId!),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket" });
+        }
+        receiverId = ticket.customerId;
+      } else if (req.user.role === "business") {
+        if (ticket.businessId !== req.user.id) {
+          return res.status(403).json({ error: "Not authorized to send messages for this ticket" });
+        }
+        receiverId = ticket.customerId;
+      } else {
+        return res.status(403).json({ error: "Invalid user role" });
+      }
+
+      const [message] = await db.insert(messages)
+        .values({
+          content,
+          ticketId: parseInt(ticketId),
+          senderId: req.user.id,
+          receiverId,
+          status: "sent",
+          sentAt: new Date(),
+          createdAt: new Date()
+        })
+        .returning();
+
+      res.json(message);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
   });
 
   // Ticket management routes

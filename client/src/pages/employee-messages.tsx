@@ -57,13 +57,31 @@ export default function EmployeeMessages() {
   // Fetch messages for selected user
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['messages', selectedUserId],
-    queryFn: () => selectedUserId ? getMessages(user!.id, selectedUserId) : Promise.resolve([]),
+    queryFn: async () => {
+      if (!selectedUserId || !user) return [];
+      try {
+        return await getMessages(user.id, selectedUserId);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load messages. Please try again.",
+        });
+        return [];
+      }
+    },
     enabled: !!selectedUserId && !!user,
   });
 
   // Set up real-time subscription
   useEffect(() => {
     if (!selectedUserId || !user) return;
+
+    console.log('Setting up real-time subscription for:', {
+      userId: user.id,
+      selectedUserId,
+    });
 
     // Subscribe to new messages
     const channel = supabase
@@ -76,7 +94,8 @@ export default function EmployeeMessages() {
           table: 'messages',
           filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
         },
-        () => {
+        (payload) => {
+          console.log('Received new message:', payload);
           queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
           toast({
             title: "New Message",
@@ -87,6 +106,7 @@ export default function EmployeeMessages() {
       .subscribe();
 
     return () => {
+      console.log('Cleaning up subscription');
       supabase.removeChannel(channel);
     };
   }, [selectedUserId, user?.id, queryClient]);
@@ -112,9 +132,14 @@ export default function EmployeeMessages() {
     }
 
     try {
+      console.log('Attempting to send message:', {
+        senderId: user.id,
+        receiverId: selectedUserId,
+        content: message.trim(),
+      });
+
       await sendMessage(user.id, selectedUserId, message.trim());
       setMessage("");
-      // Invalidate the messages query to show the new message immediately
       queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
     } catch (error) {
       console.error('Failed to send message:', error);

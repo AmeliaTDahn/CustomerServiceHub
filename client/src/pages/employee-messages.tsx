@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Send, Users, User, Search } from "lucide-react";
+import { MessageCircle, Send, Users, User, Search, ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 import type { User as UserType } from "@db/schema";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
@@ -115,6 +116,14 @@ export default function EmployeeMessages() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div className="p-2">
+        <Link href="/dashboard">
+          <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </Link>
+      </div>
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">

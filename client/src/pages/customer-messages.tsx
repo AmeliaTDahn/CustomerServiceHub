@@ -4,17 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, ArrowLeft, UserCheck, Lock } from "lucide-react";
+import { MessageCircle, ArrowLeft, UserCheck, Lock, Clock } from "lucide-react";
 import { Link } from "wouter";
 import TicketChat from "@/components/ticket-chat";
 import type { Ticket } from "@db/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 interface TicketWithClaimInfo extends Ticket {
   claimedBy?: {
     id: number;
     username: string;
   };
+  claimedAt?: string;
 }
 
 export default function CustomerMessages() {
@@ -38,15 +40,17 @@ export default function CustomerMessages() {
       const ticketsWithClaimInfo = await Promise.all(
         tickets.map(async (ticket: Ticket) => {
           let claimedBy;
+          let claimedAt;
           if (ticket.claimedById) {
             const userRes = await fetch(`/api/users/${ticket.claimedById}`, {
               credentials: 'include'
             });
             if (userRes.ok) {
               claimedBy = await userRes.json();
+              claimedAt = ticket.updatedAt; // Using updatedAt as claimedAt timestamp
             }
           }
-          return { ...ticket, claimedBy };
+          return { ...ticket, claimedBy, claimedAt };
         })
       );
 
@@ -70,9 +74,19 @@ export default function CustomerMessages() {
     }
   };
 
+  const formatClaimTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInHours = Math.abs(now.getTime() - date.getTime()) / 36e5;
+
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString();
+    }
+    return date.toLocaleDateString();
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -87,7 +101,6 @@ export default function CustomerMessages() {
         <div className="w-[88px]" /> {/* Spacer */}
       </div>
 
-      {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
           {/* Ticket List Sidebar */}
@@ -112,27 +125,32 @@ export default function CustomerMessages() {
                           selectedTicketId === ticket.id ? "bg-primary/5" : ""
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{ticket.title}</p>
-                          <span className={`px-2 py-1 rounded text-xs ${getStatusBadge(ticket.status)}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="font-medium">{ticket.title}</p>
+                            <div className="mt-1.5 flex flex-col gap-1">
+                              {ticket.claimedBy ? (
+                                <>
+                                  <Badge variant="secondary" className="w-fit flex items-center gap-1 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                                    <UserCheck className="h-3 w-3" />
+                                    Claimed by {ticket.claimedBy.username}
+                                  </Badge>
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    Claimed {formatClaimTime(ticket.claimedAt!)}
+                                  </p>
+                                </>
+                              ) : (
+                                <Badge variant="secondary" className="w-fit flex items-center gap-1 bg-gray-50 text-gray-600 hover:bg-gray-50">
+                                  <Lock className="h-3 w-3" />
+                                  Waiting for claim
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant={ticket.status === 'open' ? 'success' : ticket.status === 'in_progress' ? 'default' : 'secondary'}>
                             {ticket.status.replace("_", " ")}
-                          </span>
-                        </div>
-                        <div className="mt-1 space-y-1">
-                          {ticket.claimedBy ? (
-                            <p className="text-xs text-blue-600 flex items-center gap-1">
-                              <UserCheck className="h-3 w-3" />
-                              Assigned to {ticket.claimedBy.username}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Lock className="h-3 w-3" />
-                              Waiting for assignment
-                            </p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            Created {new Date(ticket.createdAt).toLocaleDateString()}
-                          </p>
+                          </Badge>
                         </div>
                       </button>
                     ))

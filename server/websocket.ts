@@ -222,6 +222,15 @@ export function setupWebSocket(server: Server, app: Express) {
           throw new Error('Invalid ticket');
         }
 
+        // Set receiverId based on sender's role and ticket relationship
+        if (!message.receiverId) {
+          if (message.senderId === ticket.customerId) {
+            message.receiverId = ticket.businessId!;
+          } else {
+            message.receiverId = ticket.customerId;
+          }
+        }
+
         // Determine receiver's role based on ticket relationship
         const receiverRole = message.receiverId === ticket.customerId ? 'customer' : 
                            message.receiverId === ticket.businessId ? 'business' : 'employee';

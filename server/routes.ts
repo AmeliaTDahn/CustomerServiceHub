@@ -352,38 +352,38 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/tickets", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
-    let query;
-    if (req.user.role === "customer") {
-      query = { customerId: req.user.id };
-    } else if (req.user.role === "business") {
-      query = { businessId: req.user.id };
-    } else if (req.user.role === "employee") {
-      // For employees, check if they have access to the business
-      const businessId = req.query.businessId;
-      if (!businessId) {
-        return res.status(400).json({ error: "Business ID is required for employees" });
+    try {
+      let query = db.select().from(tickets);
+
+      if (req.user.role === "customer") {
+        query = query.where(eq(tickets.customerId, req.user.id));
+      } else if (req.user.role === "business") {
+        query = query.where(eq(tickets.businessId, req.user.id));
+      } else if (req.user.role === "employee") {
+        // For employees, get all tickets from businesses they are actively associated with
+        const businessIds = await db
+          .select({ businessId: businessEmployees.businessId })
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (businessIds.length === 0) {
+          return res.json([]);
+        }
+
+        query = query.where(
+          or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
+        );
       }
 
-      const [hasAccess] = await db.select()
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.businessId, parseInt(businessId as string)),
-          eq(businessEmployees.isActive, true)
-        ))
-        .limit(1);
-
-      if (!hasAccess) {
-        return res.status(403).json({ error: "No access to this business" });
-      }
-
-      query = { businessId: parseInt(businessId as string) };
+      const userTickets = await query;
+      res.json(userTickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
     }
-
-    const userTickets = await db.select().from(tickets)
-      .where(eq(tickets[Object.keys(query)[0] as keyof typeof tickets], Object.values(query)[0]));
-
-    res.json(userTickets);
   });
 
   app.patch("/api/tickets/:id", async (req, res) => {

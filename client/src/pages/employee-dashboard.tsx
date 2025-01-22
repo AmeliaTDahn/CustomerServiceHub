@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
-import BusinessSwitcher from "@/components/business-switcher";
 import InvitationHandler from "@/components/invitation-handler";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle } from "lucide-react";
@@ -13,11 +12,9 @@ import type { Ticket } from "@db/schema";
 
 export default function EmployeeDashboard() {
   const { user, logout } = useUser();
-  const [currentBusinessId, setCurrentBusinessId] = useState<string>();
 
   const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets', currentBusinessId],
-    enabled: !!currentBusinessId
+    queryKey: ['/api/tickets'],
   });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -55,13 +52,7 @@ export default function EmployeeDashboard() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold text-gray-900">Employee Dashboard</h1>
-            <BusinessSwitcher
-              onBusinessChange={setCurrentBusinessId}
-              currentBusinessId={currentBusinessId}
-            />
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900">Employee Dashboard</h1>
           <div className="flex items-center gap-4">
             <Link href="/messages">
               <Button variant="outline" className="flex items-center gap-2">
@@ -80,31 +71,21 @@ export default function EmployeeDashboard() {
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
         <InvitationHandler />
 
-        {currentBusinessId ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer Tickets</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TicketFilters 
-                onSearchChange={setSearchTerm}
-                onStatusChange={setStatusFilter}
-                onCategoryChange={setCategoryFilter}
-                onPriorityChange={setPriorityFilter}
-                onSortChange={setSortBy}
-              />
-              <TicketList tickets={filteredTickets} isEmployee />
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="py-6">
-              <p className="text-center text-muted-foreground">
-                Select a business to view and manage tickets
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Tickets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TicketFilters 
+              onSearchChange={setSearchTerm}
+              onStatusChange={setStatusFilter}
+              onCategoryChange={setCategoryFilter}
+              onPriorityChange={setPriorityFilter}
+              onSortChange={setSortBy}
+            />
+            <TicketList tickets={filteredTickets} isEmployee />
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

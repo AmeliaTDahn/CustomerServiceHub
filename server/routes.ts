@@ -673,7 +673,25 @@ export function registerRoutes(app: Express): Server {
         .where(eq(tickets.id, parseInt(id)))
         .returning();
 
-      res.json(updatedTicket);
+      // Initialize the chat with a system message
+      const [initialMessage] = await db.insert(messages)
+        .values({
+          content: `Ticket claimed by ${req.user.username}`,
+          ticketId: parseInt(id),
+          senderId: req.user.id,
+          receiverId: ticket.customerId,
+          status: 'sent',
+          chatInitiator: true,
+          initiatedAt: new Date(),
+          sentAt: new Date(),
+          createdAt: new Date()
+        })
+        .returning();
+
+      res.json({
+        ticket: updatedTicket,
+        message: initialMessage
+      });
     } catch (error) {
       console.error('Error claiming ticket:', error);
       res.status(500).json({ error: "Failed to claim ticket" });
@@ -891,7 +909,7 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only business users and employees can add notes" });
       }
 
-      const { id } = req.params;
+      const { id } =req.params;
       const { content } = req.body;
 
       // Get the ticket to verify access

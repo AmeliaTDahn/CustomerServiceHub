@@ -230,16 +230,7 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
-        if (message.type === 'message') {
-          if (message.senderId !== userId) {
-            throw new Error('Invalid sender ID');
-          }
-
-          let receiverId: number;
-          let ticketId: number | undefined = message.ticketId;
-          let isInitiator = message.chatInitiator || false;
-
-          if (message.ticketId) {
+        if (message.type === 'message' && message.ticketId) {
             // Get ticket details to determine the receiver
             const [ticket] = await db
               .select()
@@ -250,63 +241,129 @@ export function setupWebSocket(server: Server, app: Express) {
               throw new Error('Invalid ticket');
             }
 
-            // Set receiver based on sender's role
+            // Set receiver based on sender's role and ticket claim status
+            let receiverId: number;
             if (message.senderId === ticket.customerId) {
-              receiverId = ticket.businessId!;
+              // If sender is customer, send to claimed employee or fall back to business
+              receiverId = ticket.claimedById || ticket.businessId!;
             } else {
+              // If sender is employee/business, send to customer
               receiverId = ticket.customerId;
             }
-            ticketId = ticket.id;
-          } else if (message.directMessageUserId) {
-            receiverId = message.directMessageUserId;
-            const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
-            if (!isValidDirectMessage) {
-              throw new Error('Unauthorized direct message');
-            }
-          } else {
-            throw new Error('Either ticketId or directMessageUserId is required');
-          }
 
-          const [savedMessage] = await db.insert(messages)
-            .values({
-              content: message.content,
-              senderId: message.senderId,
+            const [savedMessage] = await db.insert(messages)
+              .values({
+                content: message.content,
+                ticketId: message.ticketId,
+                senderId: message.senderId,
+                receiverId,
+                status: 'sent',
+                chatInitiator: false, // Chat is initiated when ticket is claimed
+                sentAt: new Date(),
+                createdAt: new Date()
+              })
+              .returning();
+
+            const responseMessage = {
+              type: 'message',
+              id: savedMessage.id,
+              content: savedMessage.content,
+              senderId: savedMessage.senderId,
               receiverId,
-              status: 'sent',
-              chatInitiator: isInitiator,
-              initiatedAt: isInitiator ? new Date() : null,
-              sentAt: new Date(),
-              createdAt: new Date(),
-              ticketId
-            })
-            .returning();
+              status: savedMessage.status,
+              ticketId: savedMessage.ticketId,
+              sentAt: savedMessage.sentAt.toISOString(),
+              createdAt: savedMessage.createdAt.toISOString()
+            };
 
-          const responseMessage = {
-            id: savedMessage.id,
-            type: 'message',
-            content: savedMessage.content,
-            senderId: savedMessage.senderId,
-            receiverId,
-            status: savedMessage.status,
-            chatInitiator: savedMessage.chatInitiator,
-            initiatedAt: savedMessage.initiatedAt?.toISOString(),
-            sentAt: savedMessage.sentAt.toISOString(),
-            createdAt: savedMessage.createdAt.toISOString(),
-            ticketId: savedMessage.ticketId
-          };
+            // Send message back to sender
+            ws.send(JSON.stringify(responseMessage));
 
-          // Send message back to sender
-          ws.send(JSON.stringify(responseMessage));
+            // Get receiver's role and send message
+            const receiverRole = await determineUserRole(receiverId);
+            if (receiverRole) {
+              const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+              if (receiverWs?.readyState === WebSocket.OPEN) {
+                receiverWs.send(JSON.stringify(responseMessage));
+              }
+            }
+          } else if (message.type === 'message') {
+            if (message.senderId !== userId) {
+              throw new Error('Invalid sender ID');
+            }
 
-          // Get receiver's role and send message
-          const receiverRole = await determineUserRole(receiverId);
-          if (receiverRole) {
-            const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
-            if (receiverWs?.readyState === WebSocket.OPEN) {
-              receiverWs.send(JSON.stringify(responseMessage));
+            let receiverId: number;
+            let ticketId: number | undefined = message.ticketId;
+            let isInitiator = message.chatInitiator || false;
+
+            if (message.ticketId) {
+              // Get ticket details to determine the receiver
+              const [ticket] = await db
+                .select()
+                .from(tickets)
+                .where(eq(tickets.id, message.ticketId));
+
+              if (!ticket) {
+                throw new Error('Invalid ticket');
+              }
+
+              // Set receiver based on sender's role
+              if (message.senderId === ticket.customerId) {
+                receiverId = ticket.businessId!;
+              } else {
+                receiverId = ticket.customerId;
+              }
+              ticketId = ticket.id;
+            } else if (message.directMessageUserId) {
+              receiverId = message.directMessageUserId;
+              const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
+              if (!isValidDirectMessage) {
+                throw new Error('Unauthorized direct message');
+              }
+            } else {
+              throw new Error('Either ticketId or directMessageUserId is required');
+            }
+
+            const [savedMessage] = await db.insert(messages)
+              .values({
+                content: message.content,
+                senderId: message.senderId,
+                receiverId,
+                status: 'sent',
+                chatInitiator: isInitiator,
+                initiatedAt: isInitiator ? new Date() : null,
+                sentAt: new Date(),
+                createdAt: new Date(),
+                ticketId
+              })
+              .returning();
+
+            const responseMessage = {
+              id: savedMessage.id,
+              type: 'message',
+              content: savedMessage.content,
+              senderId: savedMessage.senderId,
+              receiverId,
+              status: savedMessage.status,
+              chatInitiator: savedMessage.chatInitiator,
+              initiatedAt: savedMessage.initiatedAt?.toISOString(),
+              sentAt: savedMessage.sentAt.toISOString(),
+              createdAt: savedMessage.createdAt.toISOString(),
+              ticketId: savedMessage.ticketId
+            };
+
+            // Send message back to sender
+            ws.send(JSON.stringify(responseMessage));
+
+            // Get receiver's role and send message
+            const receiverRole = await determineUserRole(receiverId);
+            if (receiverRole) {
+              const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+              if (receiverWs?.readyState === WebSocket.OPEN) {
+                receiverWs.send(JSON.stringify(responseMessage));
+              }
             }
           }
-        }
       } catch (error) {
         console.error('Error handling message:', error);
         ws.send(JSON.stringify({

@@ -174,11 +174,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       return ticket.claimedById === user?.id && ticket.status !== "resolved";
     }
 
-    // Customers can't update claimed or resolved tickets
-    if (!isBusiness && !isEmployee) {
-      return ticket.status !== "resolved";
-    }
-
+    // Customers can't update ticket status
     return false;
   };
 
@@ -241,19 +237,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   <Badge className={getPriorityColor(ticket.priority)}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
-                  {!readonly && ticket.status !== "resolved" && (isBusiness || isEmployee) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="ml-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMessageClick(ticket.customerId);
-                      }}
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </Button>
-                  )}
                 </div>
               </div>
             </CardHeader>
@@ -284,6 +267,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </DialogDescription>
                   </div>
                   <div className="flex gap-2">
+                    {/* Show status dropdown for business/employee, static badge for customers */}
                     {canUpdateTicket(selectedTicket) ? (
                       <Select
                         defaultValue={selectedTicket.status}
@@ -323,48 +307,44 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   </div>
 
                   {/* Only show actions for business/employee users */}
-                  {(isBusiness || (!readonly && selectedTicket.status !== "resolved")) && (
-                    <>
-                      {(isBusiness || isEmployee) && (
-                        <div className="space-y-2">
-                          <h3 className="text-sm font-medium">Actions</h3>
-                          <div className="flex gap-2">
-                            {isEmployee && (
-                              selectedTicket.claimedById === null ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => claimTicket.mutate(selectedTicket.id)}
-                                  disabled={claimTicket.isPending}
-                                >
-                                  <Lock className="mr-2 h-4 w-4" />
-                                  Claim Ticket
-                                </Button>
-                              ) : selectedTicket.claimedById === user?.id && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => unclaimTicket.mutate(selectedTicket.id)}
-                                  disabled={unclaimTicket.isPending}
-                                >
-                                  <Unlock className="mr-2 h-4 w-4" />
-                                  Unclaim Ticket
-                                </Button>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
+                  {(isBusiness || isEmployee) && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium">Actions</h3>
+                      <div className="flex gap-2">
+                        {isEmployee && (
+                          selectedTicket.claimedById === null ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => claimTicket.mutate(selectedTicket.id)}
+                              disabled={claimTicket.isPending}
+                            >
+                              <Lock className="mr-2 h-4 w-4" />
+                              Claim Ticket
+                            </Button>
+                          ) : selectedTicket.claimedById === user?.id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => unclaimTicket.mutate(selectedTicket.id)}
+                              disabled={unclaimTicket.isPending}
+                            >
+                              <Unlock className="mr-2 h-4 w-4" />
+                              Unclaim Ticket
+                            </Button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                      {/* Only show private notes for business/employee users */}
-                      {(isBusiness || isEmployee) && (
-                        <div className="mt-6">
-                          <ScrollArea className="h-[200px] rounded-md border p-4">
-                            <TicketNotes ticketId={selectedTicket.id} />
-                          </ScrollArea>
-                        </div>
-                      )}
-                    </>
+                  {/* Only show private notes for business/employee users */}
+                  {(isBusiness || isEmployee) && (
+                    <div className="mt-6">
+                      <ScrollArea className="h-[200px] rounded-md border p-4">
+                        <TicketNotes ticketId={selectedTicket.id} />
+                      </ScrollArea>
+                    </div>
                   )}
 
                   {/* Show feedback for customers */}

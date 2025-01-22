@@ -51,40 +51,10 @@ export default function CustomerMessages() {
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
       const res = await fetch('/api/tickets/customer', {
-        credentials: 'include'
+        credentials: 'include' // Important for sending auth cookies
       });
       if (!res.ok) throw new Error(await res.text());
-      const tickets = await res.json();
-
-      // Get claiming employee info and business info for each ticket
-      const ticketsWithInfo = await Promise.all(
-        tickets.map(async (ticket: Ticket) => {
-          let claimedBy, claimedAt, business;
-
-          if (ticket.claimedById) {
-            const userRes = await fetch(`/api/users/${ticket.claimedById}`, {
-              credentials: 'include'
-            });
-            if (userRes.ok) {
-              claimedBy = await userRes.json();
-              claimedAt = ticket.updatedAt;
-            }
-          }
-
-          if (ticket.businessId) {
-            const businessRes = await fetch(`/api/users/${ticket.businessId}`, {
-              credentials: 'include'
-            });
-            if (businessRes.ok) {
-              business = await businessRes.json();
-            }
-          }
-
-          return { ...ticket, claimedBy, claimedAt, business };
-        })
-      );
-
-      return ticketsWithInfo;
+      return res.json();
     },
     refetchInterval: 5000
   });

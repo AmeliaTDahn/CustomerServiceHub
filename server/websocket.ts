@@ -3,120 +3,64 @@ import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
 import { messages } from "@db/schema";
+import crypto from 'crypto';
 
-interface Message {
-  type: string;
-  senderId: number;
-  receiverId: number;
-  content: string;
-  timestamp: string;
+interface Client {
+  ws: WebSocket;
+  userId: number;
+  tabId: string;
+  lastPong: number;
 }
 
-// Store active connections with role information
-const connections = new Map<string, WebSocket>();
+const clients = new Map<string, Client>();
+const HEARTBEAT_INTERVAL = 30000;
+const HEARTBEAT_TIMEOUT = 35000;
 
 export function setupWebSocket(server: Server, app: Express) {
   const wss = new WebSocketServer({ noServer: true });
 
-  // Keep track of connection attempts
-  const connectionAttempts = new Map<string, number>();
-  const MAX_ATTEMPTS = 5;
-  const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-
-  function heartbeat(ws: WebSocket) {
-    (ws as any).isAlive = true;
-  }
-
-  function noop() {}
-
-  // Set up heartbeat interval
-  const interval = setInterval(() => {
-    wss.clients.forEach((ws) => {
-      if ((ws as any).isAlive === false) {
-        console.log('Terminating inactive connection');
-        return ws.terminate();
+  // Heartbeat interval
+  setInterval(() => {
+    const now = Date.now();
+    clients.forEach((client, key) => {
+      if (now - client.lastPong > HEARTBEAT_TIMEOUT) {
+        client.ws.terminate();
+        clients.delete(key);
+        return;
       }
-
-      (ws as any).isAlive = false;
-      ws.ping(noop);
+      client.ws.ping();
     });
   }, HEARTBEAT_INTERVAL);
 
-  wss.on('close', () => {
-    clearInterval(interval);
-  });
+  wss.on('connection', (ws: WebSocket, userId: number, tabId: string) => {
+    const clientKey = `${userId}-${tabId}`;
+    clients.set(clientKey, { ws, userId, tabId, lastPong: Date.now() });
 
-  // Handle WebSocket connections
-  wss.on('connection', (ws: WebSocket, userId: number, role: string) => {
-    console.log(`New WebSocket connection for ${role} user ${userId}`);
-    const connectionKey = `${userId}-${role}`;
-    connections.set(connectionKey, ws);
+    ws.on('pong', () => {
+      const client = clients.get(clientKey);
+      if (client) {
+        client.lastPong = Date.now();
+      }
+    });
 
-    // Set up heartbeat
-    (ws as any).isAlive = true;
-    ws.on('pong', () => heartbeat(ws));
-
-    // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
-        const message: Message = JSON.parse(data);
-        console.log(`Received message:`, message);
+        const message = JSON.parse(data);
+        console.log('Received message:', message);
 
-        if (message.type !== 'message') {
-          console.log('Ignoring non-message type:', message.type);
-          return;
-        }
-
-        // Validate message format
-        if (!message.senderId || !message.receiverId || !message.content?.trim()) {
-          throw new Error('Invalid message format');
-        }
-
-        // Save message to database
-        const [savedMessage] = await db.insert(messages)
-          .values({
-            content: message.content,
-            senderId: message.senderId,
-            receiverId: message.receiverId,
-            createdAt: new Date(message.timestamp)
-          })
-          .returning();
-
-        console.log('Saved message to database:', savedMessage);
-
-        // Create response message
-        const responseMessage = {
-          id: savedMessage.id,
-          content: savedMessage.content,
-          senderId: savedMessage.senderId,
-          receiverId: savedMessage.receiverId,
-          timestamp: savedMessage.createdAt.toISOString()
-        };
-
-        // Forward message to receiver if online
-        const receiverRoles = ['business', 'customer', 'employee'];
-        let delivered = false;
-
-        for (const receiverRole of receiverRoles) {
-          const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
-          if (receiverWs?.readyState === WebSocket.OPEN) {
-            console.log(`Forwarding message to ${receiverRole} ${message.receiverId}`);
-            receiverWs.send(JSON.stringify(responseMessage));
-            delivered = true;
+        switch (message.type) {
+          case 'message':
+            await handleChatMessage(message);
             break;
-          }
+          case 'typing':
+            broadcastTyping(message);
+            break;
+          case 'presence':
+            updatePresence(message);
+            break;
+          default:
+            console.log('Unknown message type:', message.type);
         }
-
-        if (!delivered) {
-          console.log(`Receiver ${message.receiverId} is not online, message stored in database only`);
-        }
-
-        // Send confirmation back to sender
-        ws.send(JSON.stringify({
-          ...responseMessage,
-          delivered
-        }));
-
       } catch (error) {
         console.error('Error handling message:', error);
         ws.send(JSON.stringify({ 
@@ -126,65 +70,98 @@ export function setupWebSocket(server: Server, app: Express) {
       }
     });
 
-    // Handle connection close
     ws.on('close', () => {
-      console.log(`User ${userId} (${role}) disconnected`);
-      connections.delete(connectionKey);
+      clients.delete(clientKey);
+      broadcastPresence(userId, 'offline');
     });
 
-    // Handle connection errors
-    ws.on('error', (error) => {
-      console.error(`WebSocket error for user ${userId} (${role}):`, error);
-      connections.delete(connectionKey);
-    });
-
-    // Send initial connection success message
+    // Send initial connection success
     ws.send(JSON.stringify({ 
-      type: 'connection', 
+      type: 'connection',
       status: 'connected',
-      userId: userId,
-      role: role
+      userId,
+      tabId
     }));
+
+    // Broadcast presence
+    broadcastPresence(userId, 'online');
   });
 
   // Handle upgrade requests
   server.on('upgrade', (request, socket, head) => {
-    // Skip vite HMR requests
-    if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
-      return;
-    }
+    if (request.headers['sec-websocket-protocol'] === 'vite-hmr') return;
 
     try {
       const url = new URL(request.url!, `http://${request.headers.host}`);
       const userId = parseInt(url.searchParams.get('userId') || '');
-      const role = url.searchParams.get('role') || '';
+      const tabId = url.searchParams.get('tabId') || crypto.randomUUID();
 
-      if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
-        console.error('Invalid WebSocket connection parameters:', { userId, role });
+      if (!userId || isNaN(userId)) {
         socket.destroy();
         return;
       }
 
-      const connectionKey = `${userId}-${role}`;
-      const attempts = connectionAttempts.get(connectionKey) || 0;
-
-      if (attempts >= MAX_ATTEMPTS) {
-        console.error(`Too many connection attempts for ${connectionKey}`);
-        socket.destroy();
-        return;
-      }
-
-      connectionAttempts.set(connectionKey, attempts + 1);
-
-      console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, userId, role);
-        // Reset connection attempts on successful connection
-        connectionAttempts.delete(connectionKey);
+        wss.emit('connection', ws, userId, tabId);
       });
     } catch (error) {
       console.error('Error handling WebSocket upgrade:', error);
       socket.destroy();
     }
   });
+
+  async function handleChatMessage(message: any) {
+    const [savedMessage] = await db.insert(messages)
+      .values({
+        content: message.content,
+        senderId: message.senderId,
+        receiverId: message.receiverId,
+        createdAt: new Date()
+      })
+      .returning();
+
+    broadcastMessage(savedMessage);
+  }
+
+  function broadcastMessage(message: any) {
+    const messageStr = JSON.stringify({
+      type: 'message',
+      ...message
+    });
+
+    clients.forEach(client => {
+      if (client.userId === message.senderId || client.userId === message.receiverId) {
+        client.ws.send(messageStr);
+      }
+    });
+  }
+
+  function broadcastTyping(message: any) {
+    clients.forEach(client => {
+      if (client.userId === message.receiverId) {
+        client.ws.send(JSON.stringify({
+          type: 'typing',
+          senderId: message.senderId
+        }));
+      }
+    });
+  }
+
+  function broadcastPresence(userId: number, status: 'online' | 'offline') {
+    const message = JSON.stringify({
+      type: 'presence',
+      userId,
+      status
+    });
+
+    clients.forEach(client => {
+      if (client.userId !== userId) {
+        client.ws.send(message);
+      }
+    });
+  }
+
+  function updatePresence(message: any) {
+    broadcastPresence(message.userId, message.status);
+  }
 }

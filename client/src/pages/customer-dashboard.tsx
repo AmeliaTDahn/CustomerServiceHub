@@ -2,14 +2,25 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import TicketForm from "@/components/ticket-form";
 import TicketList from "@/components/ticket-list";
-import TicketFilters from "@/components/ticket-filters";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Plus } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
+
+interface Business {
+  id: number;
+  username: string;
+}
 
 export default function CustomerDashboard() {
   const { user, logout } = useUser();
@@ -17,6 +28,12 @@ export default function CustomerDashboard() {
     queryKey: ['/api/tickets'],
   });
 
+  // Fetch businesses the customer has interacted with
+  const { data: businesses = [] } = useQuery<Business[]>({
+    queryKey: ['/api/tickets/businesses'],
+  });
+
+  const [selectedBusiness, setSelectedBusiness] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -24,6 +41,10 @@ export default function CustomerDashboard() {
   const [sortBy, setSortBy] = useState("newest");
 
   const filteredTickets = tickets?.filter((ticket) => {
+    // Filter by selected business
+    if (selectedBusiness !== "all") {
+      return ticket.businessId?.toString() === selectedBusiness;
+    }
     const matchesSearch = searchTerm === "" || 
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -91,13 +112,24 @@ export default function CustomerDashboard() {
             </Dialog>
           </CardHeader>
           <CardContent className="space-y-6">
-            <TicketFilters 
-              onSearchChange={setSearchTerm}
-              onStatusChange={setStatusFilter}
-              onCategoryChange={setCategoryFilter}
-              onPriorityChange={setPriorityFilter}
-              onSortChange={setSortBy}
-            />
+            <div className="flex justify-end">
+              <Select
+                value={selectedBusiness}
+                onValueChange={setSelectedBusiness}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by business" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Businesses</SelectItem>
+                  {businesses.map((business) => (
+                    <SelectItem key={business.id} value={business.id.toString()}>
+                      {business.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <TicketList tickets={filteredTickets} />
           </CardContent>
         </Card>

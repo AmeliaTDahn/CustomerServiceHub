@@ -526,6 +526,29 @@ export function registerRoutes(app: Express): Server {
   });
 
 
+  // Add this endpoint after the "/api/tickets" GET route
+  app.get("/api/tickets/businesses", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "customer") {
+        return res.status(403).json({ error: "Only customers can view their business interactions" });
+      }
+
+      // Get unique businesses from the customer's tickets
+      const businesses = await db.selectDistinct({
+        id: users.id,
+        username: users.username
+      })
+      .from(tickets)
+      .innerJoin(users, eq(users.id, tickets.businessId))
+      .where(eq(tickets.customerId, req.user.id));
+
+      res.json(businesses);
+    } catch (error) {
+      console.error('Error fetching businesses:', error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
   // Claim a ticket (employees only)
   app.post("/api/tickets/:id/claim", async (req, res) => {
     try {

@@ -48,13 +48,13 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: directMessageUserId 
+    queryKey: directMessageUserId
       ? ['/api/messages/direct', directMessageUserId]
       : ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
     queryFn: async () => {
       if (!directMessageUserId && !ticketId) return [];
 
-      const endpoint = directMessageUserId 
+      const endpoint = directMessageUserId
         ? `/api/messages/direct/${directMessageUserId}`
         : `/api/tickets/${ticketId}/messages`;
 
@@ -92,7 +92,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (readonly) return false;
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
-    if (isCustomer) return isChatInitiated;
+    if (isCustomer && ticketId) return true; // Allow customers to always send messages in their tickets
     return false;
   };
 
@@ -103,9 +103,9 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         throw new Error("Not connected to message server");
       }
 
-      const receiverId = directMessageUserId || (messages[0]?.sender.id === user!.id 
-        ? messages[0]?.message.receiverId 
-        : messages[0]?.message.senderId);
+      const receiverId = directMessageUserId || (ticket ?
+        (user!.id === ticket.customerId ? ticket.businessId! : ticket.customerId) :
+        (messages[0]?.sender.id === user!.id ? messages[0]?.message.receiverId : messages[0]?.message.senderId));
 
       // Create optimistic message
       const optimisticMessage: Message = {
@@ -116,8 +116,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           senderId: user!.id,
           receiverId,
           status: 'sending',
-          chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
-          initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
+          chatInitiator: messages?.length === 0,
+          initiatedAt: messages?.length === 0 ? new Date().toISOString() : null,
           sentAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         },
@@ -140,7 +140,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         timestamp: new Date().toISOString(),
         ticketId: ticketId || undefined,
         directMessageUserId,
-        chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
+        chatInitiator: messages?.length === 0,
       });
 
       return optimisticMessage;
@@ -150,12 +150,12 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
       // Invalidate queries to refresh the messages
       if (directMessageUserId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/messages/direct', directMessageUserId] 
+        queryClient.invalidateQueries({
+          queryKey: ['/api/messages/direct', directMessageUserId]
         });
       } else if (ticketId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/tickets', ticketId, 'messages'] 
+        queryClient.invalidateQueries({
+          queryKey: ['/api/tickets', ticketId, 'messages']
         });
       }
     },
@@ -259,8 +259,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
               className="flex-1"
               disabled={!isConnected || sendMessageMutation.isPending}
             />
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
               className="relative"
             >

@@ -343,7 +343,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Fetch all messages for this ticket
-      const messages = await db.select({
+      const ticketMessages = await db.select({
         message: messages,
         sender: {
           id: users.id,
@@ -353,16 +353,10 @@ export function registerRoutes(app: Express): Server {
       })
       .from(messages)
       .innerJoin(users, eq(users.id, messages.senderId))
-      .where(and(
-        eq(messages.ticketId, parseInt(ticketId)),
-        or(
-          eq(messages.senderId, req.user.id),
-          eq(messages.receiverId, req.user.id)
-        )
-      ))
+      .where(eq(messages.ticketId, parseInt(ticketId)))
       .orderBy(messages.createdAt);
 
-      res.json(messages);
+      res.json(ticketMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);
       res.status(500).json({ error: "Failed to fetch messages" });
@@ -898,8 +892,8 @@ export function registerRoutes(app: Express): Server {
 
       res.json(note);    } catch (error) {
       console.error('Error adding note:', error);
-            res.status(500).json({ error: "Failed to add note" });
-    }
+      res.status(500).json({ error: "Failed to add note" });
+        }
   });
 
   app.get("/api/tickets/:id/notes", async (req, res) => {

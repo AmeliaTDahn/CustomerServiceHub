@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useWebSocket } from "@/hooks/use-websocket";
 
 interface Message {
   message: {
@@ -31,12 +32,11 @@ interface TicketChatProps {
 
 export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const queryClient = useQueryClient();
+  const { isConnected, sendMessage, sendReadReceipt } = useWebSocket(user?.id, user?.role);
 
   // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
@@ -50,20 +50,39 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
     }
   });
 
+  // Mark messages as read when viewing
+  useEffect(() => {
+    if (messages.length > 0 && user) {
+      messages.forEach(msg => {
+        if (msg.message.receiverId === user.id && msg.message.status !== 'read') {
+          sendReadReceipt(msg.message.id);
+        }
+      });
+    }
+  }, [messages, user, sendReadReceipt]);
+
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-        credentials: 'include'
+      if (!isConnected) {
+        throw new Error("Not connected to message server");
+      }
+
+      // Send through WebSocket first
+      sendMessage({
+        type: 'message',
+        senderId: user!.id,
+        receiverId: messages[0]?.sender.id === user!.id 
+          ? messages[0]?.message.receiverId 
+          : messages[0]?.message.senderId,
+        content: content,
+        timestamp: new Date().toISOString(),
+        ticketId: ticketId
       });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+
+      return true;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
       setNewMessage("");
     },
     onError: (error) => {
@@ -75,84 +94,9 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
     }
   });
 
-  const connectWebSocket = () => {
-    try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws?ticketId=${ticketId}`;
-      const wsInstance = new WebSocket(wsUrl);
-
-      wsInstance.onopen = () => {
-        console.log('WebSocket Connected');
-      };
-
-      wsInstance.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
-
-          // Scroll to bottom on new message
-          if (scrollAreaRef.current) {
-            setTimeout(() => {
-              const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-              if (scrollArea) {
-                scrollArea.scrollTop = scrollArea.scrollHeight;
-              }
-            }, 100);
-          }
-        } catch (error) {
-          console.error('Error parsing message:', error);
-        }
-      };
-
-      wsInstance.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Connection error. Attempting to reconnect...",
-        });
-      };
-
-      wsInstance.onclose = () => {
-        console.log('WebSocket Disconnected');
-        setWs(null);
-        // Attempt to reconnect after delay
-        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-      };
-
-      setWs(wsInstance);
-      return wsInstance;
-    } catch (error) {
-      console.error('Error setting up WebSocket:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to setup chat connection. Retrying...",
-      });
-      // Attempt to reconnect after delay
-      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    if (!readonly) {
-      const wsInstance = connectWebSocket();
-
-      return () => {
-        if (wsInstance) {
-          wsInstance.close();
-        }
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-      };
-    }
-  }, [ticketId, readonly]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || readonly) return;
+    if (!newMessage.trim() || readonly || !user) return;
     sendMessageMutation.mutate(newMessage.trim());
   };
 
@@ -160,11 +104,11 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
     <div className="flex flex-col h-full">
       <ScrollArea ref={scrollAreaRef} className="flex-1">
         <div className="space-y-4 p-4">
-          {messages.map((messageData, index) => (
+          {messages?.map((messageData) => (
             <div
               key={messageData.message.id}
-              className={`flex flex-col ${
-                messageData.sender.id === user?.id ? "items-end" : "items-start"
+              className={`flex ${
+                messageData.sender.id === user?.id ? "justify-end" : "justify-start"
               }`}
             >
               <div
@@ -181,9 +125,18 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
                   </span>
                 </div>
                 <p className="text-sm">{messageData.message.content}</p>
-                <p className="text-xs opacity-70 mt-1">
-                  {new Date(messageData.message.sentAt).toLocaleTimeString()}
-                </p>
+                <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                  <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                  {messageData.sender.id === user?.id && (
+                    <span className="ml-2">
+                      {messageData.message.status === 'sent' && '✓'}
+                      {messageData.message.status === 'delivered' && '✓✓'}
+                      {messageData.message.status === 'read' && (
+                        <span className="text-blue-500">✓✓</span>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -200,13 +153,13 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type your message..."
+              placeholder={isConnected ? "Type your message..." : "Connecting..."}
               className="flex-1"
-              disabled={sendMessageMutation.isPending}
+              disabled={!isConnected || sendMessageMutation.isPending}
             />
             <Button 
               type="submit" 
-              disabled={!newMessage.trim() || sendMessageMutation.isPending}
+              disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
             >
               Send
             </Button>

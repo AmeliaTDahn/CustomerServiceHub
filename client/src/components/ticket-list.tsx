@@ -123,6 +123,42 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     },
   });
 
+  const reopenTicket = useMutation({
+    mutationFn: async (ticketId: number) => {
+      // First, unclaim the ticket
+      await fetch(`/api/tickets/${ticketId}/unclaim`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      // Then, update status to open
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "open" }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      toast({
+        title: "Success",
+        description: "Ticket reopened successfully",
+      });
+      setSelectedTicket(null); // Close the dialog after reopening
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message,
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "open":
@@ -318,6 +354,16 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                                 Unclaim Ticket
                               </Button>
                             )
+                          )}
+                          {isBusiness && selectedTicket.status === "resolved" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => reopenTicket.mutate(selectedTicket.id)}
+                              disabled={reopenTicket.isPending}
+                            >
+                              Reopen Ticket
+                            </Button>
                           )}
                         </div>
                         <Button

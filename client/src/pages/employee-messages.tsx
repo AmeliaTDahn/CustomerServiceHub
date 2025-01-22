@@ -5,10 +5,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Send, Users, User } from "lucide-react";
+import { MessageCircle, Send, Users, User, Loader2 } from "lucide-react";
 import type { User as UserType } from "@db/schema";
-import { useToast } from "@/hooks/use-toast";
 import { initializeWebSocket, getWebSocketClient } from "@/lib/websocket";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: number;
@@ -25,6 +25,7 @@ export default function EmployeeMessages() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch customers (only those with tickets)
@@ -54,58 +55,78 @@ export default function EmployeeMessages() {
     staff.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Fetch messages
+  // Fetch messages for selected user
   const { data: messages = [], isError, error } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUserId],
     queryFn: async () => {
       if (!selectedUserId || !user) return [];
-      const response = await fetch(`/api/messages/${selectedUserId}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch messages');
+      try {
+        const response = await fetch(`/api/messages/${selectedUserId}`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch messages');
+        }
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load messages. Please try again.",
+        });
+        return [];
       }
-      return response.json();
     },
     enabled: !!selectedUserId && !!user,
   });
 
-  // Initialize WebSocket connection
+  // Set up WebSocket connection
   useEffect(() => {
     if (!user) return;
 
-    try {
-      console.log('Setting up WebSocket connection...');
-      const wsClient = initializeWebSocket(user.id, user.role, toast);
+    let wsClient: ReturnType<typeof initializeWebSocket> | null = null;
 
-      const unsubscribe = wsClient.onMessage((message) => {
-        // Only update messages if they're related to the current conversation
-        if (message.senderId === selectedUserId || message.receiverId === selectedUserId) {
-          console.log('Received message for current conversation:', message);
-          queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUserId] });
+    async function setupWebSocket() {
+      try {
+        setIsConnecting(true);
+        console.log('Setting up WebSocket connection...');
+        wsClient = initializeWebSocket(user.id, user.role, toast);
+        await wsClient.ensureConnection();
 
-          // Show notification for new messages
-          if (message.senderId !== user.id) {
-            toast({
-              title: "New Message",
-              description: "You have received a new message",
-            });
+        const unsubscribe = wsClient.onMessage((message) => {
+          if (message.senderId === selectedUserId || message.receiverId === selectedUserId) {
+            console.log('Received message for current conversation:', message);
+            queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUserId] });
+
+            if (message.senderId !== user.id) {
+              toast({
+                title: "New Message",
+                description: "You have received a new message",
+              });
+            }
           }
-        }
-      });
+        });
 
-      return () => {
-        console.log('Cleaning up WebSocket connection...');
-        unsubscribe();
-      };
-    } catch (error) {
-      console.error('Failed to initialize WebSocket:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: error instanceof Error ? error.message : "Failed to connect to messaging service",
-      });
+        return unsubscribe;
+      } catch (error) {
+        console.error('WebSocket setup error:', error);
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: error instanceof Error ? error.message : "Failed to connect to messaging service",
+        });
+      } finally {
+        setIsConnecting(false);
+      }
     }
+
+    const cleanup = setupWebSocket();
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
   }, [user, selectedUserId, queryClient, toast]);
 
   // When loading the page with a customerId, find and select that customer
@@ -136,7 +157,8 @@ export default function EmployeeMessages() {
       });
 
       const wsClient = getWebSocketClient();
-      wsClient.sendMessage(selectedUserId, message.trim());
+      await wsClient.ensureConnection();
+      await wsClient.sendMessage(selectedUserId, message.trim());
       setMessage("");
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -148,14 +170,6 @@ export default function EmployeeMessages() {
     }
   };
 
-  if (isError) {
-    toast({
-      variant: "destructive",
-      title: "Error",
-      description: error instanceof Error ? error.message : "Failed to load messages",
-    });
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
@@ -163,6 +177,9 @@ export default function EmployeeMessages() {
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <MessageCircle className="h-8 w-8" />
             Message Center
+            {isConnecting && (
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground ml-2" />
+            )}
           </h1>
         </div>
       </header>
@@ -270,9 +287,17 @@ export default function EmployeeMessages() {
                               handleSendMessage();
                             }
                           }}
+                          disabled={isConnecting}
                         />
-                        <Button onClick={handleSendMessage}>
-                          <Send className="h-4 w-4" />
+                        <Button 
+                          onClick={handleSendMessage}
+                          disabled={isConnecting}
+                        >
+                          {isConnecting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>

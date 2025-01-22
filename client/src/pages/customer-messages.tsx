@@ -5,8 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { MessageCircle, Search, ArrowLeft, UserCheck, Building2 } from "lucide-react";
-import { Link } from "wouter";
+import { MessageCircle, Search, ArrowLeft, UserCheck, Building2, CircleDot } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import {
   Select,
   SelectContent,
@@ -88,7 +88,7 @@ export default function CustomerMessages() {
           if (!messagesRes.ok) throw new Error(await messagesRes.text());
           const messages = await messagesRes.json();
 
-          // Count unread messages
+          // Count unread messages and check for business response
           const unreadCount = messages.filter((m: any) =>
             m.message.receiverId === user?.id &&
             m.message.status !== 'read'
@@ -192,6 +192,9 @@ export default function CustomerMessages() {
                             {ticket.unreadCount}
                           </span>
                         ) : null}
+                        {!ticket.claimedById && (
+                          <CircleDot className="h-3 w-3 text-blue-500" title="Broadcasting to all employees" />
+                        )}
                       </div>
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(ticket.status)}`}>
                         {ticket.status.replace("_", " ")}
@@ -210,6 +213,9 @@ export default function CustomerMessages() {
                       )}
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                        {ticket.hasBusinessResponse && (
+                          <span className="text-green-600">•  New response</span>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -235,6 +241,12 @@ export default function CustomerMessages() {
                         <p className="text-sm text-muted-foreground flex items-center gap-1">
                           <Building2 className="h-3 w-3" />
                           {selectedTicket?.business.username}
+                          {!selectedTicket?.claimedById && (
+                            <span className="ml-2 text-blue-500 flex items-center gap-1">
+                              <CircleDot className="h-3 w-3" />
+                              Broadcasting to all employees
+                            </span>
+                          )}
                         </p>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(selectedTicket?.status || '')}`}>

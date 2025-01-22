@@ -6,6 +6,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@db/schema";
@@ -19,20 +25,25 @@ interface Message {
 }
 
 export default function BusinessMessages() {
-  const customerId = new URLSearchParams(window.location.search).get('customerId');
   const { user } = useUser();
   const { toast } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch all customers
-  const { data: customers } = useQuery<User[]>({
+  const { data: customers = [] } = useQuery<User[]>({
     queryKey: ['/api/customers'],
+  });
+
+  // Fetch all employees
+  const { data: employees = [] } = useQuery<User[]>({
+    queryKey: ['/api/businesses/employees'],
   });
 
   // Fetch messages for selected user
@@ -41,18 +52,12 @@ export default function BusinessMessages() {
     enabled: !!selectedUser,
   });
 
-  // When loading the page with a customerId, find and select that customer
-  useEffect(() => {
-    if (customerId && customers) {
-      const customer = customers.find(c => c.id === parseInt(customerId));
-      if (customer) {
-        setSelectedUser(customer);
-      }
-    }
-  }, [customerId, customers]);
-
   const filteredCustomers = customers?.filter(customer =>
-    customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+    customer.username.toLowerCase().includes(customerSearchTerm.toLowerCase())
+  );
+
+  const filteredEmployees = employees?.filter(employee =>
+    employee.employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   );
 
   // Scroll to bottom when new messages arrive
@@ -68,13 +73,11 @@ export default function BusinessMessages() {
 
     const connectWebSocket = () => {
       try {
-        console.log('Connecting WebSocket...');
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.role}`;
         const wsInstance = new WebSocket(wsUrl);
 
         wsInstance.onopen = () => {
-          console.log('WebSocket Connected');
           toast({
             title: "Connected",
             description: "Message connection established",
@@ -84,11 +87,9 @@ export default function BusinessMessages() {
         wsInstance.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log('Received WebSocket message:', data);
 
             // Handle connection status message
             if (data.type === 'connection') {
-              console.log('Connection status:', data.status);
               return;
             }
 
@@ -112,7 +113,6 @@ export default function BusinessMessages() {
         };
 
         wsInstance.onerror = (error) => {
-          console.error('WebSocket Error:', error);
           toast({
             variant: "destructive",
             title: "Error",
@@ -121,7 +121,6 @@ export default function BusinessMessages() {
         };
 
         wsInstance.onclose = () => {
-          console.log('WebSocket Closed');
           setWs(null);
           // Attempt to reconnect after 3 seconds
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
@@ -129,7 +128,6 @@ export default function BusinessMessages() {
 
         setWs(wsInstance);
       } catch (error) {
-        console.error('Error setting up WebSocket:', error);
         toast({
           variant: "destructive",
           title: "Error",
@@ -165,11 +163,9 @@ export default function BusinessMessages() {
     };
 
     try {
-      console.log('Sending message:', message);
       ws.send(JSON.stringify(message));
       setNewMessage("");
     } catch (error) {
-      console.error('Error sending message:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -189,32 +185,76 @@ export default function BusinessMessages() {
         </Link>
       </div>
       <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
-        {/* Customer List */}
+        {/* Sidebar with Tabs */}
         <Card className="col-span-4 flex flex-col">
-          <div className="p-4 border-b">
-            <Input
-              placeholder="Search customers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="p-2 space-y-2">
-              {filteredCustomers?.map((customer) => (
-                <div
-                  key={customer.id}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                    selectedUser?.id === customer.id
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                  onClick={() => setSelectedUser(customer)}
-                >
-                  <div className="font-medium">{customer.username}</div>
-                </div>
-              ))}
+          <Tabs defaultValue="customers" className="w-full">
+            <TabsList className="w-full">
+              <TabsTrigger value="customers" className="flex-1">Customers</TabsTrigger>
+              <TabsTrigger value="employees" className="flex-1">Employees</TabsTrigger>
+            </TabsList>
+
+            <div className="p-4">
+              <Input
+                placeholder={`Search ${
+                  customerSearchTerm ? "customers" : "employees"
+                }...`}
+                value={customerSearchTerm ? customerSearchTerm : employeeSearchTerm}
+                onChange={(e) =>
+                  customerSearchTerm
+                    ? setCustomerSearchTerm(e.target.value)
+                    : setEmployeeSearchTerm(e.target.value)
+                }
+              />
             </div>
-          </ScrollArea>
+
+            <ScrollArea className="flex-1">
+              <TabsContent value="customers" className="m-0">
+                <div className="space-y-2 p-2">
+                  {filteredCustomers?.map((customer) => (
+                    <div
+                      key={customer.id}
+                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedUser?.id === customer.id
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                      onClick={() => setSelectedUser(customer)}
+                    >
+                      <div className="font-medium">{customer.username}</div>
+                    </div>
+                  ))}
+                  {filteredCustomers?.length === 0 && (
+                    <div className="p-3 text-sm text-muted-foreground">
+                      No customers found
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="employees" className="m-0">
+                <div className="space-y-2 p-2">
+                  {filteredEmployees?.map((employee) => (
+                    <div
+                      key={employee.employee.id}
+                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedUser?.id === employee.employee.id
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                      onClick={() => setSelectedUser(employee.employee)}
+                    >
+                      <div className="font-medium">{employee.employee.username}</div>
+                    </div>
+                  ))}
+                  {filteredEmployees?.length === 0 && (
+                    <div className="p-3 text-sm text-muted-foreground">
+                      No employees found
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </ScrollArea>
+          </Tabs>
         </Card>
 
         {/* Chat Area */}
@@ -266,7 +306,7 @@ export default function BusinessMessages() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a customer to start messaging
+              Select a user to start messaging
             </div>
           )}
         </Card>

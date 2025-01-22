@@ -58,8 +58,13 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.role = role;
     ws.isAlive = true;
 
+    // Store connection with user's actual role
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
+
+    // Also store a map of user IDs to their roles for proper lookup
+    const userRoleMap = new Map<number, string>();
+    userRoleMap.set(userId, role);
 
     // Handle pong messages for heartbeat
     ws.on('pong', () => {
@@ -200,12 +205,23 @@ export function setupWebSocket(server: Server, app: Express) {
           createdAt: savedMessage.createdAt.toISOString()
         };
 
-        // Forward message to receiver if online
-        const receiverRoles = ['business', 'customer', 'employee'];
-        let delivered = false;
+        // Forward message to receiver if online - use ticket info to determine role
+        const [ticket] = await db.select()
+          .from(tickets)
+          .where(eq(tickets.id, message.ticketId));
 
-        for (const receiverRole of receiverRoles) {
-          const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
+        if (!ticket) {
+          throw new Error('Invalid ticket');
+        }
+
+        // Determine receiver's role based on ticket relationship
+        const receiverRole = message.receiverId === ticket.customerId ? 'customer' : 
+                           message.receiverId === ticket.businessId ? 'business' : 'employee';
+        
+        const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
+        let delivered = false;
+        
+        if (receiverWs?.readyState === WebSocket.OPEN) {
           if (receiverWs?.readyState === WebSocket.OPEN) {
             console.log(`Forwarding message to ${receiverRole} ${message.receiverId}`);
             receiverWs.send(JSON.stringify(responseMessage));

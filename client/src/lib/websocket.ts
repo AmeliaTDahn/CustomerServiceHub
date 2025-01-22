@@ -1,4 +1,3 @@
-
 import type { Toast } from "@/hooks/use-toast";
 
 interface Message {
@@ -13,26 +12,23 @@ class WebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectTimeout = 1000;
-  private messageCallbacks: ((message: any) => void)[] = [];
-  private presenceCallbacks: ((data: any) => void)[] = [];
-  private typingCallbacks: ((data: any) => void)[] = [];
+  private reconnectTimeout = 1000; // Start with 1 second
+  private messageCallbacks: ((message: Message) => void)[] = [];
   private toast: Toast;
   private userId: number;
-  private tabId: string;
-  private pingInterval: NodeJS.Timer | null = null;
+  private role: string;
 
-  constructor(userId: number, toast: Toast) {
+  constructor(userId: number, role: string, toast: Toast) {
     this.userId = userId;
+    this.role = role;
     this.toast = toast;
-    this.tabId = crypto.randomUUID();
     this.connect();
   }
 
   private connect() {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${this.userId}&tabId=${this.tabId}`;
+      const wsUrl = `${protocol}//${window.location.host}?userId=${this.userId}&role=${this.role}`;
 
       console.log('Connecting to WebSocket:', wsUrl);
       this.ws = new WebSocket(wsUrl);
@@ -51,13 +47,6 @@ class WebSocketClient {
     console.log('WebSocket connected');
     this.reconnectAttempts = 0;
     this.reconnectTimeout = 1000;
-    
-    // Setup ping interval
-    this.pingInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 30000);
   }
 
   private handleMessage(event: MessageEvent) {
@@ -65,23 +54,16 @@ class WebSocketClient {
       const message = JSON.parse(event.data);
       console.log('Received message:', message);
 
-      switch (message.type) {
-        case 'connection':
-          this.toast({
-            title: "Connected",
-            description: "Successfully connected to messaging service",
-          });
-          break;
-        case 'message':
-          this.messageCallbacks.forEach(callback => callback(message));
-          break;
-        case 'typing':
-          this.typingCallbacks.forEach(callback => callback(message));
-          break;
-        case 'presence':
-          this.presenceCallbacks.forEach(callback => callback(message));
-          break;
+      // Handle connection messages
+      if (message.type === 'connection') {
+        this.toast({
+          title: "Connected",
+          description: "Successfully connected to messaging service",
+        });
+        return;
       }
+
+      this.messageCallbacks.forEach(callback => callback(message));
     } catch (error) {
       console.error('Error parsing message:', error);
     }
@@ -89,10 +71,6 @@ class WebSocketClient {
 
   private handleClose() {
     console.log('WebSocket closed');
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
     this.handleReconnection();
   }
 
@@ -130,7 +108,7 @@ class WebSocketClient {
       throw new Error('WebSocket is not connected');
     }
 
-    const message = {
+    const message: Message = {
       type: 'message',
       senderId: this.userId,
       receiverId,
@@ -142,34 +120,10 @@ class WebSocketClient {
     this.ws.send(JSON.stringify(message));
   }
 
-  public sendTyping(receiverId: number) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'typing',
-        senderId: this.userId,
-        receiverId
-      }));
-    }
-  }
-
-  public onMessage(callback: (message: any) => void) {
+  public onMessage(callback: (message: Message) => void) {
     this.messageCallbacks.push(callback);
     return () => {
       this.messageCallbacks = this.messageCallbacks.filter(cb => cb !== callback);
-    };
-  }
-
-  public onTyping(callback: (data: any) => void) {
-    this.typingCallbacks.push(callback);
-    return () => {
-      this.typingCallbacks = this.typingCallbacks.filter(cb => cb !== callback);
-    };
-  }
-
-  public onPresence(callback: (data: any) => void) {
-    this.presenceCallbacks.push(callback);
-    return () => {
-      this.presenceCallbacks = this.presenceCallbacks.filter(cb => cb !== callback);
     };
   }
 
@@ -178,18 +132,15 @@ class WebSocketClient {
       this.ws.close();
       this.ws = null;
     }
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
   }
 }
 
+// Singleton instance
 let wsClient: WebSocketClient | null = null;
 
-export function initializeWebSocket(userId: number, toast: Toast) {
+export function initializeWebSocket(userId: number, role: string, toast: Toast) {
   if (!wsClient) {
-    wsClient = new WebSocketClient(userId, toast);
+    wsClient = new WebSocketClient(userId, role, toast);
   }
   return wsClient;
 }

@@ -121,7 +121,11 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           return;
         }
 
-        // Handle ping response
+        // Handle ping/pong messages
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
         if (data.type === 'pong') {
           return;
         }

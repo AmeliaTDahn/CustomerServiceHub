@@ -43,7 +43,8 @@ export function setupWebSocket(server: Server, app: Express) {
       }
 
       ws.isAlive = false;
-      ws.ping();
+      // Send JSON ping instead of raw ping
+      ws.send(JSON.stringify({ type: 'ping' }));
     });
   }, 30000);
 
@@ -125,6 +126,13 @@ export function setupWebSocket(server: Server, app: Express) {
       try {
         const message = JSON.parse(data);
         console.log(`Received message:`, message);
+
+        // Handle ping messages
+        if (message.type === 'ping') {
+          ws.isAlive = true;
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
 
         // Validate message sender matches connection user
         if (message.senderId !== userId) {

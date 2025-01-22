@@ -150,7 +150,7 @@ export function setupWebSocket(server: Server, app: Express) {
   // Handle upgrade requests
   server.on('upgrade', (request, socket, head) => {
     // Skip vite HMR requests
-    if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
+    if (request.headers['sec-websocket-protocol'] === 'vite-hmr' || !request.url?.startsWith('/ws')) {
       return;
     }
 

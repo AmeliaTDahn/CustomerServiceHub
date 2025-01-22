@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { users, messages } from "@db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
+import { eq, and, or, not, exists, desc } from "drizzle-orm";
+import { sql } from 'drizzle-orm/sql';
 
 // Extend Express.User to include our schema
 declare global {
@@ -15,87 +16,6 @@ declare global {
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
-  const httpServer = createServer(app);
-  setupWebSocket(httpServer, app);
-
-  // Get all available users for messaging
-  app.get("/api/users/available", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    try {
-      // Get all users except the current user
-      const availableUsers = await db.select({
-        id: users.id,
-        username: users.username,
-        role: users.role
-      })
-      .from(users)
-      .where(
-        and(
-          // Don't include current user
-          users.id !== req.user.id,
-          // Only allow messaging between employees/businesses and customers
-          or(
-            // If current user is customer, show businesses and employees
-            and(
-              eq(users.role, req.user.role === 'customer' ? 'business' : 'customer')
-            ),
-            // If current user is business/employee, show customers
-            and(
-              eq(users.role, 'customer'),
-              or(
-                eq(users.role, 'business'),
-                eq(users.role, 'employee')
-              )
-            )
-          )
-        )
-      );
-
-      res.json(availableUsers);
-    } catch (error) {
-      console.error('Error fetching available users:', error);
-      res.status(500).json({ error: "Failed to fetch users" });
-    }
-  });
-
-  // Get messages between current user and specified user
-  app.get("/api/messages/:userId", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { userId } = req.params;
-
-    try {
-      const userMessages = await db.select({
-        id: messages.id,
-        content: messages.content,
-        senderId: messages.senderId,
-        receiverId: messages.receiverId,
-        createdAt: messages.createdAt
-      })
-      .from(messages)
-      .where(
-        or(
-          // Messages sent by current user to specified user
-          and(
-            eq(messages.senderId, req.user.id),
-            eq(messages.receiverId, parseInt(userId))
-          ),
-          // Messages received by current user from specified user
-          and(
-            eq(messages.senderId, parseInt(userId)),
-            eq(messages.receiverId, req.user.id)
-          )
-        )
-      )
-      .orderBy(messages.createdAt);
-
-      res.json(userMessages);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  });
 
   // Employee management routes
   app.post("/api/businesses/employees/invite", async (req, res) => {
@@ -912,7 +832,7 @@ export function registerRoutes(app: Express): Server {
       if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view this feedback" });
       }
-      if (req.user.role === ""customer" && ticket.customerId !== req.user.id) {
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view this feedback" });
       }
 
@@ -979,7 +899,7 @@ export function registerRoutes(app: Express): Server {
       res.json(note);
     } catch (error) {
       console.error('Error adding note:', error);
-      res.status(500).json({ error: "Failed to add note" });
+            res.status(500).json({ error: "Failed to add note" });
     }
   });
 
@@ -1430,6 +1350,11 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to fetch staff" });
     }
   });
+
+  const httpServer = createServer(app);
+
+  // Setup WebSocket server
+  setupWebSocket(httpServer, app);
 
   return httpServer;
 }

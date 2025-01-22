@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Search, ArrowLeft } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import {
   Tabs,
@@ -26,6 +26,12 @@ interface User {
   id: number;
   username: string;
   role: string;
+}
+
+interface BusinessUser {
+  id: number;
+  username: string;
+  role: 'business';
 }
 
 export default function EmployeeMessages() {
@@ -50,16 +56,30 @@ export default function EmployeeMessages() {
     enabled: activeTab === "direct"
   });
 
+  // Fetch connected business user
+  const { data: businessUser } = useQuery<BusinessUser>({
+    queryKey: ['/api/users/connected-business'],
+    enabled: activeTab === "direct"
+  });
+
+  // Auto-select business user when switching to direct messages
+  useEffect(() => {
+    if (activeTab === "direct" && businessUser && !selectedUserId) {
+      setSelectedUserId(businessUser.id);
+    }
+  }, [activeTab, businessUser]);
+
   // Filter tickets based on search term
   const filteredTickets = tickets.filter(ticket =>
     ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
     ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase())
   );
 
-  // Filter users based on search term
+  // Filter users based on search term, excluding the business user
   const filteredUsers = users.filter(u =>
     u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) &&
-    u.id !== user?.id // Exclude current user
+    u.id !== user?.id && // Exclude current user
+    u.id !== businessUser?.id // Exclude business user as it's shown separately
   );
 
   const handleUserSelect = (userId: number) => {
@@ -160,27 +180,62 @@ export default function EmployeeMessages() {
               <TabsContent value="direct" className="flex-1 border-0 m-0 p-0">
                 <CardContent className="p-0 flex-1 overflow-auto">
                   <div className="divide-y">
-                    {filteredUsers.map((otherUser) => (
-                      <button
-                        key={otherUser.id}
-                        onClick={() => handleUserSelect(otherUser.id)}
-                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedUserId === otherUser.id ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{otherUser.username}</p>
-                          <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                            {otherUser.role}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                    {filteredUsers.length === 0 && userSearchTerm && (
-                      <div className="px-4 py-3 text-sm text-muted-foreground">
-                        No users found matching "{userSearchTerm}"
+                    {/* Business User Section */}
+                    {businessUser && (
+                      <div className="p-4 bg-muted/50">
+                        <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                          <Building2 className="h-4 w-4" />
+                          Business Account
+                        </h3>
+                        <button
+                          onClick={() => handleUserSelect(businessUser.id)}
+                          className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                            selectedUserId === businessUser.id 
+                              ? "bg-primary text-primary-foreground" 
+                              : "bg-background hover:bg-muted"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">{businessUser.username}</p>
+                            <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                              Business Owner
+                            </span>
+                          </div>
+                        </button>
                       </div>
                     )}
+
+                    {/* Other Users Section */}
+                    <div className="p-4">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                        Other Employees
+                      </h3>
+                      <div className="space-y-2">
+                        {filteredUsers.map((otherUser) => (
+                          <button
+                            key={otherUser.id}
+                            onClick={() => handleUserSelect(otherUser.id)}
+                            className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                              selectedUserId === otherUser.id 
+                                ? "bg-primary text-primary-foreground" 
+                                : "hover:bg-muted"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium">{otherUser.username}</p>
+                              <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                                {otherUser.role}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                        {filteredUsers.length === 0 && userSearchTerm && (
+                          <div className="text-sm text-muted-foreground">
+                            No users found matching "{userSearchTerm}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </TabsContent>

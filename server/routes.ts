@@ -896,8 +896,7 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      res.json(note);
-    } catch (error) {
+      res.json(note);    } catch (error) {
       console.error('Error adding note:', error);
             res.status(500).json({ error: "Failed to add note" });
     }
@@ -1348,6 +1347,176 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching staff:', error);
       res.status(500).json({ error: "Failed to fetch staff" });
+    }
+  });
+
+  // Add these routes after the existing message routes
+
+  // Get direct messages between users
+  app.get("/api/messages/direct/:userId", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { userId } = req.params;
+    const targetUserId = parseInt(userId);
+
+    try {
+      // Verify the relationship exists if it's business-employee communication
+      const [relationship] = await db.select()
+        .from(businessEmployees)
+        .where(
+          or(
+            and(
+              eq(businessEmployees.businessId, req.user.id),
+              eq(businessEmployees.employeeId, targetUserId),
+              eq(businessEmployees.isActive, true)
+            ),
+            and(
+              eq(businessEmployees.businessId, targetUserId),
+              eq(businessEmployees.employeeId, req.user.id),
+              eq(businessEmployees.isActive, true)
+            )
+          )
+        );
+
+      if (!relationship) {
+        return res.status(403).json({ error: "No valid relationship exists between users" });
+      }
+
+      // Fetch all messages between these users
+      const userMessages = await db.select({
+        message: messages,
+        sender: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        }
+      })
+      .from(messages)
+      .innerJoin(users, eq(users.id, messages.senderId))
+      .where(
+        and(
+          or(
+            and(
+              eq(messages.senderId, req.user.id),
+              eq(messages.receiverId, targetUserId)
+            ),
+            and(
+              eq(messages.senderId, targetUserId),
+              eq(messages.receiverId, req.user.id)
+            )
+          ),
+          eq(messages.ticketId, null) // Only get direct messages, not ticket messages
+        )
+      )
+      .orderBy(messages.createdAt);
+
+      res.json(userMessages);
+    } catch (error) {
+      console.error('Error fetching direct messages:', error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Send a direct message
+  app.post("/api/messages/direct/:userId", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { userId } = req.params;
+    const { content } = req.body;
+    const targetUserId = parseInt(userId);
+
+    try {
+      // Verify the relationship exists if it's business-employee communication
+      const [relationship] = await db.select()
+        .from(businessEmployees)
+        .where(
+          or(
+            and(
+              eq(businessEmployees.businessId, req.user.id),
+              eq(businessEmployees.employeeId, targetUserId),
+              eq(businessEmployees.isActive, true)
+            ),
+            and(
+              eq(businessEmployees.businessId, targetUserId),
+              eq(businessEmployees.employeeId, req.user.id),
+              eq(businessEmployees.isActive, true)
+            )
+          )
+        );
+
+      if (!relationship) {
+        return res.status(403).json({ error: "No valid relationship exists between users" });
+      }
+
+      // Create the message
+      const [message] = await db.insert(messages)
+        .values({
+          content,
+          senderId: req.user.id,
+          receiverId: targetUserId,
+          status: 'sent',
+          sentAt: new Date(),
+          createdAt: new Date()
+        })
+        .returning();
+
+      // Get the sender information
+      const [sender] = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id));
+
+      res.json({
+        message,
+        sender
+      });
+    } catch (error) {
+      console.error('Error sending direct message:', error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // Update message status (delivered/read)
+  app.patch("/api/messages/:id/status", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['delivered', 'read'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    try {
+      // Get the message and verify the user is the recipient
+      const [message] = await db.select()
+        .from(messages)
+        .where(eq(messages.id, parseInt(id)));
+
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      if (message.receiverId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to update this message's status" });
+      }
+
+      // Update the message status
+      const [updated] = await db.update(messages)
+        .set({
+          status,
+          ...(status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
+        })
+        .where(eq(messages.id, parseInt(id)))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating message status:', error);
+      res.status(500).json({ error: "Failed to update message status" });
     }
   });
 

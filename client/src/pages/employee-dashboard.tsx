@@ -52,33 +52,39 @@ export default function EmployeeDashboard() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Employee Dashboard</h1>
-          <div className="flex items-center gap-4">
-            <Link href="/messages">
-              <Button variant="outline" className="flex items-center gap-2">
-                <MessageCircle className="h-4 w-4" />
-                Messages
-              </Button>
-            </Link>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
-            <Button variant="outline" onClick={() => logout()}>
-              Logout
-            </Button>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center">
+          <div className="flex flex-1 items-center justify-between">
+            <h1 className="text-xl font-semibold">Employee Dashboard</h1>
+            <div className="flex items-center gap-4">
+              <Link href="/messages">
+                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Messages
+                </Button>
+              </Link>
+              <div className="flex items-center gap-4 border-l pl-4">
+                <span className="text-sm text-muted-foreground">
+                  Welcome, {user?.username}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => logout()}>
+                  Logout
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+      <main className="container py-8 space-y-8">
         <InvitationHandler />
 
         <Card>
           <CardHeader>
             <CardTitle>Active Customer Tickets</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
             <TicketFilters 
               onSearchChange={setSearchTerm}
               onStatusChange={setStatusFilter}

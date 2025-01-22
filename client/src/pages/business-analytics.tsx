@@ -10,24 +10,26 @@ export default function BusinessAnalytics() {
   const { user } = useUser();
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center">
+          <div className="flex flex-1 items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
-              <h1 className="text-3xl font-bold text-gray-900">Cross-Organization Analytics</h1>
+              <h1 className="text-xl font-semibold">Cross-Organization Analytics</h1>
             </div>
-            <span className="text-sm text-gray-500">Welcome, {user?.username}</span>
+            <span className="text-sm text-muted-foreground">
+              Welcome, {user?.username}
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+      <main className="container py-8 space-y-8">
         <CollaborationMetrics />
       </main>
     </div>

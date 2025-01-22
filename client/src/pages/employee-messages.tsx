@@ -36,7 +36,7 @@ export default function EmployeeMessages() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <div className="p-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -54,10 +54,10 @@ export default function EmployeeMessages() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-12 gap-4">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-16rem)]">
           {/* Tickets Sidebar */}
-          <Card className="col-span-4">
+          <Card className="col-span-4 flex flex-col">
             <CardHeader>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -69,7 +69,7 @@ export default function EmployeeMessages() {
                 />
               </div>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 flex-1 overflow-auto">
               <div className="divide-y">
                 {filteredTickets.map((ticket) => (
                   <button
@@ -110,12 +110,14 @@ export default function EmployeeMessages() {
           </Card>
 
           {/* Chat Area */}
-          <Card className="col-span-8">
-            <CardContent className="p-0">
+          <Card className="col-span-8 flex flex-col h-full">
+            <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
-                <TicketChat ticketId={selectedTicketId} />
+                <div className="h-full">
+                  <TicketChat ticketId={selectedTicketId} />
+                </div>
               ) : (
-                <div className="h-[600px] flex items-center justify-center text-muted-foreground">
+                <div className="h-full flex items-center justify-center text-muted-foreground">
                   Select a ticket to view messages
                 </div>
               )}

@@ -158,8 +158,8 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
 
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea ref={scrollAreaRef} className="flex-1 pr-4">
-        <div className="space-y-4 min-h-0">
+      <ScrollArea ref={scrollAreaRef} className="flex-1">
+        <div className="space-y-4 p-4">
           {messages.map((messageData, index) => (
             <div
               key={messageData.message.id}
@@ -195,7 +195,7 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
         </div>
       </ScrollArea>
       {!readonly && (
-        <form onSubmit={handleSubmit} className="pt-4">
+        <form onSubmit={handleSubmit} className="p-4 border-t">
           <div className="flex gap-2">
             <Input
               value={newMessage}

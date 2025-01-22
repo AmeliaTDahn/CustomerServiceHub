@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Check, CheckCheck, Search, ArrowLeft } from "lucide-react";
+import { Check, CheckCheck, Search, ArrowLeft, Lock } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -28,6 +28,7 @@ interface TicketWithBusiness extends Ticket {
     id: number;
     username: string;
   };
+  hasBusinessResponse: boolean;
 }
 
 export default function CustomerMessages() {
@@ -40,9 +41,31 @@ export default function CustomerMessages() {
   const [newMessage, setNewMessage] = useState("");
   const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
 
-  // Fetch all tickets for the customer
+  // Fetch all tickets for the customer with business response status
   const { data: tickets = [] } = useQuery<TicketWithBusiness[]>({
     queryKey: ['/api/tickets/customer'],
+    queryFn: async () => {
+      const res = await fetch('/api/tickets/customer');
+      if (!res.ok) throw new Error(await res.text());
+      const tickets = await res.json();
+
+      // For each ticket, check if there are any business responses
+      const ticketsWithResponses = await Promise.all(
+        tickets.map(async (ticket: TicketWithBusiness) => {
+          const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`);
+          const messages = await messagesRes.json();
+          return {
+            ...ticket,
+            hasBusinessResponse: messages.some((m: Message) => 
+              m.senderId === ticket.business.id || 
+              (m.senderId !== user?.id && m.senderId !== ticket.business.id)
+            )
+          };
+        })
+      );
+
+      return ticketsWithResponses;
+    }
   });
 
   // Fetch messages for selected ticket
@@ -54,7 +77,8 @@ export default function CustomerMessages() {
   // Filter tickets based on search term
   const filteredTickets = tickets.filter(ticket =>
     ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ticket.description.toLowerCase().includes(searchTerm.toLowerCase())
+    ticket.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ticket.business.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusColor = (status: string) => {
@@ -74,6 +98,9 @@ export default function CustomerMessages() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedTicketId || !user || !isConnected) return;
 
+    const selectedTicket = tickets.find(t => t.id === selectedTicketId);
+    if (!selectedTicket?.hasBusinessResponse) return;
+
     const message = {
       type: "message",
       senderId: user.id,
@@ -90,6 +117,9 @@ export default function CustomerMessages() {
       console.error('Error sending message:', error);
     }
   };
+
+  const selectedTicket = tickets.find(t => t.id === selectedTicketId);
+  const canSendMessage = selectedTicket?.hasBusinessResponse;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -130,9 +160,19 @@ export default function CustomerMessages() {
                       {ticket.status.replace("_", " ")}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    <p>{ticket.business.username}</p>
-                    <p>{new Date(ticket.createdAt).toLocaleDateString()}</p>
+                  <div className="mt-1 flex flex-col gap-1">
+                    <p className="text-sm text-muted-foreground">
+                      {ticket.business.username}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                      {!ticket.hasBusinessResponse && (
+                        <span className="flex items-center gap-1 text-yellow-600">
+                          <Lock className="h-3 w-3" />
+                          Awaiting response
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -146,12 +186,23 @@ export default function CustomerMessages() {
         </Card>
 
         <Card className="col-span-8 flex flex-col">
-          {selectedTicketId ? (
+          {selectedTicketId && selectedTicket ? (
             <>
               <div className="p-4 border-b">
-                <h2 className="font-semibold">
-                  {tickets.find(t => t.id === selectedTicketId)?.title}
+                <h2 className="font-semibold text-lg">
+                  {selectedTicket.title}
                 </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTicket.business.username}
+                  </p>
+                  {!selectedTicket.hasBusinessResponse && (
+                    <span className="flex items-center gap-1 text-xs text-yellow-600">
+                      <Lock className="h-3 w-3" />
+                      Waiting for business to respond
+                    </span>
+                  )}
+                </div>
               </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
@@ -196,13 +247,19 @@ export default function CustomerMessages() {
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                    placeholder={
+                      !canSendMessage
+                        ? "Waiting for business to respond first..."
+                        : isConnected
+                        ? "Type your message..."
+                        : "Connecting..."
+                    }
                     className="flex-1"
-                    disabled={!isConnected}
+                    disabled={!isConnected || !canSendMessage}
                   />
                   <Button
                     type="submit"
-                    disabled={!newMessage.trim() || !isConnected}
+                    disabled={!newMessage.trim() || !isConnected || !canSendMessage}
                   >
                     Send
                   </Button>

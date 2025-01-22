@@ -164,8 +164,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   const canUpdateTicket = (ticket: Ticket) => {
     if (readonly) return false;
-    if (isBusiness) return true;
+    if (isBusiness) return true; // Business can always update tickets
     if (isEmployee) {
+      // Employee can only update if they claimed the ticket
       return ticket.claimedById === user?.id;
     }
     return false;

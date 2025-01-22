@@ -21,7 +21,7 @@ export default function EmployeeMessages() {
     enabled: !!selectedUserId,
   });
 
-  // Fetch customers
+  // Fetch customers (only those with tickets)
   const { data: customers = [] } = useQuery<UserType[]>({
     queryKey: ['/api/customers'],
   });
@@ -31,13 +31,21 @@ export default function EmployeeMessages() {
     queryKey: ['/api/employees'],
   });
 
+  // Get the business account separately
+  const { data: businesses = [] } = useQuery<UserType[]>({
+    queryKey: ['/api/businesses'],
+  });
+
+  // Combine employees and business accounts
+  const allStaff = [...employees, ...businesses];
+
   // Filter users based on search term
   const filteredCustomers = customers.filter(customer =>
     customer.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredEmployees = employees.filter(employee =>
-    employee.username.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredStaff = allStaff.filter(staff =>
+    staff.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // When loading the page with a customerId, find and select that customer
@@ -125,17 +133,17 @@ export default function EmployeeMessages() {
 
                 <TabsContent value="employees" className="m-0">
                   <div className="divide-y">
-                    {filteredEmployees.map((employee) => (
+                    {filteredStaff.map((staff) => (
                       <button
-                        key={employee.id}
-                        onClick={() => setSelectedUserId(employee.id)}
+                        key={staff.id}
+                        onClick={() => setSelectedUserId(staff.id)}
                         className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedUserId === employee.id ? "bg-primary/5" : ""
+                          selectedUserId === staff.id ? "bg-primary/5" : ""
                         }`}
                       >
-                        <p className="font-medium">{employee.username}</p>
+                        <p className="font-medium">{staff.username}</p>
                         <p className="text-sm text-muted-foreground capitalize">
-                          {employee.role}
+                          {staff.role}
                         </p>
                       </button>
                     ))}

@@ -283,12 +283,22 @@ export function registerRoutes(app: Express): Server {
       return res.status(403).send("Only business users and employees can view customers");
     }
 
+    // For employees, get only customers who have submitted tickets
     const customers = await db.select({
       id: users.id,
       username: users.username
     })
     .from(users)
-    .where(eq(users.role, "customer"));
+    .where(
+      and(
+        eq(users.role, "customer"),
+        exists(
+          db.select()
+            .from(tickets)
+            .where(eq(tickets.customerId, users.id))
+        )
+      )
+    );
 
     res.json(customers);
   });

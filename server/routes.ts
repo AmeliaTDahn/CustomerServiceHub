@@ -364,7 +364,27 @@ export function registerRoutes(app: Express): Server {
     if (!req.user) return res.status(401).send("Not authenticated");
 
     try {
-      let query = db.select().from(tickets);
+      let query = db
+        .select({
+          id: tickets.id,
+          title: tickets.title,
+          description: tickets.description,
+          status: tickets.status,
+          priority: tickets.priority,
+          category: tickets.category,
+          customerId: tickets.customerId,
+          businessId: tickets.businessId,
+          claimedById: tickets.claimedById,
+          claimedAt: tickets.claimedAt,
+          createdAt: tickets.createdAt,
+          updatedAt: tickets.updatedAt,
+          customer: {
+            id: users.id,
+            username: users.username
+          }
+        })
+        .from(tickets)
+        .innerJoin(users, eq(users.id, tickets.customerId));
 
       if (req.user.role === "customer") {
         query = query.where(eq(tickets.customerId, req.user.id));

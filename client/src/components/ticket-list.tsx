@@ -33,7 +33,7 @@ import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
-  tickets: Ticket[];
+  tickets: (Ticket & { customer: { id: number; username: string } })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
   readonly?: boolean;
@@ -225,7 +225,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     )}
                   </div>
                   <CardDescription>
-                    Created on {new Date(ticket.createdAt).toLocaleDateString()}
+                    <div className="space-y-1">
+                      <div>From: {ticket.customer.username}</div>
+                      <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                    </div>
                   </CardDescription>
                 </div>
                 <div className="flex gap-2 items-center">

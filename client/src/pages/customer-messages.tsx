@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { MessageCircle, Search, ArrowLeft } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, UserCheck } from "lucide-react";
 import { Link } from "wouter";
 import {
   Select,
@@ -25,6 +24,10 @@ interface TicketWithBusiness extends Ticket {
   };
   hasBusinessResponse: boolean;
   unreadCount?: number;
+  claimedBy?: {
+    id: number;
+    username: string;
+  };
 }
 
 export default function CustomerMessages() {
@@ -65,6 +68,20 @@ export default function CustomerMessages() {
       // For each ticket, check if there are any business responses and unread messages
       const ticketsWithDetails = await Promise.all(
         tickets.map(async (ticket: TicketWithBusiness) => {
+          // Fetch claimed by information if available
+          if (ticket.claimedById) {
+            const userRes = await fetch(`/api/users/${ticket.claimedById}`, {
+              credentials: 'include'
+            });
+            if (userRes.ok) {
+              const userData = await userRes.json();
+              ticket.claimedBy = {
+                id: userData.id,
+                username: userData.username
+              };
+            }
+          }
+
           const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`, {
             credentials: 'include'
           });
@@ -181,6 +198,12 @@ export default function CustomerMessages() {
                       <p className="text-sm text-muted-foreground">
                         {ticket.business.username}
                       </p>
+                      {ticket.claimedBy && (
+                        <p className="text-xs text-blue-600 flex items-center gap-1">
+                          <UserCheck className="h-3 w-3" />
+                          Claimed by {ticket.claimedBy.username}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                       </div>

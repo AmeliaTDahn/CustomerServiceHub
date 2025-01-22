@@ -7,15 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Send, Users, User } from "lucide-react";
 import type { User as UserType } from "@db/schema";
+import { supabase, getMessages, sendMessage } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { initializeWebSocket, getWebSocketClient } from "@/lib/websocket";
 
 interface Message {
   id: number;
-  senderId: number;
-  receiverId: number;
+  sender_id: number;
+  receiver_id: number;
   content: string;
-  timestamp: string;
+  created_at: string;
 }
 
 export default function EmployeeMessages() {
@@ -54,59 +54,42 @@ export default function EmployeeMessages() {
     staff.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Fetch messages
-  const { data: messages = [], isError, error } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedUserId],
-    queryFn: async () => {
-      if (!selectedUserId || !user) return [];
-      const response = await fetch(`/api/messages/${selectedUserId}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch messages');
-      }
-      return response.json();
-    },
+  // Fetch messages for selected user
+  const { data: messages = [] } = useQuery<Message[]>({
+    queryKey: ['messages', selectedUserId],
+    queryFn: () => selectedUserId ? getMessages(user!.id, selectedUserId) : Promise.resolve([]),
     enabled: !!selectedUserId && !!user,
   });
 
-  // Initialize WebSocket connection
+  // Set up real-time subscription
   useEffect(() => {
-    if (!user) return;
+    if (!selectedUserId || !user) return;
 
-    try {
-      console.log('Setting up WebSocket connection...');
-      const wsClient = initializeWebSocket(user.id, user.role, toast);
-
-      const unsubscribe = wsClient.onMessage((message) => {
-        // Only update messages if they're related to the current conversation
-        if (message.senderId === selectedUserId || message.receiverId === selectedUserId) {
-          console.log('Received message for current conversation:', message);
-          queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUserId] });
-
-          // Show notification for new messages
-          if (message.senderId !== user.id) {
-            toast({
-              title: "New Message",
-              description: "You have received a new message",
-            });
-          }
+    // Subscribe to new messages
+    const channel = supabase
+      .channel(`messages:${user.id}-${selectedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
+          toast({
+            title: "New Message",
+            description: "You have received a new message",
+          });
         }
-      });
+      )
+      .subscribe();
 
-      return () => {
-        console.log('Cleaning up WebSocket connection...');
-        unsubscribe();
-      };
-    } catch (error) {
-      console.error('Failed to initialize WebSocket:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: error instanceof Error ? error.message : "Failed to connect to messaging service",
-      });
-    }
-  }, [user, selectedUserId, queryClient, toast]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedUserId, user?.id, queryClient]);
 
   // When loading the page with a customerId, find and select that customer
   useEffect(() => {
@@ -129,15 +112,10 @@ export default function EmployeeMessages() {
     }
 
     try {
-      console.log('Attempting to send message:', {
-        senderId: user.id,
-        receiverId: selectedUserId,
-        content: message
-      });
-
-      const wsClient = getWebSocketClient();
-      wsClient.sendMessage(selectedUserId, message.trim());
+      await sendMessage(user.id, selectedUserId, message.trim());
       setMessage("");
+      // Invalidate the messages query to show the new message immediately
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({
@@ -147,14 +125,6 @@ export default function EmployeeMessages() {
       });
     }
   };
-
-  if (isError) {
-    toast({
-      variant: "destructive",
-      title: "Error",
-      description: error instanceof Error ? error.message : "Failed to load messages",
-    });
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -239,19 +209,19 @@ export default function EmployeeMessages() {
                         <div
                           key={msg.id}
                           className={`flex ${
-                            msg.senderId === user?.id ? 'justify-end' : 'justify-start'
+                            msg.sender_id === user?.id ? 'justify-end' : 'justify-start'
                           }`}
                         >
                           <div
                             className={`rounded-lg px-4 py-2 max-w-[70%] ${
-                              msg.senderId === user?.id
+                              msg.sender_id === user?.id
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted'
                             }`}
                           >
                             <p>{msg.content}</p>
                             <span className="text-xs opacity-70">
-                              {new Date(msg.timestamp).toLocaleTimeString()}
+                              {new Date(msg.created_at).toLocaleTimeString()}
                             </span>
                           </div>
                         </div>

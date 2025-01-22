@@ -25,7 +25,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { MessageCircle, Lock, Unlock } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
 import { useUser } from "@/hooks/use-user";
@@ -267,7 +267,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </DialogDescription>
                   </div>
                   <div className="flex gap-2">
-                    {/* Show status dropdown for business/employee, static badge for customers */}
                     {canUpdateTicket(selectedTicket) ? (
                       <Select
                         defaultValue={selectedTicket.status}
@@ -305,6 +304,29 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       <p>{selectedTicket.description}</p>
                     </div>
                   </div>
+
+                  {/* Show message button for customers */}
+                  {!isBusiness && !isEmployee && !readonly && (
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-2"
+                        onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        {selectedTicket.claimedById ?
+                          "Message Assigned Employee" :
+                          "Message Business"
+                        }
+                      </Button>
+                      {selectedTicket.claimedById && (
+                        <span className="text-xs text-muted-foreground">
+                          Your messages will go directly to the assigned employee
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Only show actions for business/employee users */}
                   {(isBusiness || isEmployee) && (

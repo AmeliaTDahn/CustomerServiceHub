@@ -5,6 +5,7 @@ import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
 import { eq, and, or, not, exists } from "drizzle-orm";
+import { sql } from 'drizzle-orm/sql';
 
 // Extend Express.User to include our schema
 declare global {
@@ -764,25 +765,198 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get all feedback for tickets assigned to this business
-      const feedbackData = await db
+      const allFeedback = await db
         .select({
           feedback: ticketFeedback,
           ticket: {
-            title: tickets.title,
-            createdAt: tickets.createdAt
-          }
+            createdAt: tickets.createdAt,
+          },
         })
         .from(ticketFeedback)
         .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
         .where(eq(tickets.businessId, req.user.id));
 
-      res.json(feedbackData);
+      // Calculate average rating
+      const ratings = allFeedback.map(f => f.feedback.rating);
+      const averageRating = ratings.length > 0
+        ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+        : 0;
+
+      // Calculate rating distribution
+      const ratingDistribution = Array.from({ length: 5 }, (_, i) => i + 1)
+        .map(rating => ({
+          rating,
+          count: ratings.filter(r => r === rating).length
+        }));
+
+      // Calculate feedback over time (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const feedbackByDay = allFeedback.reduce((acc: Record<string, number[]>, { feedback }) => {
+        const date = new Date(feedback.createdAt).toISOString().split('T')[0];
+        if (!acc[date]) acc[date] = [];
+        acc[date].push(feedback.rating);
+        return acc;
+      }, {});
+
+      const feedbackOverTime = Object.entries(feedbackByDay)
+        .map(([date, ratings]) => ({
+          date,
+          rating: ratings.reduce((a, b) => a + b, 0) / ratings.length
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      res.json({
+        averageRating,
+        totalFeedback: allFeedback.length,
+        ratingDistribution,
+        feedbackOverTime,
+      });
     } catch (error) {
       console.error('Error fetching feedback analytics:', error);
       res.status(500).json({ error: "Failed to fetch feedback analytics" });
     }
   });
 
+  app.get("/api/analytics/tickets", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business users can access analytics" });
+      }
+
+      // Get basic ticket metrics
+      const allTickets = await db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id));
+
+      const resolvedTickets = allTickets.filter(t => t.status === "resolved");
+
+      // Calculate average resolution time
+      const resolutionTimes = resolvedTickets
+        .map(ticket => {
+          const created = new Date(ticket.createdAt);
+          const updated = new Date(ticket.updatedAt);
+          return (updated.getTime() - created.getTime()) / (1000 * 60); // minutes
+        });
+
+      const averageResolutionTime = resolutionTimes.length > 0
+        ? resolutionTimes.reduce((a, b) => a + b, 0) / resolutionTimes.length
+        : 0;
+
+      // Get tickets by category
+      const ticketsByCategory = await db
+        .select({
+          category: tickets.category,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id))
+        .groupBy(tickets.category);
+
+      // Get tickets by priority
+      const ticketsByPriority = await db
+        .select({
+          priority: tickets.priority,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id))
+        .groupBy(tickets.priority);
+
+      res.json({
+        totalTickets: allTickets.length,
+        resolvedTickets: resolvedTickets.length,
+        averageResolutionTime,
+        ticketsByCategory,
+        ticketsByPriority,
+      });
+    } catch (error) {
+      console.error('Error fetching ticket analytics:', error);
+      res.status(500).json({ error: "Failed to fetch ticket analytics" });
+    }
+  });
+
+  app.get("/api/analytics/employees", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business users can access analytics" });
+      }
+
+      // Get active employees
+      const activeEmployees = await db
+        .select({
+          employee: users,
+          ticketsResolved: sql<number>`count(distinct tickets.id)::int`,
+        })
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+        .leftJoin(tickets, and(
+          eq(tickets.claimedById, users.id),
+          eq(tickets.status, "resolved")
+        ))
+        .where(and(
+          eq(businessEmployees.businessId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ))
+        .groupBy(users.id);
+
+      // Calculate average response time
+      const claimedTickets = await db
+        .select({
+          createdAt: tickets.createdAt,
+          claimedAt: tickets.claimedAt,
+        })
+        .from(tickets)
+        .where(and(
+          eq(tickets.businessId, req.user.id),
+          not(eq(tickets.claimedAt, null))
+        ));
+
+      const responseTimes = claimedTickets
+        .map(ticket => {
+          const created = new Date(ticket.createdAt);
+          const claimed = new Date(ticket.claimedAt!);
+          return (claimed.getTime() - created.getTime()) / (1000 * 60); // minutes
+        });
+
+      const averageResponseTime = responseTimes.length > 0
+        ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
+        : 0;
+
+      // Calculate collaboration score (simplified)
+      const totalTickets = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id));
+
+      const resolvedTickets = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tickets)
+        .where(and(
+          eq(tickets.businessId, req.user.id),
+          eq(tickets.status, "resolved")
+        ));
+
+      const collaborationScore = totalTickets[0].count > 0
+        ? resolvedTickets[0].count / totalTickets[0].count
+        : 0;
+
+      res.json({
+        totalActiveEmployees: activeEmployees.length,
+        ticketsPerEmployee: activeEmployees.map(({ employee, ticketsResolved }) => ({
+          employee: employee.username,
+          tickets: ticketsResolved
+        })),
+        averageResponseTime,
+        collaborationScore,
+      });
+    } catch (error) {
+      console.error('Error fetching employee analytics:', error);
+      res.status(500).json({ error: "Failed to fetch employee analytics" });
+    }
+  });
 
   // Update the get employees route to show all available employees for businesses
   app.get("/api/employees", async (req, res) => {

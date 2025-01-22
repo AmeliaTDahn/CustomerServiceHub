@@ -98,15 +98,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   const updateTicket = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      // If changing from resolved to another status, unclaim the ticket first
-      if (selectedTicket?.status === "resolved" && status !== "resolved") {
-        await fetch(`/api/tickets/${id}/unclaim`, {
-          method: "POST",
-          credentials: "include",
-        });
-      }
-
-      // Then update the status
       const res = await fetch(`/api/tickets/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -226,7 +217,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <CardTitle>{ticket.title}</CardTitle>
-                    {ticket.claimedById && (
+                    {/* Only show claim status to business and employee users */}
+                    {(isBusiness || isEmployee) && ticket.claimedById && (
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Lock className="h-4 w-4" />
                         <span className="text-xs">
@@ -333,34 +325,36 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   {/* Only show actions for business/employee users */}
                   {(isBusiness || (!readonly && selectedTicket.status !== "resolved")) && (
                     <>
-                      <div className="space-y-2">
-                        <h3 className="text-sm font-medium">Actions</h3>
-                        <div className="flex gap-2">
-                          {isEmployee && (
-                            selectedTicket.claimedById === null ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => claimTicket.mutate(selectedTicket.id)}
-                                disabled={claimTicket.isPending}
-                              >
-                                <Lock className="mr-2 h-4 w-4" />
-                                Claim Ticket
-                              </Button>
-                            ) : selectedTicket.claimedById === user?.id && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => unclaimTicket.mutate(selectedTicket.id)}
-                                disabled={unclaimTicket.isPending}
-                              >
-                                <Unlock className="mr-2 h-4 w-4" />
-                                Unclaim Ticket
-                              </Button>
-                            )
-                          )}
+                      {(isBusiness || isEmployee) && (
+                        <div className="space-y-2">
+                          <h3 className="text-sm font-medium">Actions</h3>
+                          <div className="flex gap-2">
+                            {isEmployee && (
+                              selectedTicket.claimedById === null ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => claimTicket.mutate(selectedTicket.id)}
+                                  disabled={claimTicket.isPending}
+                                >
+                                  <Lock className="mr-2 h-4 w-4" />
+                                  Claim Ticket
+                                </Button>
+                              ) : selectedTicket.claimedById === user?.id && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => unclaimTicket.mutate(selectedTicket.id)}
+                                  disabled={unclaimTicket.isPending}
+                                >
+                                  <Unlock className="mr-2 h-4 w-4" />
+                                  Unclaim Ticket
+                                </Button>
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Only show private notes for business/employee users */}
                       {(isBusiness || isEmployee) && (

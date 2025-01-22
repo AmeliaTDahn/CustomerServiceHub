@@ -174,7 +174,17 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
-                  <CardTitle>{ticket.title}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>{ticket.title}</CardTitle>
+                    {ticket.claimedById && (
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Lock className="h-4 w-4" />
+                        <span className="text-xs">
+                          {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <CardDescription>
                     Created on {new Date(ticket.createdAt).toLocaleDateString()}
                   </CardDescription>
@@ -186,12 +196,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   <Badge className={getPriorityColor(ticket.priority)}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
-                  {ticket.claimedById && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <Lock className="h-3 w-3" />
-                      {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
-                    </Badge>
-                  )}
                   {(isBusiness || isEmployee) && (
                     <Button
                       variant="outline"
@@ -346,7 +350,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   {!isBusiness && !isEmployee && (
                     <div className="space-y-4">
                       <ScrollArea className="h-[200px] rounded-md border p-4">
-                        <TicketFeedback 
+                        <TicketFeedback
                           ticketId={selectedTicket.id}
                           isResolved={selectedTicket.status === "resolved"}
                         />

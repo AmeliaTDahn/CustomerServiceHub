@@ -70,7 +70,7 @@ export default function BusinessMessages() {
       try {
         console.log('Connecting WebSocket...');
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.role}`;
+        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=business`;
         const wsInstance = new WebSocket(wsUrl);
 
         wsInstance.onopen = () => {

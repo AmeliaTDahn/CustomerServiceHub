@@ -37,31 +37,51 @@ export default function CustomerMessages() {
   const { isConnected } = useWebSocket(user?.id, user?.role);
   const queryClient = useQueryClient();
 
+  // Auto-refresh when receiving messages
+  useEffect(() => {
+    if (isConnected && user) {
+      // Invalidate queries when receiving new messages
+      return () => {
+        queryClient.invalidateQueries({ queryKey: ['/api/tickets/customer'] });
+        if (selectedTicketId) {
+          queryClient.invalidateQueries({ 
+            queryKey: ['/api/tickets', selectedTicketId, 'messages'] 
+          });
+        }
+      };
+    }
+  }, [isConnected, user, selectedTicketId, queryClient]);
+
   // Fetch all tickets for the customer with business response status and unread count
   const { data: tickets = [] } = useQuery<TicketWithBusiness[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
-      const res = await fetch('/api/tickets/customer');
+      const res = await fetch('/api/tickets/customer', {
+        credentials: 'include'
+      });
       if (!res.ok) throw new Error(await res.text());
       const tickets = await res.json();
 
       // For each ticket, check if there are any business responses and unread messages
       const ticketsWithDetails = await Promise.all(
         tickets.map(async (ticket: TicketWithBusiness) => {
-          const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`);
+          const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`, {
+            credentials: 'include'
+          });
+          if (!messagesRes.ok) throw new Error(await messagesRes.text());
           const messages = await messagesRes.json();
 
           // Count unread messages
           const unreadCount = messages.filter((m: any) =>
-            m.receiverId === user?.id &&
-            m.status !== 'read'
+            m.message.receiverId === user?.id &&
+            m.message.status !== 'read'
           ).length;
 
           return {
             ...ticket,
             hasBusinessResponse: messages.some((m: any) =>
-              m.senderId === ticket.business.id ||
-              (m.senderId !== user?.id && m.senderId !== ticket.business.id)
+              m.message.senderId === ticket.business.id ||
+              (m.message.senderId !== user?.id && m.message.senderId !== ticket.business.id)
             ),
             unreadCount
           };
@@ -73,7 +93,7 @@ export default function CustomerMessages() {
   });
 
   // Get unique businesses from tickets
-  const businesses = [...new Set(tickets.map(ticket => ticket.business.username))];
+  const businesses = Array.from(new Set(tickets.map(ticket => ticket.business.username)));
 
   // Filter tickets based on selected business
   const filteredTickets = tickets.filter(ticket =>
@@ -177,19 +197,21 @@ export default function CustomerMessages() {
           </Card>
 
           {/* Chat Area */}
-          <Card className="col-span-8 flex flex-col">
-            {selectedTicketId ? (
-              <div className="h-full">
-                <TicketChat
-                  ticketId={selectedTicketId}
-                  readonly={false}
-                />
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                Select a ticket to view messages
-              </div>
-            )}
+          <Card className="col-span-8 flex flex-col h-full">
+            <CardContent className="p-0 flex-1">
+              {selectedTicketId ? (
+                <div className="h-full">
+                  <TicketChat
+                    ticketId={selectedTicketId}
+                    readonly={false}
+                  />
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  Select a ticket to view messages
+                </div>
+              )}
+            </CardContent>
           </Card>
         </div>
       </main>

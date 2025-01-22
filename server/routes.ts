@@ -1,26 +1,21 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
+import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { users, messages, businessEmployees, type User, type Message } from "@db/schema";
-import { eq, and, or, isNull, desc } from "drizzle-orm";
+import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
+import { eq, and, or, not, exists, desc } from "drizzle-orm";
 import { sql } from 'drizzle-orm/sql';
-import { exists } from 'drizzle-orm/query';
 
-
+// Extend Express.User to include our schema
 declare global {
   namespace Express {
-    interface User {
-      id: number;
-      username: string;
-      role: string;
-    }
+    interface User extends User {}
   }
 }
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
-  const httpServer = createServer(app);
 
   // Employee management routes
   app.post("/api/businesses/employees/invite", async (req, res) => {
@@ -49,11 +44,11 @@ export function registerRoutes(app: Express): Server {
 
       // Check if invitation already exists
       const [existingInvitation] = await db.select()
-        .from(businessEmployees)
+        .from(employeeInvitations)
         .where(and(
-          eq(businessEmployees.businessId, req.user.id),
-          eq(businessEmployees.employeeId, employeeId),
-          eq(businessEmployees.isActive, true)
+          eq(employeeInvitations.businessId, req.user.id),
+          eq(employeeInvitations.employeeId, employeeId),
+          eq(employeeInvitations.status, "pending")
         ));
 
       if (existingInvitation) {
@@ -61,11 +56,11 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Create invitation
-      const [invitation] = await db.insert(businessEmployees)
+      const [invitation] = await db.insert(employeeInvitations)
         .values({
           businessId: req.user.id,
           employeeId,
-          isActive: true,
+          status: "pending",
           createdAt: new Date(),
           updatedAt: new Date()
         })
@@ -111,17 +106,17 @@ export function registerRoutes(app: Express): Server {
       }
 
       const invitations = await db.select({
-        invitation: businessEmployees,
+        invitation: employeeInvitations,
         business: {
           id: users.id,
           username: users.username
         }
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
+      .from(employeeInvitations)
+      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
       .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
+        eq(employeeInvitations.employeeId, req.user.id),
+        eq(employeeInvitations.status, "pending")
       ));
 
       res.json(invitations);
@@ -146,24 +141,33 @@ export function registerRoutes(app: Express): Server {
       }
 
       const [invitation] = await db.select()
-        .from(businessEmployees)
+        .from(employeeInvitations)
         .where(and(
-          eq(businessEmployees.id, parseInt(id)),
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.isActive, true)
+          eq(employeeInvitations.id, parseInt(id)),
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
         ));
 
       if (!invitation) {
         return res.status(404).json({ error: "Invitation not found" });
       }
 
-      const [updatedInvitation] = await db.update(businessEmployees)
+      const [updatedInvitation] = await db.update(employeeInvitations)
         .set({ 
-          isActive: status === "accepted",
+          status, 
           updatedAt: new Date() 
         })
-        .where(eq(businessEmployees.id, parseInt(id)))
+        .where(eq(employeeInvitations.id, parseInt(id)))
         .returning();
+
+      if (status === "accepted") {
+        // Create business-employee relationship
+        await db.insert(businessEmployees)
+          .values({
+            businessId: invitation.businessId,
+            employeeId: req.user.id
+          });
+      }
 
       res.json(updatedInvitation);
     } catch (error) {
@@ -290,8 +294,8 @@ export function registerRoutes(app: Express): Server {
         eq(users.role, "customer"),
         exists(
           db.select()
-            .from(messages)
-            .where(eq(messages.receiverId, users.id))
+            .from(tickets)
+            .where(eq(tickets.customerId, users.id))
         )
       )
     );
@@ -308,15 +312,15 @@ export function registerRoutes(app: Express): Server {
     try {
       // Get the ticket to verify access
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(ticketId)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(ticketId)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
       }
 
       // Verify user has access to this ticket
-      if (req.user.role === "customer" && ticket.receiverId !== req.user.id) {
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view these messages" });
       }
 
@@ -325,7 +329,7 @@ export function registerRoutes(app: Express): Server {
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
@@ -334,21 +338,13 @@ export function registerRoutes(app: Express): Server {
         }
       }
 
-      if (req.user.role === "business" && ticket.senderId !== req.user.id) {
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view these messages" });
       }
 
-      // Fetch messages
+      // Fetch all messages for this ticket
       const messages = await db.select({
-        message: {
-          id: messages.id,
-          content: messages.content,
-          ticketId: messages.ticketId,
-          senderId: messages.senderId,
-          receiverId: messages.receiverId,
-          status: messages.status,
-          createdAt: messages.createdAt,
-        },
+        message: messages,
         sender: {
           id: users.id,
           username: users.username,
@@ -357,7 +353,13 @@ export function registerRoutes(app: Express): Server {
       })
       .from(messages)
       .innerJoin(users, eq(users.id, messages.senderId))
-      .where(eq(messages.ticketId, parseInt(ticketId)))
+      .where(and(
+        eq(messages.ticketId, parseInt(ticketId)),
+        or(
+          eq(messages.senderId, req.user.id),
+          eq(messages.receiverId, req.user.id)
+        )
+      ))
       .orderBy(messages.createdAt);
 
       res.json(messages);
@@ -376,8 +378,8 @@ export function registerRoutes(app: Express): Server {
     try {
       // Get the ticket to verify access and determine receiver
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(ticketId)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(ticketId)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -387,29 +389,29 @@ export function registerRoutes(app: Express): Server {
 
       // Determine the message receiver based on sender's role
       if (req.user.role === "customer") {
-        if (ticket.receiverId !== req.user.id) {
+        if (ticket.customerId !== req.user.id) {
           return res.status(403).json({ error: "Not authorized to send messages for this ticket" });
         }
-        receiverId = ticket.senderId;
+        receiverId = ticket.businessId!;
       } else if (req.user.role === "employee") {
         // Verify employee has access
         const [hasAccess] = await db.select()
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
         if (!hasAccess) {
           return res.status(403).json({ error: "No access to this ticket" });
         }
-        receiverId = ticket.receiverId;
+        receiverId = ticket.customerId;
       } else if (req.user.role === "business") {
-        if (ticket.senderId !== req.user.id) {
+        if (ticket.businessId !== req.user.id) {
           return res.status(403).json({ error: "Not authorized to send messages for this ticket" });
         }
-        receiverId = ticket.receiverId;
+        receiverId = ticket.customerId;
       } else {
         return res.status(403).json({ error: "Invalid user role" });
       }
@@ -454,7 +456,7 @@ export function registerRoutes(app: Express): Server {
       return res.status(404).send("Selected business not found");
     }
 
-    const [ticket] = await db.insert(messages)
+    const [ticket] = await db.insert(tickets)
       .values({
         title,
         description,
@@ -472,30 +474,30 @@ export function registerRoutes(app: Express): Server {
     try {
       let query = db
         .select({
-          id: messages.id,
-          title: messages.content,
-          description: messages.ticketId,
-          status: messages.status,
-          priority: messages.receiverId,
-          category: messages.senderId,
-          customerId: messages.createdAt,
-          businessId: messages.sentAt,
-          claimedById: messages.updatedAt,
-          claimedAt: messages.status,
-          createdAt: messages.createdAt,
-          updatedAt: messages.updatedAt,
+          id: tickets.id,
+          title: tickets.title,
+          description: tickets.description,
+          status: tickets.status,
+          priority: tickets.priority,
+          category: tickets.category,
+          customerId: tickets.customerId,
+          businessId: tickets.businessId,
+          claimedById: tickets.claimedById,
+          claimedAt: tickets.claimedAt,
+          createdAt: tickets.createdAt,
+          updatedAt: tickets.updatedAt,
           customer: {
             id: users.id,
             username: users.username
           }
         })
-        .from(messages)
-        .innerJoin(users, eq(users.id, messages.senderId));
+        .from(tickets)
+        .innerJoin(users, eq(users.id, tickets.customerId));
 
       if (req.user.role === "customer") {
-        query = query.where(eq(messages.receiverId, req.user.id));
+        query = query.where(eq(tickets.customerId, req.user.id));
       } else if (req.user.role === "business") {
-        query = query.where(eq(messages.senderId, req.user.id));
+        query = query.where(eq(tickets.businessId, req.user.id));
       } else if (req.user.role === "employee") {
         // For employees, get all tickets from businesses they are actively associated with
         const businessIds = await db
@@ -511,7 +513,7 @@ export function registerRoutes(app: Express): Server {
         }
 
         query = query.where(
-          or(...businessIds.map(({ businessId }) => eq(messages.senderId, businessId)))
+          or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
         );
       }
 
@@ -532,32 +534,32 @@ export function registerRoutes(app: Express): Server {
     try {
       // Get all tickets for the customer with associated business and message data
       const tickets = await db.select({
-        id: messages.id,
-        title: messages.content,
-        description: messages.ticketId,
-        status: messages.status,
-        createdAt: messages.createdAt,
+        id: tickets.id,
+        title: tickets.title,
+        description: tickets.description,
+        status: tickets.status,
+        createdAt: tickets.createdAt,
         business: {
           id: users.id,
           username: users.username,
         },
         hasBusinessResponse: sql<boolean>`EXISTS (
           SELECT 1 FROM ${messages} 
-          WHERE ${messages.ticketId} = ${messages.ticketId} 
-          AND ${messages.senderId} = ${messages.senderId}
+          WHERE ${messages.ticketId} = ${tickets.id} 
+          AND ${messages.senderId} = ${tickets.businessId}
         )`,
         unreadCount: sql<number>`(
           SELECT COUNT(*) 
           FROM ${messages} 
-          WHERE ${messages.ticketId} = ${messages.ticketId} 
+          WHERE ${messages.ticketId} = ${tickets.id} 
           AND ${messages.receiverId} = ${req.user.id}
           AND ${messages.status} != 'read'
         )`
       })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(eq(messages.receiverId, req.user.id))
-      .orderBy(desc(messages.updatedAt));
+      .from(tickets)
+      .innerJoin(users, eq(users.id, tickets.businessId))
+      .where(eq(tickets.customerId, req.user.id))
+      .orderBy(desc(tickets.updatedAt));
 
       res.json(tickets);
     } catch (error) {
@@ -578,9 +580,9 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username
       })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(eq(messages.receiverId, req.user.id));
+      .from(tickets)
+      .innerJoin(users, eq(users.id, tickets.businessId))
+      .where(eq(tickets.customerId, req.user.id));
 
       res.json(businesses);
     } catch (error) {
@@ -600,8 +602,8 @@ export function registerRoutes(app: Express): Server {
 
       // Check if the ticket exists and employee has access to it
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -612,7 +614,7 @@ export function registerRoutes(app: Express): Server {
         .from(businessEmployees)
         .where(and(
           eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.businessId, ticket.senderId),
+          eq(businessEmployees.businessId, ticket.businessId!),
           eq(businessEmployees.isActive, true)
         ));
 
@@ -621,17 +623,18 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Check if ticket is already claimed
-      if (ticket.status === "claimed") {
+      if (ticket.claimedById) {
         return res.status(400).json({ error: "Ticket is already claimed" });
       }
 
       // Claim the ticket
-      const [updatedTicket] = await db.update(messages)
+      const [updatedTicket] = await db.update(tickets)
         .set({
-          status: "claimed",
+          claimedById: req.user.id,
+          claimedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(messages.ticketId, parseInt(id)))
+        .where(eq(tickets.id, parseInt(id)))
         .returning();
 
       res.json(updatedTicket);
@@ -651,8 +654,8 @@ export function registerRoutes(app: Express): Server {
       const { id } = req.params;
 
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -660,7 +663,7 @@ export function registerRoutes(app: Express): Server {
 
       // For employees, verify they are the one who claimed it
       if (req.user.role === "employee") {
-        if (ticket.status !== "claimed") {
+        if (ticket.claimedById !== req.user.id) {
           return res.status(403).json({ error: "You can only unclaim tickets you have claimed" });
         }
 
@@ -669,7 +672,7 @@ export function registerRoutes(app: Express): Server {
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
@@ -679,17 +682,18 @@ export function registerRoutes(app: Express): Server {
       }
 
       // For business, verify they own the ticket
-      if (req.user.role === "business" && ticket.senderId !== req.user.id) {
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "You can only unclaim tickets from your business" });
       }
 
       // Unclaim the ticket
-      const [updatedTicket] = await db.update(messages)
+      const [updatedTicket] = await db.update(tickets)
         .set({
-          status: "open",
+          claimedById: null,
+          claimedAt: null,
           updatedAt: new Date()
         })
-        .where(eq(messages.ticketId, parseInt(id)))
+        .where(eq(tickets.id, parseInt(id)))
         .returning();
 
       res.json(updatedTicket);
@@ -708,8 +712,8 @@ export function registerRoutes(app: Express): Server {
       const { status } = req.body;
 
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -717,13 +721,13 @@ export function registerRoutes(app: Express): Server {
 
       // Business can always update
       if (req.user.role === "business") {
-        if (ticket.senderId !== req.user.id) {
+        if (ticket.businessId !== req.user.id) {
           return res.status(403).json({ error: "Not authorized to update this ticket" });
         }
       }
       // Employee can only update if they claimed the ticket
       else if (req.user.role === "employee") {
-        if (ticket.status !== "claimed") {
+        if (ticket.claimedById !== req.user.id) {
           return res.status(403).json({ error: "You can only update tickets you have claimed" });
         }
 
@@ -732,7 +736,7 @@ export function registerRoutes(app: Express): Server {
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
@@ -742,14 +746,14 @@ export function registerRoutes(app: Express): Server {
       }
       // Customer can only update their own tickets
       else if (req.user.role === "customer") {
-        if (ticket.receiverId !== req.user.id) {
+        if (ticket.customerId !== req.user.id) {
           return res.status(403).json({ error: "Not authorized to update this ticket" });
         }
       }
 
-      const [updated] = await db.update(messages)
+      const [updated] = await db.update(tickets)
         .set({ status, updatedAt: new Date() })
-        .where(eq(messages.ticketId, parseInt(id)))
+        .where(eq(tickets.id, parseInt(id)))
         .returning();
 
       res.json(updated);
@@ -773,11 +777,11 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
       }
 
-      const [ticket] = await db.select().from(messages)
+      const [ticket] = await db.select().from(tickets)
         .where(and(
-          eq(messages.ticketId, parseInt(id)),
-          eq(messages.receiverId, req.user.id),
-          eq(messages.status, "resolved")
+          eq(tickets.id, parseInt(id)),
+          eq(tickets.customerId, req.user.id),
+          eq(tickets.status, "resolved")
         ));
 
       if (!ticket) {
@@ -786,15 +790,15 @@ export function registerRoutes(app: Express): Server {
 
       // Check if feedback already exists
       const [existingFeedback] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)))
+        .from(ticketFeedback)
+        .where(eq(ticketFeedback.ticketId, parseInt(id)))
         .limit(1);
 
       if (existingFeedback) {
         return res.status(400).json({ error: "Feedback already submitted for this ticket" });
       }
 
-      const [feedback] = await db.insert(messages)
+      const [feedback] = await db.insert(ticketFeedback)
         .values({
           ticketId: parseInt(id),
           rating,
@@ -817,24 +821,24 @@ export function registerRoutes(app: Express): Server {
       }
 
       const { id } = req.params;
-      const [ticket] = await db.select().from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+      const [ticket] = await db.select().from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
       }
 
       // Check if user is authorized to view feedback
-      if (req.user.role === "business" && ticket.senderId !== req.user.id) {
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view this feedback" });
       }
-      if (req.user.role === "customer" && ticket.receiverId !== req.user.id) {
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view this feedback" });
       }
 
       const [feedback] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)))
+        .from(ticketFeedback)
+        .where(eq(ticketFeedback.ticketId, parseInt(id)))
         .limit(1);
 
       res.json(feedback || null);
@@ -843,7 +847,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to get feedback" });
     }
   });
-
 
   // Ticket notes routes
   app.post("/api/tickets/:id/notes", async (req, res) => {
@@ -857,8 +860,8 @@ export function registerRoutes(app: Express): Server {
 
       // Get the ticket to verify access
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -870,7 +873,7 @@ export function registerRoutes(app: Express): Server {
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
@@ -880,14 +883,14 @@ export function registerRoutes(app: Express): Server {
       }
 
       // For business, verify they own the ticket
-      if (req.user.role === "business" && ticket.senderId !== req.user.id) {
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to add notes to this ticket" });
       }
 
-      const [note] = await db.insert(messages)
+      const [note] = await db.insert(ticketNotes)
         .values({
           ticketId: parseInt(id),
-          businessId: req.user.role === "business" ? req.user.id : ticket.senderId,
+          businessId: req.user.role === "business" ? req.user.id : ticket.businessId!,
           content,
           createdAt: new Date()
         })
@@ -896,22 +899,22 @@ export function registerRoutes(app: Express): Server {
       res.json(note);
     } catch (error) {
       console.error('Error adding note:', error);
-      res.status(500).json({ error: "Failed to add note" });
+            res.status(500).json({ error: "Failed to add note" });
     }
   });
 
   app.get("/api/tickets/:id/notes", async (req, res) => {
     try {
       if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
-                return res.status(403).json({ error: "Only business users and employees can view notes" });
+        return res.status(403).json({ error: "Only business users and employees can view notes" });
       }
 
       const { id } = req.params;
 
       // Get the ticket to verify access
       const [ticket] = await db.select()
-        .from(messages)
-        .where(eq(messages.ticketId, parseInt(id)));
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
@@ -923,7 +926,7 @@ export function registerRoutes(app: Express): Server {
           .from(businessEmployees)
           .where(and(
             eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, ticket.senderId),
+            eq(businessEmployees.businessId, ticket.businessId!),
             eq(businessEmployees.isActive, true)
           ));
 
@@ -933,22 +936,22 @@ export function registerRoutes(app: Express): Server {
       }
 
       // For business, verify they own the ticket
-      if (req.user.role === "business" && ticket.senderId !== req.user.id) {
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
         return res.status(403).json({ error: "Not authorized to view notes for this ticket" });
       }
 
       const notes = await db.select({
-        note: messages,
+        note: ticketNotes,
         author: {
           id: users.id,
           username: users.username,
           role: users.role
         }
       })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(eq(messages.ticketId, parseInt(id)))
-      .orderBy(messages.createdAt);
+      .from(ticketNotes)
+      .innerJoin(users, eq(users.id, ticketNotes.businessId))
+      .where(eq(ticketNotes.ticketId, parseInt(id)))
+      .orderBy(ticketNotes.createdAt);
 
       res.json(notes);
     } catch (error) {
@@ -967,13 +970,14 @@ export function registerRoutes(app: Express): Server {
       // Get all feedback for tickets assigned to this business
       const allFeedback = await db
         .select({
-          feedback: messages,
+          feedback: ticketFeedback,
           ticket: {
-            createdAt: messages.createdAt,
+            createdAt: tickets.createdAt,
           },
         })
-        .from(messages)
-        .where(eq(messages.senderId, req.user.id));
+        .from(ticketFeedback)
+        .innerJoin(tickets, eq(ticketFeedback.ticketId, tickets.id))
+        .where(eq(tickets.businessId, req.user.id));
 
       // Calculate average rating
       const ratings = allFeedback.map(f => f.feedback.rating);
@@ -1027,8 +1031,8 @@ export function registerRoutes(app: Express): Server {
       // Get basic ticket metrics
       const allTickets = await db
         .select()
-        .from(messages)
-        .where(eq(messages.senderId, req.user.id));
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id));
 
       const resolvedTickets = allTickets.filter(t => t.status === "resolved");
 
@@ -1047,22 +1051,22 @@ export function registerRoutes(app: Express): Server {
       // Get tickets by category
       const ticketsByCategory = await db
         .select({
-          category: messages.senderId,
+          category: tickets.category,
           count: sql<number>`count(*)::int`,
         })
-        .from(messages)
-        .where(eq(messages.senderId, req.user.id))
-        .groupBy(messages.senderId);
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id))
+        .groupBy(tickets.category);
 
       // Get tickets by priority
       const ticketsByPriority = await db
         .select({
-          priority: messages.receiverId,
+          priority: tickets.priority,
           count: sql<number>`count(*)::int`,
         })
-        .from(messages)
-        .where(eq(messages.senderId, req.user.id))
-        .groupBy(messages.receiverId);
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id))
+        .groupBy(tickets.priority);
 
       res.json({
         totalTickets: allTickets.length,
@@ -1087,13 +1091,13 @@ export function registerRoutes(app: Express): Server {
       const activeEmployees = await db
         .select({
           employee: users,
-          ticketsResolved: sql<number>`count(distinct messages.ticketId)::int`,
+          ticketsResolved: sql<number>`count(distinct tickets.id)::int`,
         })
         .from(businessEmployees)
         .innerJoin(users, eq(users.id, businessEmployees.employeeId))
-        .leftJoin(messages, and(
-          eq(messages.senderId, users.id),
-          eq(messages.status, "resolved")
+        .leftJoin(tickets, and(
+          eq(tickets.claimedById, users.id),
+          eq(tickets.status, "resolved")
         ))
         .where(and(
           eq(businessEmployees.businessId, req.user.id),
@@ -1104,13 +1108,13 @@ export function registerRoutes(app: Express): Server {
       // Calculate average response time
       const claimedTickets = await db
         .select({
-          createdAt: messages.createdAt,
-          claimedAt: messages.sentAt,
+          createdAt: tickets.createdAt,
+          claimedAt: tickets.claimedAt,
         })
-        .from(messages)
+        .from(tickets)
         .where(and(
-          eq(messages.senderId, req.user.id),
-          not(eq(messages.sentAt, null))
+          eq(tickets.businessId, req.user.id),
+          not(eq(tickets.claimedAt, null))
         ));
 
       const responseTimes = claimedTickets
@@ -1127,15 +1131,15 @@ export function registerRoutes(app: Express): Server {
       // Calculate collaboration score (simplified)
       const totalTickets = await db
         .select({ count: sql<number>`count(*)::int` })
-        .from(messages)
-        .where(eq(messages.senderId, req.user.id));
+        .from(tickets)
+        .where(eq(tickets.businessId, req.user.id));
 
       const resolvedTickets = await db
         .select({ count: sql<number>`count(*)::int` })
-        .from(messages)
+        .from(tickets)
         .where(and(
-          eq(messages.senderId, req.user.id),
-          eq(messages.status, "resolved")
+          eq(tickets.businessId, req.user.id),
+          eq(tickets.status, "resolved")
         ));
 
       const collaborationScore = totalTickets[0].count > 0
@@ -1233,15 +1237,7 @@ export function registerRoutes(app: Express): Server {
 
       // Fetch all direct messages between these users
       const directMessages = await db.select({
-        message: {
-          id: messages.id,
-          content: messages.content,
-          ticketId: messages.ticketId,
-          senderId: messages.senderId,
-          receiverId: messages.receiverId,
-          status: messages.status,
-          createdAt: messages.createdAt,
-        },
+        message: messages,
         sender: {
           id: users.id,
           username: users.username,
@@ -1251,7 +1247,7 @@ export function registerRoutes(app: Express): Server {
       .from(messages)
       .innerJoin(users, eq(users.id, messages.senderId))
       .where(and(
-        isNull(messages.ticketId),
+        eq(messages.ticketId, null),
         or(
           and(
             eq(messages.senderId, req.user.id),
@@ -1269,81 +1265,6 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching direct messages:', error);
       res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  });
-
-  app.post("/api/messages/direct/:userId", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { userId } = req.params;
-    const { content } = req.body;
-
-    try {
-      // Verify access rights
-      if (req.user.role === "employee") {
-        // Verify this is a business they work for
-        const [hasAccess] = await db.select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, parseInt(userId)),
-            eq(businessEmployees.isActive, true)
-          ));
-
-        if (!hasAccess) {
-          return res.status(403).json({ error: "Not authorized to message this user" });
-        }
-      } else if (req.user.role === "business") {
-        // Verify this is their employee
-        const [hasAccess] = await db.select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.businessId, req.user.id),
-            eq(businessEmployees.employeeId, parseInt(userId)),
-            eq(businessEmployees.isActive, true)
-          ));
-
-        if (!hasAccess) {
-          return res.status(403).json({ error: "Not authorized to message this user" });
-        }
-      } else {
-        return res.status(403).json({ error: "Only businesses and employees can use direct messaging" });
-      }
-
-      const [message] = await db.insert(messages)
-        .values({
-          content,
-          ticketId: null,
-          senderId: req.user.id,
-          receiverId: parseInt(userId),
-          status: 'sent',
-          sentAt: new Date(),
-          createdAt: new Date()
-        })
-        .returning();
-
-      // Include sender information in response
-      const messageWithSender = {
-        message: {
-          id: message.id,
-          content: message.content,
-          ticketId: message.ticketId,
-          senderId: message.senderId,
-          receiverId: message.receiverId,
-          status: message.status,
-          createdAt: message.createdAt,
-        },
-        sender: {
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role
-        }
-      };
-
-      res.json(messageWithSender);
-    } catch (error) {
-      console.error('Error sending direct message:', error);
-      res.status(500).json({ error: "Failed to send message" });
     }
   });
 
@@ -1429,6 +1350,11 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to fetch staff" });
     }
   });
+
+  const httpServer = createServer(app);
+
+  // Setup WebSocket server
+  setupWebSocket(httpServer, app);
 
   return httpServer;
 }

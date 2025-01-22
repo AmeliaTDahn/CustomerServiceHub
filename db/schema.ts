@@ -3,13 +3,11 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const userRoleEnum = ["business", "customer", "employee"] as const;
-
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
   password: text("password").notNull(),
-  role: text("role", { enum: userRoleEnum }).notNull(),
+  role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -60,14 +58,14 @@ export const ticketFeedback = pgTable("ticket_feedback", {
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
-  ticketId: integer("ticket_id").references(() => tickets.id),
+  ticketId: integer("ticket_id").references(() => tickets.id),  
   senderId: integer("sender_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  status: text("status", {
-    enum: ["sent", "delivered", "read"]
+  status: text("status", { 
+    enum: ["sent", "delivered", "read"] 
   }).default("sent").notNull(),
-  chatInitiator: boolean("chat_initiator").default(false).notNull(),
-  initiatedAt: timestamp("initiated_at"),
+  chatInitiator: boolean("chat_initiator").default(false).notNull(), 
+  initiatedAt: timestamp("initiated_at"), 
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
@@ -183,10 +181,11 @@ export const unreadMessagesRelations = relations(unreadMessages, ({ one }) => ({
   }),
 }));
 
+
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(userRoleEnum)
+  role: z.enum(["business", "customer", "employee"])
 };
 
 export const insertUserSchema = z.object(baseUserSchema);
@@ -196,18 +195,8 @@ export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees
 export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
 export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
 
-export type UserRole = typeof userRoleEnum[number];
-export type User = {
-  id: number;
-  username: string;
-  password: string;
-  role: UserRole;
-  createdAt: Date;
-};
-
-export const messageStatusEnum = ["sent", "delivered", "read"] as const;
-export type MessageStatus = typeof messageStatusEnum[number];
-
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
 export type BusinessEmployee = typeof businessEmployees.$inferSelect;
 export type NewBusinessEmployee = typeof businessEmployees.$inferInsert;
 export type EmployeeInvitation = typeof employeeInvitations.$inferSelect;

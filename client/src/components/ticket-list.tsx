@@ -33,7 +33,10 @@ import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
-  tickets: (Ticket & { customer: { id: number; username: string } })[];
+  tickets: (Ticket & { 
+    customer: { id: number; username: string },
+    hasBusinessResponse?: boolean 
+  })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
   readonly?: boolean;
@@ -194,16 +197,14 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 : 'cursor-pointer hover:shadow-md'
             } transition-shadow`}
             onClick={() => {
-              // Always allow customers to view their tickets
-              // Allow click if:
-              // - Business user (can open any ticket)
-              // - Customer (can always view their tickets)
-              // - Employee (if not readonly AND either ticket not claimed OR claimed by current user AND not resolved)
-              if (
-                isBusiness ||
-                (!isBusiness && !isEmployee) || // Customer can always view
-                (!readonly && (!ticket.claimedById || ticket.claimedById === user?.id) && ticket.status !== "resolved")
-              ) {
+              // Allow business and employee users to click
+              if (isBusiness || isEmployee) {
+                setSelectedTicket(ticket);
+                return;
+              }
+
+              // For customers, only allow click if they've received a response
+              if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
                 setSelectedTicket(ticket);
               }
             }}
@@ -242,6 +243,12 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             </CardHeader>
             <CardContent>
               <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+              {/* Show message availability status for customers */}
+              {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
+                <div className="mt-2 text-sm text-muted-foreground">
+                  Waiting for support team to respond
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -305,9 +312,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   </div>
 
-                  {/* Show message button for customers */}
-                  {!isBusiness && !isEmployee && !readonly && (
-                    <div className="mt-4 flex items-center gap-2">
+                  {/* Show message button for customers only if they've received a response */}
+                  {!isBusiness && !isEmployee && selectedTicket.hasBusinessResponse && (
+                    <div className="mt-4">
                       <Button
                         variant="outline"
                         size="sm"
@@ -315,16 +322,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                         onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
                       >
                         <MessageCircle className="h-4 w-4" />
-                        {selectedTicket.claimedById ?
-                          "Message Assigned Employee" :
-                          "Message Business"
-                        }
+                        View Messages
                       </Button>
-                      {selectedTicket.claimedById && (
-                        <span className="text-xs text-muted-foreground">
-                          Your messages will go directly to the assigned employee
-                        </span>
-                      )}
                     </div>
                   )}
 
@@ -356,6 +355,14 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                             </Button>
                           )
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
+                        >
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          View Messages
+                        </Button>
                       </div>
                     </div>
                   )}

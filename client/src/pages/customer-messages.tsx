@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Search, ArrowLeft, UserCheck, Lock, Clock, Building2 } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import {
   Tabs,
@@ -18,22 +18,13 @@ import type { Ticket } from "@db/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 
-interface TicketWithClaimInfo extends Ticket {
-  claimedBy?: {
-    id: number;
-    username: string;
-  };
-  claimedAt?: string;
+interface TicketWithInfo extends Ticket {
   business?: {
     id: number;
     username: string;
   };
-}
-
-interface BusinessUser {
-  id: number;
-  username: string;
-  role: 'business';
+  hasBusinessResponse: boolean;
+  unreadCount: number;
 }
 
 export default function CustomerMessages() {
@@ -43,11 +34,10 @@ export default function CustomerMessages() {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
     ticketId ? parseInt(ticketId) : null
   );
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<string>("tickets");
 
   // Fetch customer's tickets
-  const { data: tickets = [], isLoading } = useQuery<TicketWithClaimInfo[]>({
+  const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
       const res = await fetch('/api/tickets/customer', {
@@ -65,23 +55,11 @@ export default function CustomerMessages() {
   // Filter tickets based on search term
   const filteredTickets = tickets.filter(ticket =>
     ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-    (ticket.claimedBy?.username || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())
+    (ticket.business?.username || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())
   );
-
-  const formatClaimTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInHours = Math.abs(now.getTime() - date.getTime()) / 36e5;
-
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString();
-    }
-    return date.toLocaleDateString();
-  };
 
   const handleTicketSelect = (ticketId: number) => {
     setSelectedTicketId(ticketId);
-    setSelectedUserId(null);
   };
 
   const getStatusBadge = (status: string) => {
@@ -159,28 +137,16 @@ export default function CustomerMessages() {
                               <div className="flex-1">
                                 <p className="font-medium">{ticket.title}</p>
                                 <div className="mt-1.5 flex flex-col gap-1">
-                                  {ticket.claimedBy ? (
-                                    <>
-                                      <Badge variant="secondary" className="w-fit flex items-center gap-1 bg-blue-50 text-blue-700 hover:bg-blue-50">
-                                        <UserCheck className="h-3 w-3" />
-                                        Claimed by {ticket.claimedBy.username}
-                                      </Badge>
-                                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                        <Clock className="h-3 w-3" />
-                                        Claimed {formatClaimTime(ticket.claimedAt!)}
-                                      </p>
-                                    </>
-                                  ) : (
-                                    <Badge variant="secondary" className="w-fit flex items-center gap-1 bg-gray-50 text-gray-600 hover:bg-gray-50">
-                                      <Lock className="h-3 w-3" />
-                                      Waiting for claim
-                                    </Badge>
-                                  )}
                                   {ticket.business && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                                       <Building2 className="h-3 w-3" />
                                       {ticket.business.username}
                                     </p>
+                                  )}
+                                  {ticket.hasBusinessResponse && ticket.unreadCount > 0 && (
+                                    <Badge variant="secondary" className="w-fit bg-blue-50 text-blue-700">
+                                      {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
+                                    </Badge>
                                   )}
                                 </div>
                               </div>
@@ -210,7 +176,7 @@ export default function CustomerMessages() {
                 <div className="h-full">
                   <TicketChat
                     ticketId={selectedTicketId}
-                    readonly={false}
+                    readonly={!selectedTicket?.hasBusinessResponse}
                   />
                 </div>
               ) : (

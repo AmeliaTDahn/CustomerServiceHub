@@ -19,8 +19,8 @@ interface Message {
     senderId: number;
     receiverId: number;
     status: string;
-    chatInitiator: boolean;
-    initiatedAt: string | null;
+    chatInitiator?: boolean;
+    initiatedAt?: string | null;
     sentAt: string;
     createdAt: string;
   };
@@ -32,7 +32,7 @@ interface Message {
 }
 
 interface TicketChatProps {
-  ticketId: number;
+  ticketId?: number;
   readonly?: boolean;
   directMessageUserId?: number;
 }
@@ -50,8 +50,10 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: directMessageUserId 
       ? ['/api/messages/direct', directMessageUserId]
-      : ['/api/tickets', ticketId, 'messages'],
+      : ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
     queryFn: async () => {
+      if (!directMessageUserId && !ticketId) return [];
+
       const endpoint = directMessageUserId 
         ? `/api/messages/direct/${directMessageUserId}`
         : `/api/tickets/${ticketId}/messages`;
@@ -61,13 +63,14 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
-    }
+    },
+    enabled: !!(directMessageUserId || ticketId)
   });
 
   // Fetch ticket details for context
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
-    enabled: !!ticketId,
+    enabled: !!ticketId && !directMessageUserId,
   });
 
   // Check if chat is initiated
@@ -147,6 +150,13 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     onSuccess: () => {
       setNewMessage("");
       setOptimisticMessages([]);
+
+      // Invalidate queries to refresh the messages
+      if (directMessageUserId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/messages/direct', directMessageUserId] });
+      } else if (ticketId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
+      }
     },
     onError: (error) => {
       setOptimisticMessages([]);

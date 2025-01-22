@@ -899,7 +899,7 @@ export function registerRoutes(app: Express): Server {
       res.json(note);
     } catch (error) {
       console.error('Error adding note:', error);
-      res.status(500).json({ error: "Failed to add note" });
+            res.status(500).json({ error: "Failed to add note" });
     }
   });
 
@@ -1194,6 +1194,160 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching employees:', error);
       res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
+
+  // Direct messages routes
+  app.get("/api/messages/direct/:userId", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    const { userId } = req.params;
+
+    try {
+      // Verify access rights
+      if (req.user.role === "employee") {
+        // Verify this is a business they work for
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, parseInt(userId)),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "Not authorized to message this user" });
+        }
+      } else if (req.user.role === "business") {
+        // Verify this is their employee
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.businessId, req.user.id),
+            eq(businessEmployees.employeeId, parseInt(userId)),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "Not authorized to message this user" });
+        }
+      } else {
+        return res.status(403).json({ error: "Only businesses and employees can use direct messaging" });
+      }
+
+      // Fetch all direct messages between these users
+      const directMessages = await db.select({
+        message: messages,
+        sender: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        }
+      })
+      .from(messages)
+      .innerJoin(users, eq(users.id, messages.senderId))
+      .where(and(
+        eq(messages.ticketId, null),
+        or(
+          and(
+            eq(messages.senderId, req.user.id),
+            eq(messages.receiverId, parseInt(userId))
+          ),
+          and(
+            eq(messages.senderId, parseInt(userId)),
+            eq(messages.receiverId, req.user.id)
+          )
+        )
+      ))
+      .orderBy(messages.createdAt);
+
+      res.json(directMessages);
+    } catch (error) {
+      console.error('Error fetching direct messages:', error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Connected business for employee
+  app.get("/api/users/connected-business", async (req, res) => {
+    if (!req.user || req.user.role !== "employee") {
+      return res.status(403).json({ error: "Only employees can view their connected business" });
+    }
+
+    try {
+      const [business] = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.businessId))
+      .where(and(
+        eq(businessEmployees.employeeId, req.user.id),
+        eq(businessEmployees.isActive, true)
+      ));
+
+      res.json(business || null);
+    } catch (error) {
+      console.error('Error fetching connected business:', error);
+      res.status(500).json({ error: "Failed to fetch connected business" });
+    }
+  });
+
+  // Get all staff members (for direct messaging)
+  app.get("/api/users/staff", async (req, res) => {
+    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      return res.status(403).json({ error: "Only business and employees can view staff" });
+    }
+
+    try {
+      let query = db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(users)
+      .where(
+        or(
+          eq(users.role, "employee"),
+          eq(users.role, "business")
+        )
+      );
+
+      // If user is an employee, only show staff from their business
+      if (req.user.role === "employee") {
+        const [business] = await db.select({ businessId: businessEmployees.businessId })
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!business) {
+          return res.json([]);
+        }
+
+        query = query.where(
+          or(
+            eq(users.id, business.businessId),
+            exists(
+              db.select()
+                .from(businessEmployees)
+                .where(and(
+                  eq(businessEmployees.businessId, business.businessId),
+                  eq(businessEmployees.employeeId, users.id),
+                  eq(businessEmployees.isActive, true)
+                ))
+            )
+          )
+        );
+      }
+
+      const staff = await query;
+      res.json(staff);
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+      res.status(500).json({ error: "Failed to fetch staff" });
     }
   });
 

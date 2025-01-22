@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
@@ -47,7 +47,7 @@ export default function EmployeeMessages() {
 
   // Fetch all tickets
   const { data: tickets = [] } = useQuery<TicketWithCustomer[]>({
-    queryKey: ['/api/tickets'],
+    queryKey: ['/api/tickets']
   });
 
   // Fetch all employees and business users

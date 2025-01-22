@@ -1,4 +1,5 @@
-import type { Toast } from "@/hooks/use-toast";
+import { type ToastProps } from "@/components/ui/toast";
+import { toast as showToast } from "@/hooks/use-toast";
 
 interface Message {
   type: string;
@@ -14,13 +15,13 @@ class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectTimeout = 1000; // Start with 1 second
   private messageCallbacks: ((message: Message) => void)[] = [];
-  private toast: Toast;
+  private toast: typeof showToast;
   private userId: number;
   private role: string;
   private connectionPromise: Promise<void> | null = null;
   private isConnecting = false;
 
-  constructor(userId: number, role: string, toast: Toast) {
+  constructor(userId: number, role: string, toast: typeof showToast) {
     this.userId = userId;
     this.role = role;
     this.toast = toast;
@@ -50,7 +51,7 @@ class WebSocketClient {
         };
 
         this.ws.onmessage = this.handleMessage.bind(this);
-        
+
         this.ws.onclose = () => {
           console.log('WebSocket connection closed');
           this.isConnecting = false;
@@ -110,10 +111,10 @@ class WebSocketClient {
       console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
 
       await new Promise(resolve => setTimeout(resolve, this.reconnectTimeout));
-      
+
       // Exponential backoff
       this.reconnectTimeout *= 2;
-      
+
       try {
         await this.connect();
       } catch (error) {
@@ -171,7 +172,7 @@ class WebSocketClient {
 // Singleton instance
 let wsClient: WebSocketClient | null = null;
 
-export function initializeWebSocket(userId: number, role: string, toast: Toast) {
+export function initializeWebSocket(userId: number, role: string, toast: typeof showToast) {
   if (!wsClient) {
     wsClient = new WebSocketClient(userId, role, toast);
   }

@@ -16,25 +16,77 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Lock, Unlock } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
+import { useUser } from "@/hooks/use-user";
 import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
   tickets: Ticket[];
   isBusiness?: boolean;
+  isEmployee?: boolean;
 }
 
-export default function TicketList({ tickets, isBusiness = false }: TicketListProps) {
+export default function TicketList({ tickets, isBusiness = false, isEmployee = false }: TicketListProps) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { user } = useUser();
+
+  const claimTicket = useMutation({
+    mutationFn: async (ticketId: number) => {
+      const res = await fetch(`/api/tickets/${ticketId}/claim`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      toast({
+        title: "Success",
+        description: "Ticket claimed successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message,
+      });
+    },
+  });
+
+  const unclaimTicket = useMutation({
+    mutationFn: async (ticketId: number) => {
+      const res = await fetch(`/api/tickets/${ticketId}/unclaim`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      toast({
+        title: "Success",
+        description: "Ticket unclaimed successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message,
+      });
+    },
+  });
 
   const updateTicket = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -102,6 +154,14 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
     setLocation(`/messages?customerId=${customerId}`);
   };
 
+  const canUpdateTicket = (ticket: Ticket) => {
+    if (isBusiness) return true;
+    if (isEmployee) {
+      return ticket.claimedById === user?.id;
+    }
+    return false;
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -119,14 +179,20 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     Created on {new Date(ticket.createdAt).toLocaleDateString()}
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <Badge className={getStatusColor(ticket.status)}>
                     {ticket.status.replace("_", " ")}
                   </Badge>
                   <Badge className={getPriorityColor(ticket.priority)}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
-                  {isBusiness && (
+                  {ticket.claimedById && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Lock className="h-3 w-3" />
+                      {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
+                    </Badge>
+                  )}
+                  {(isBusiness || isEmployee) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -191,37 +257,72 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                     </div>
                   </div>
 
-                  {isBusiness ? (
+                  {(isBusiness || isEmployee) && (
                     <>
                       <div className="space-y-2">
                         <h3 className="text-sm font-medium">Actions</h3>
                         <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "in_progress",
-                              })
-                            }
-                            disabled={selectedTicket.status === "in_progress"}
-                          >
-                            Mark In Progress
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateTicket.mutate({
-                                id: selectedTicket.id,
-                                status: "resolved",
-                              })
-                            }
-                            disabled={selectedTicket.status === "resolved"}
-                          >
-                            Mark Resolved
-                          </Button>
+                          {isEmployee && (
+                            selectedTicket.claimedById === null ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => claimTicket.mutate(selectedTicket.id)}
+                                disabled={claimTicket.isPending}
+                              >
+                                <Lock className="mr-2 h-4 w-4" />
+                                Claim Ticket
+                              </Button>
+                            ) : selectedTicket.claimedById === user?.id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => unclaimTicket.mutate(selectedTicket.id)}
+                                disabled={unclaimTicket.isPending}
+                              >
+                                <Unlock className="mr-2 h-4 w-4" />
+                                Unclaim Ticket
+                              </Button>
+                            )
+                          )}
+                          {canUpdateTicket(selectedTicket) && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  updateTicket.mutate({
+                                    id: selectedTicket.id,
+                                    status: "in_progress",
+                                  })
+                                }
+                                disabled={
+                                  selectedTicket.status === "in_progress" ||
+                                  updateTicket.isPending ||
+                                  (isEmployee && !canUpdateTicket(selectedTicket))
+                                }
+                              >
+                                Mark In Progress
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  updateTicket.mutate({
+                                    id: selectedTicket.id,
+                                    status: "resolved",
+                                  })
+                                }
+                                disabled={
+                                  selectedTicket.status === "resolved" ||
+                                  updateTicket.isPending ||
+                                  (isEmployee && !canUpdateTicket(selectedTicket))
+                                }
+                              >
+                                Mark Resolved
+                              </Button>
+                            </>
+                          )}
                         </div>
                         <Button
                           onClick={() => {
@@ -233,16 +334,23 @@ export default function TicketList({ tickets, isBusiness = false }: TicketListPr
                           Message Customer
                         </Button>
                       </div>
-                      <Separator />
-                      <TicketNotes ticketId={selectedTicket.id} />
+                      {isBusiness && (
+                        <>
+                          <ScrollArea className="h-[200px] rounded-md border p-4">
+                            <TicketNotes ticketId={selectedTicket.id} />
+                          </ScrollArea>
+                        </>
+                      )}
                     </>
-                  ) : (
+                  )}
+                  {!isBusiness && !isEmployee && (
                     <div className="space-y-4">
-                      <Separator />
-                      <TicketFeedback 
-                        ticketId={selectedTicket.id}
-                        isResolved={selectedTicket.status === "resolved"}
-                      />
+                      <ScrollArea className="h-[200px] rounded-md border p-4">
+                        <TicketFeedback 
+                          ticketId={selectedTicket.id}
+                          isResolved={selectedTicket.status === "resolved"}
+                        />
+                      </ScrollArea>
                     </div>
                   )}
                 </div>

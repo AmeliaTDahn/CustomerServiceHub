@@ -41,6 +41,8 @@ export const tickets = pgTable("tickets", {
   }).default("medium").notNull(),
   customerId: integer("customer_id").references(() => users.id).notNull(),
   businessId: integer("business_id").references(() => users.id),
+  claimedById: integer("claimed_by_id").references(() => users.id),
+  claimedAt: timestamp("claimed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });

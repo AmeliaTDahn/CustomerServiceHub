@@ -386,31 +386,177 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+
+  // Claim a ticket (employees only)
+  app.post("/api/tickets/:id/claim", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can claim tickets" });
+      }
+
+      const { id } = req.params;
+
+      // Check if the ticket exists and employee has access to it
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Verify employee has access to this business's tickets
+      const [hasAccess] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.businessId, ticket.businessId!),
+          eq(businessEmployees.isActive, true)
+        ));
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No access to this ticket" });
+      }
+
+      // Check if ticket is already claimed
+      if (ticket.claimedById) {
+        return res.status(400).json({ error: "Ticket is already claimed" });
+      }
+
+      // Claim the ticket
+      const [updatedTicket] = await db.update(tickets)
+        .set({
+          claimedById: req.user.id,
+          claimedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(tickets.id, parseInt(id)))
+        .returning();
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error claiming ticket:', error);
+      res.status(500).json({ error: "Failed to claim ticket" });
+    }
+  });
+
+  // Unclaim a ticket (employees and business)
+  app.post("/api/tickets/:id/unclaim", async (req, res) => {
+    try {
+      if (!req.user || (req.user.role !== "employee" && req.user.role !== "business")) {
+        return res.status(403).json({ error: "Only employees and business can unclaim tickets" });
+      }
+
+      const { id } = req.params;
+
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // For employees, verify they are the one who claimed it
+      if (req.user.role === "employee") {
+        if (ticket.claimedById !== req.user.id) {
+          return res.status(403).json({ error: "You can only unclaim tickets you have claimed" });
+        }
+
+        // Verify they still have access to this business's tickets
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId!),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket" });
+        }
+      }
+
+      // For business, verify they own the ticket
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+        return res.status(403).json({ error: "You can only unclaim tickets from your business" });
+      }
+
+      // Unclaim the ticket
+      const [updatedTicket] = await db.update(tickets)
+        .set({
+          claimedById: null,
+          claimedAt: null,
+          updatedAt: new Date()
+        })
+        .where(eq(tickets.id, parseInt(id)))
+        .returning();
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error unclaiming ticket:', error);
+      res.status(500).json({ error: "Failed to unclaim ticket" });
+    }
+  });
+
+  // Update ticket status (modified to handle claims)
   app.patch("/api/tickets/:id", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
+    try {
+      if (!req.user) return res.status(401).send("Not authenticated");
 
-    const { id } = req.params;
-    const { status } = req.body;
+      const { id } = req.params;
+      const { status } = req.body;
 
-    const [ticket] = await db.select().from(tickets)
-      .where(eq(tickets.id, parseInt(id)));
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
 
-    if (!ticket) return res.status(404).send("Ticket not found");
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
 
-    if (req.user.role === "business" && ticket.businessId !== req.user.id) {
-      return res.status(403).send("Not authorized to update this ticket");
+      // Business can always update
+      if (req.user.role === "business") {
+        if (ticket.businessId !== req.user.id) {
+          return res.status(403).json({ error: "Not authorized to update this ticket" });
+        }
+      }
+      // Employee can only update if they claimed the ticket
+      else if (req.user.role === "employee") {
+        if (ticket.claimedById !== req.user.id) {
+          return res.status(403).json({ error: "You can only update tickets you have claimed" });
+        }
+
+        // Verify they still have access to this business's tickets
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId!),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket" });
+        }
+      }
+      // Customer can only update their own tickets
+      else if (req.user.role === "customer") {
+        if (ticket.customerId !== req.user.id) {
+          return res.status(403).json({ error: "Not authorized to update this ticket" });
+        }
+      }
+
+      const [updated] = await db.update(tickets)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(tickets.id, parseInt(id)))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating ticket:', error);
+      res.status(500).json({ error: "Failed to update ticket" });
     }
-
-    if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
-      return res.status(403).send("Not authorized to update this ticket");
-    }
-
-    const [updated] = await db.update(tickets)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(tickets.id, parseInt(id)))
-      .returning();
-
-    res.json(updated);
   });
 
   // Feedback routes

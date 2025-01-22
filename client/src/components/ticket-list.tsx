@@ -98,6 +98,15 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   const updateTicket = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      // If changing from resolved to another status, unclaim the ticket first
+      if (selectedTicket?.status === "resolved" && status !== "resolved") {
+        await fetch(`/api/tickets/${id}/unclaim`, {
+          method: "POST",
+          credentials: "include",
+        });
+      }
+
+      // Then update the status
       const res = await fetch(`/api/tickets/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

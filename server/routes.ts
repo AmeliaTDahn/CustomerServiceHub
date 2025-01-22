@@ -304,6 +304,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Messages routes
+  // Get messages for a ticket
   app.get("/api/tickets/:ticketId/messages", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
@@ -344,7 +345,19 @@ export function registerRoutes(app: Express): Server {
 
       // Fetch all messages for this ticket
       const ticketMessages = await db.select({
-        message: messages,
+        message: {
+          id: messages.id,
+          content: messages.content,
+          ticketId: messages.ticketId,
+          senderId: messages.senderId,
+          receiverId: messages.receiverId,
+          status: messages.status,
+          chatInitiator: messages.chatInitiator,
+          initiatedAt: messages.initiatedAt,
+          sentAt: messages.sentAt,
+          readAt: messages.readAt,
+          createdAt: messages.createdAt
+        },
         sender: {
           id: users.id,
           username: users.username,

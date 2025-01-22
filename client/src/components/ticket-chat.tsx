@@ -182,8 +182,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea ref={scrollAreaRef} className="flex-1">
-        <div className="space-y-4 p-4">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full">
+        <div className="space-y-4 p-4 min-h-full">
           <AnimatePresence initial={false}>
             {!isChatInitiated && isCustomer && (
               <div className="text-center p-4 text-muted-foreground">

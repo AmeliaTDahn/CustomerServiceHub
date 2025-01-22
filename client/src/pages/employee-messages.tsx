@@ -94,24 +94,21 @@ export default function EmployeeMessages() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <div className="p-2">
+      <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </Button>
         </Link>
+        <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <MessageCircle className="h-5 w-5" />
+          Message Center
+        </h1>
+        <div className="w-[88px]" /> {/* Spacer to center heading */}
       </div>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageCircle className="h-8 w-8" />
-            Message Center
-          </h1>
-        </div>
-      </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-4 h-[calc(100vh-16rem)]">
           {/* Sidebar with Tabs */}
           <Card className="col-span-4 flex flex-col">

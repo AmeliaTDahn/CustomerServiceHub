@@ -1,118 +1,39 @@
-import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Send, Users, User, Search, ArrowLeft } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
-import type { User as UserType } from "@db/schema";
-import { useWebSocket } from "@/hooks/use-websocket";
-import { useToast } from "@/hooks/use-toast";
+import TicketChat from "@/components/ticket-chat";
+import { type Ticket } from "@db/schema";
 
-interface Message {
-  id: number;
-  sender_id: number;
-  receiver_id: number;
-  content: string;
-  created_at: string;
+interface TicketWithCustomer extends Ticket {
+  customer: {
+    id: number;
+    username: string;
+  };
 }
 
 export default function EmployeeMessages() {
-  const customerId = new URLSearchParams(window.location.search).get('customerId');
+  const ticketId = new URLSearchParams(window.location.search).get('ticketId');
   const { user } = useUser();
-  const { toast } = useToast();
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [businessSearchTerm, setBusinessSearchTerm] = useState("");
-  const queryClient = useQueryClient();
-  const { isConnected, sendMessage: sendWebSocketMessage } = useWebSocket(user?.id, user?.role);
-
-  // Fetch customers (only those with tickets)
-  const { data: customers = [] } = useQuery<UserType[]>({
-    queryKey: ['/api/customers'],
-  });
-
-  // Fetch businesses
-  const { data: businesses = [] } = useQuery<UserType[]>({
-    queryKey: ['/api/businesses'],
-  });
-
-  // Filter businesses based on search term
-  const filteredBusinesses = businesses.filter(business =>
-    business.username.toLowerCase().includes(businessSearchTerm.toLowerCase())
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
+    ticketId ? parseInt(ticketId) : null
   );
 
-  // Filter customers based on search term
-  const filteredCustomers = customers.filter(customer =>
-    customer.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Fetch messages for selected user
-  const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['messages', selectedUserId],
-    queryFn: async () => {
-      if (!selectedUserId) return [];
-      const response = await fetch(`/api/messages/${selectedUserId}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch messages');
-      return response.json();
-    },
-    enabled: !!selectedUserId && !!user,
+  // Fetch all tickets
+  const { data: tickets = [] } = useQuery<TicketWithCustomer[]>({
+    queryKey: ['/api/tickets'],
   });
 
-  // When loading the page with a customerId, find and select that customer
-  useEffect(() => {
-    if (customerId && customers.length > 0) {
-      const customer = customers.find(c => c.id === parseInt(customerId));
-      if (customer) {
-        setSelectedUserId(customer.id);
-      }
-    }
-  }, [customerId, customers]);
-
-  const handleSendMessage = async () => {
-    if (!selectedUserId || !message.trim() || !user) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Please select a user and enter a message.",
-      });
-      return;
-    }
-
-    if (!isConnected) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Not connected to message server. Please try again.",
-      });
-      return;
-    }
-
-    try {
-      // Send message through WebSocket
-      sendWebSocketMessage({
-        type: 'message',
-        senderId: user.id,
-        receiverId: selectedUserId,
-        content: message.trim(),
-        timestamp: new Date().toISOString()
-      });
-
-      setMessage("");
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
-      });
-    }
-  };
+  // Filter tickets based on search term
+  const filteredTickets = tickets.filter(ticket =>
+    ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ticket.customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -134,143 +55,73 @@ export default function EmployeeMessages() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        {!isConnected && (
-          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p className="text-yellow-800">Connecting to message server...</p>
-          </div>
-        )}
-
-        <Tabs defaultValue="customers" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="customers" className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Customers
-            </TabsTrigger>
-            <TabsTrigger value="businesses" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Businesses
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="grid grid-cols-12 gap-4">
-            {/* Sidebar */}
-            <Card className="col-span-4">
-              <CardHeader>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={`Search ${
-                      selectedUserId ? "customers" : "businesses"
-                    }...`}
-                    value={selectedUserId ? searchTerm : businessSearchTerm}
-                    onChange={(e) =>
-                      selectedUserId
-                        ? setSearchTerm(e.target.value)
-                        : setBusinessSearchTerm(e.target.value)
-                    }
-                    className="pl-9"
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <TabsContent value="customers" className="m-0">
-                  <div className="divide-y">
-                    {filteredCustomers.map((customer) => (
-                      <button
-                        key={customer.id}
-                        onClick={() => setSelectedUserId(customer.id)}
-                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedUserId === customer.id ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <p className="font-medium">{customer.username}</p>
-                        <p className="text-sm text-muted-foreground">Customer</p>
-                      </button>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="businesses" className="m-0">
-                  <div className="divide-y">
-                    {filteredBusinesses.map((business) => (
-                      <button
-                        key={business.id}
-                        onClick={() => setSelectedUserId(business.id)}
-                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedUserId === business.id ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <p className="font-medium">{business.username}</p>
-                        <p className="text-sm text-muted-foreground">Business</p>
-                      </button>
-                    ))}
-                    {filteredBusinesses.length === 0 && businessSearchTerm && (
-                      <div className="px-4 py-3 text-sm text-muted-foreground">
-                        No businesses found matching "{businessSearchTerm}"
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              </CardContent>
-            </Card>
-
-            {/* Chat Area */}
-            <Card className="col-span-8">
-              <CardContent className="p-0">
-                {selectedUserId ? (
-                  <div className="flex flex-col h-[600px]">
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                      {messages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${
-                            msg.sender_id === user?.id ? 'justify-end' : 'justify-start'
-                          }`}
-                        >
-                          <div
-                            className={`rounded-lg px-4 py-2 max-w-[70%] ${
-                              msg.sender_id === user?.id
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted'
-                            }`}
-                          >
-                            <p>{msg.content}</p>
-                            <span className="text-xs opacity-70">
-                              {new Date(msg.created_at).toLocaleTimeString()}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+        <div className="grid grid-cols-12 gap-4">
+          {/* Tickets Sidebar */}
+          <Card className="col-span-4">
+            <CardHeader>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tickets..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {filteredTickets.map((ticket) => (
+                  <button
+                    key={ticket.id}
+                    onClick={() => setSelectedTicketId(ticket.id)}
+                    className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                      selectedTicketId === ticket.id ? "bg-primary/5" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{ticket.title}</p>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        ticket.status === 'open' ? 'bg-green-100 text-green-800' :
+                        ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {ticket.status}
+                      </span>
                     </div>
-
-                    <div className="border-t p-4">
-                      <div className="flex gap-2">
-                        <Input
-                          value={message}
-                          onChange={(e) => setMessage(e.target.value)}
-                          placeholder="Type your message..."
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSendMessage();
-                            }
-                          }}
-                        />
-                        <Button onClick={handleSendMessage}>
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        {ticket.customer.username}
+                      </p>
+                      <span className="text-xs text-muted-foreground">•</span>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(ticket.createdAt).toLocaleDateString()}
+                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="h-[600px] flex items-center justify-center text-muted-foreground">
-                    Select a user to start messaging
+                  </button>
+                ))}
+                {filteredTickets.length === 0 && searchTerm && (
+                  <div className="px-4 py-3 text-sm text-muted-foreground">
+                    No tickets found matching "{searchTerm}"
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-        </Tabs>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Chat Area */}
+          <Card className="col-span-8">
+            <CardContent className="p-0">
+              {selectedTicketId ? (
+                <TicketChat ticketId={selectedTicketId} />
+              ) : (
+                <div className="h-[600px] flex items-center justify-center text-muted-foreground">
+                  Select a ticket to view messages
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   );

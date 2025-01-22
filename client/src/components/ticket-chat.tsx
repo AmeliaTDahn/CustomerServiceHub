@@ -105,7 +105,14 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (readonly) return false;
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
-    if (isCustomer && ticketId && ticket?.claimedById) return true;
+
+    // For customers, check if there are any messages from employees or business
+    if (isCustomer && ticketId) {
+      // If there are messages and at least one is from an employee/business
+      return messages.some(msg => 
+        msg.sender.role === 'employee' || msg.sender.role === 'business'
+      );
+    }
     return false;
   };
 
@@ -200,16 +207,16 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   return (
     <div className="flex flex-col h-full relative">
-      {!readonly && ticket && !ticket.claimedById && user?.role === 'customer' && (
+      {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
         <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2">
           <Megaphone className="h-4 w-4" />
-          This ticket is unclaimed. Your messages will be broadcast to all available employees.
+          Waiting for an employee to respond. You'll be able to send messages once they do.
         </div>
       )}
       <div className={cn(
         "absolute inset-0",
         !readonly && "bottom-[4.5rem]",
-        !readonly && ticket && !ticket.claimedById && user?.role === 'customer' && "top-[2.5rem]"
+        !readonly && ticket && messages.length === 0 && user?.role === 'customer' && "top-[2.5rem]"
       )}>
         <ScrollArea
           ref={scrollAreaRef}

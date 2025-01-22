@@ -163,15 +163,15 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   };
 
   const canUpdateTicket = (ticket: Ticket) => {
-    // Resolved tickets are always read-only
-    if (readonly || ticket.status === "resolved") return false;
+    // For non-business users, readonly tickets are not editable
+    if (!isBusiness && readonly) return false;
 
-    // Business can always update active tickets, even if claimed
+    // Business users can update any ticket, including resolved ones
     if (isBusiness) return true;
 
-    // Employee can only update if they claimed the ticket
+    // Employee can only update if they claimed the ticket and it's not resolved
     if (isEmployee) {
-      return ticket.claimedById === user?.id;
+      return ticket.claimedById === user?.id && ticket.status !== "resolved";
     }
 
     return false;
@@ -188,18 +188,15 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
           <Card
             key={ticket.id}
             className={`${
-              readonly || (!isBusiness && ticket.claimedById && ticket.claimedById !== user?.id) || ticket.status === "resolved" 
-                ? '' 
+              (!isBusiness && (readonly || ticket.claimedById !== user?.id)) || (!isBusiness && ticket.status === "resolved")
+                ? ''
                 : 'cursor-pointer hover:shadow-md'
             } transition-shadow`}
             onClick={() => {
               // Allow click if:
-              // - Not readonly AND
-              // - Either business user OR ticket not claimed OR claimed by current user
-              // - AND not resolved
-              if (!readonly && 
-                  (isBusiness || !ticket.claimedById || ticket.claimedById === user?.id) && 
-                  ticket.status !== "resolved") {
+              // - Business user (can open any ticket)
+              // - OR (not readonly AND either ticket not claimed OR claimed by current user AND not resolved)
+              if (isBusiness || (!readonly && (!ticket.claimedById || ticket.claimedById === user?.id) && ticket.status !== "resolved")) {
                 setSelectedTicket(ticket);
               }
             }}
@@ -310,7 +307,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   </div>
 
-                  {!readonly && selectedTicket.status !== "resolved" && (isBusiness || isEmployee) && (
+                  {(isBusiness || (!readonly && selectedTicket.status !== "resolved")) && (
                     <>
                       <div className="space-y-2">
                         <h3 className="text-sm font-medium">Actions</h3>
@@ -339,15 +336,17 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                             )
                           )}
                         </div>
-                        <Button
-                          onClick={() => {
-                            handleMessageClick(selectedTicket.customerId);
-                          }}
-                          className="w-full mt-2"
-                        >
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Message Customer
-                        </Button>
+                        {(selectedTicket.status !== "resolved" || isBusiness) && (
+                          <Button
+                            onClick={() => {
+                              handleMessageClick(selectedTicket.customerId);
+                            }}
+                            className="w-full mt-2"
+                          >
+                            <MessageCircle className="mr-2 h-4 w-4" />
+                            Message Customer
+                          </Button>
+                        )}
                       </div>
 
                       <div className="mt-6">
@@ -357,6 +356,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       </div>
                     </>
                   )}
+
                   {!isBusiness && !isEmployee && (
                     <div className="space-y-4">
                       <ScrollArea className="h-[200px] rounded-md border p-4">

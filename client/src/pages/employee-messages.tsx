@@ -109,7 +109,7 @@ export default function EmployeeMessages() {
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-16rem)]">
+        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
           {/* Sidebar with Tabs */}
           <Card className="col-span-4 flex flex-col">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">

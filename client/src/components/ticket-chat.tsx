@@ -44,7 +44,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { isConnected, sendMessage, sendReadReceipt } = useWebSocket(user?.id, user?.role);
+  const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
 
   // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
@@ -67,14 +67,22 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     enabled: !!(directMessageUserId || ticketId)
   });
 
-  // Fetch ticket details for context
+  // Fetch ticket details for context if needed
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
     enabled: !!ticketId && !directMessageUserId,
   });
 
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const scrollArea = scrollAreaRef.current;
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
+  }, [messages, optimisticMessages]);
+
   // Check if chat is initiated
-  const isChatInitiated = messages.some(msg => msg.message.chatInitiator);
+  const isChatInitiated = messages?.some(msg => msg.message.chatInitiator);
   const isEmployee = user?.role === 'employee';
   const isBusiness = user?.role === 'business';
   const isCustomer = user?.role === 'customer';
@@ -95,6 +103,10 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         throw new Error("Not connected to message server");
       }
 
+      const receiverId = directMessageUserId || (messages[0]?.sender.id === user!.id 
+        ? messages[0]?.message.receiverId 
+        : messages[0]?.message.senderId);
+
       // Create optimistic message
       const optimisticMessage: Message = {
         message: {
@@ -102,9 +114,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           content,
           ticketId: ticketId || null,
           senderId: user!.id,
-          receiverId: directMessageUserId || (messages[0]?.sender.id === user!.id 
-            ? messages[0]?.message.receiverId 
-            : messages[0]?.message.senderId),
+          receiverId,
           status: 'sending',
           chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
           initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
@@ -125,29 +135,32 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       sendMessage({
         type: 'message',
         senderId: user!.id,
-        receiverId: directMessageUserId || (messages[0]?.sender.id === user!.id 
-          ? messages[0]?.message.receiverId 
-          : messages[0]?.message.senderId),
-        content: content,
+        receiverId,
+        content,
         timestamp: new Date().toISOString(),
         ticketId: ticketId || undefined,
-        directMessageUserId: directMessageUserId,
+        directMessageUserId,
+        chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
       });
 
       return optimisticMessage;
     },
     onSuccess: () => {
       setNewMessage("");
-      setOptimisticMessages([]);
 
       // Invalidate queries to refresh the messages
       if (directMessageUserId) {
-        queryClient.invalidateQueries({ queryKey: ['/api/messages/direct', directMessageUserId] });
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/messages/direct', directMessageUserId] 
+        });
       } else if (ticketId) {
-        queryClient.invalidateQueries({ queryKey: ['/api/tickets', ticketId, 'messages'] });
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/tickets', ticketId, 'messages'] 
+        });
       }
     },
     onError: (error) => {
+      // Remove optimistic messages on error
       setOptimisticMessages([]);
       toast({
         variant: "destructive",

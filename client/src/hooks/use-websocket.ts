@@ -8,8 +8,9 @@ interface Message {
   receiverId: number;
   content: string;
   timestamp: string;
-  id?: number;
   ticketId?: number;
+  directMessageUserId?: number;
+  chatInitiator?: boolean;
 }
 
 interface StatusUpdate {
@@ -40,7 +41,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     requestPermission();
   }, []);
 
-  // Show browser notification
   const showNotification = useCallback((title: string, body: string) => {
     if (hasNotificationPermission && document.hidden) {
       new Notification(title, {
@@ -56,13 +56,10 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}?userId=${userId}&role=${role}`);
 
-    // Set up ping interval
     const setupPing = () => {
-      // Clear any existing interval
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
       }
-      // Send ping every 15 seconds
       pingInterval.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'ping' }));
@@ -75,11 +72,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       setIsConnected(true);
       reconnectAttempts.current = 0;
       setupPing();
-
-      toast({
-        title: "Connected",
-        description: "Message connection established",
-      });
     };
 
     ws.onclose = () => {
@@ -87,12 +79,10 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       setIsConnected(false);
       wsRef.current = null;
 
-      // Clear ping interval
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
       }
 
-      // Attempt to reconnect with exponential backoff
       if (reconnectAttempts.current < maxReconnectAttempts) {
         const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
         reconnectAttempts.current++;
@@ -115,22 +105,15 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       try {
         const data = JSON.parse(event.data);
 
-        // Handle connection status message
         if (data.type === 'connection') {
           console.log('Connection status:', data.status);
           return;
         }
 
-        // Handle ping/pong messages
-        if (data.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong' }));
-          return;
-        }
-        if (data.type === 'pong') {
+        if (data.type === 'ping' || data.type === 'pong') {
           return;
         }
 
-        // Handle error message
         if (data.error) {
           toast({
             variant: "destructive",
@@ -140,29 +123,44 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           return;
         }
 
-        // Handle status updates
         if (data.type === 'status_update') {
-          const update = data as StatusUpdate;
-          queryClient.invalidateQueries({ queryKey: ['messages'] });
+          // Invalidate queries for both direct messages and ticket messages
+          if (data.ticketId) {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/tickets', data.ticketId, 'messages'] 
+            });
+          } else {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/messages/direct', data.senderId] 
+            });
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/messages/direct', data.receiverId] 
+            });
+          }
           return;
         }
 
         if (data.type === 'message') {
-          // Invalidate the messages query to update the UI
-          queryClient.invalidateQueries({ queryKey: ['messages', data.senderId] });
-          queryClient.invalidateQueries({ queryKey: ['/api/tickets', data.ticketId, 'messages'] });
+          // Invalidate the appropriate queries based on message type
+          if (data.ticketId) {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/tickets', data.ticketId, 'messages'] 
+            });
+          } else {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/messages/direct', data.senderId] 
+            });
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/messages/direct', data.receiverId] 
+            });
+          }
 
           // Only show notification for messages received from other users
           if (data.senderId !== userId && data.receiverId === userId) {
             const notificationTitle = `New Message`;
-            const notificationBody = `You have received a new message: ${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`;
+            const notificationBody = `${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`;
 
             showNotification(notificationTitle, notificationBody);
-
-            toast({
-              title: notificationTitle,
-              description: notificationBody,
-            });
 
             // Send delivery confirmation
             const deliveryConfirmation: StatusUpdate = {

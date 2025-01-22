@@ -1,33 +1,20 @@
-import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { useWebSocket } from "@/hooks/use-websocket";
-import { MessageCircle, Search, ArrowLeft, UserCheck, Building2, CircleDot } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MessageCircle, ArrowLeft, UserCheck } from "lucide-react";
+import { Link } from "wouter";
 import TicketChat from "@/components/ticket-chat";
 import type { Ticket } from "@db/schema";
 
-interface TicketWithBusiness extends Ticket {
-  business: {
-    id: number;
-    username: string;
-  };
-  hasBusinessResponse: boolean;
-  unreadCount?: number;
+interface TicketWithDetails extends Ticket {
   claimedBy?: {
     id: number;
     username: string;
   };
+  unreadCount: number;
 }
 
 export default function CustomerMessages() {
@@ -36,27 +23,9 @@ export default function CustomerMessages() {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
     ticketId ? parseInt(ticketId) : null
   );
-  const [selectedBusiness, setSelectedBusiness] = useState<string>('all');
-  const { isConnected } = useWebSocket(user?.id, user?.role);
-  const queryClient = useQueryClient();
 
-  // Auto-refresh when receiving messages
-  useEffect(() => {
-    if (isConnected && user) {
-      // Invalidate queries when receiving new messages
-      return () => {
-        queryClient.invalidateQueries({ queryKey: ['/api/tickets/customer'] });
-        if (selectedTicketId) {
-          queryClient.invalidateQueries({ 
-            queryKey: ['/api/tickets', selectedTicketId, 'messages'] 
-          });
-        }
-      };
-    }
-  }, [isConnected, user, selectedTicketId, queryClient]);
-
-  // Fetch all tickets for the customer with business response status and unread count
-  const { data: tickets = [] } = useQuery<TicketWithBusiness[]>({
+  // Fetch all tickets for the customer
+  const { data: tickets = [] } = useQuery<TicketWithDetails[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
       const res = await fetch('/api/tickets/customer', {
@@ -65,30 +34,30 @@ export default function CustomerMessages() {
       if (!res.ok) throw new Error(await res.text());
       const tickets = await res.json();
 
-      // For each ticket, check if there are any business responses and unread messages
+      // For each ticket, get the claimed employee info and unread count
       const ticketsWithDetails = await Promise.all(
-        tickets.map(async (ticket: TicketWithBusiness) => {
-          // Fetch claimed by information if available
+        tickets.map(async (ticket: Ticket) => {
+          let claimedBy;
           if (ticket.claimedById) {
             const userRes = await fetch(`/api/users/${ticket.claimedById}`, {
               credentials: 'include'
             });
             if (userRes.ok) {
               const userData = await userRes.json();
-              ticket.claimedBy = {
+              claimedBy = {
                 id: userData.id,
                 username: userData.username
               };
             }
           }
 
+          // Get messages to count unread
           const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`, {
             credentials: 'include'
           });
           if (!messagesRes.ok) throw new Error(await messagesRes.text());
           const messages = await messagesRes.json();
 
-          // Count unread messages and check for business response
           const unreadCount = messages.filter((m: any) =>
             m.message.receiverId === user?.id &&
             m.message.status !== 'read'
@@ -96,10 +65,7 @@ export default function CustomerMessages() {
 
           return {
             ...ticket,
-            hasBusinessResponse: messages.some((m: any) =>
-              m.message.senderId === ticket.business.id ||
-              (m.message.senderId !== user?.id && m.message.senderId !== ticket.business.id)
-            ),
+            claimedBy,
             unreadCount
           };
         })
@@ -108,14 +74,6 @@ export default function CustomerMessages() {
       return ticketsWithDetails;
     }
   });
-
-  // Get unique businesses from tickets
-  const businesses = Array.from(new Set(tickets.map(ticket => ticket.business.username)));
-
-  // Filter tickets based on selected business
-  const filteredTickets = tickets.filter(ticket =>
-    selectedBusiness === 'all' || ticket.business.username === selectedBusiness
-  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -130,138 +88,88 @@ export default function CustomerMessages() {
     }
   };
 
-  // Get the selected ticket details
-  const selectedTicket = tickets.find(ticket => ticket.id === selectedTicketId);
-
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <div className="p-2">
+      <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </Button>
         </Link>
+        <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <MessageCircle className="h-5 w-5" />
+          Message Center
+        </h1>
+        <div className="w-[88px]" /> {/* Spacer to center heading */}
       </div>
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <MessageCircle className="h-8 w-8" />
-            Message Center
-          </h1>
-        </div>
-      </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-16rem)]">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
           {/* Sidebar with Tickets */}
           <Card className="col-span-4 flex flex-col">
-            <div className="p-4 border-b">
-              <Select
-                value={selectedBusiness}
-                onValueChange={setSelectedBusiness}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by business..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Businesses</SelectItem>
-                  {businesses.map((business) => (
-                    <SelectItem key={business} value={business}>
-                      {business}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="divide-y">
-                {filteredTickets.map((ticket) => (
-                  <button
-                    key={ticket.id}
-                    onClick={() => setSelectedTicketId(ticket.id)}
-                    className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                      selectedTicketId === ticket.id ? "bg-primary/5" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{ticket.title}</p>
-                        {ticket.unreadCount ? (
-                          <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
-                            {ticket.unreadCount}
-                          </span>
-                        ) : null}
-                        {!ticket.claimedById && (
-                          <CircleDot className="h-3 w-3 text-blue-500" title="Broadcasting to all employees" />
+            <CardContent className="p-0 flex-1">
+              <ScrollArea className="h-full">
+                <div className="divide-y">
+                  {tickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      onClick={() => setSelectedTicketId(ticket.id)}
+                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                        selectedTicketId === ticket.id ? "bg-primary/5" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{ticket.title}</p>
+                          {ticket.unreadCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
+                              {ticket.unreadCount}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs ${getStatusColor(ticket.status)}`}>
+                          {ticket.status.replace("_", " ")}
+                        </span>
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {ticket.claimedBy ? (
+                          <p className="text-xs text-blue-600 flex items-center gap-1">
+                            <UserCheck className="h-3 w-3" />
+                            Assigned to {ticket.claimedBy.username}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Waiting for assignment
+                          </p>
                         )}
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(ticket.status)}`}>
-                        {ticket.status.replace("_", " ")}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Building2 className="h-3 w-3" />
-                        <p>{ticket.business.username}</p>
-                      </div>
-                      {ticket.claimedBy && (
-                        <p className="text-xs text-blue-600 flex items-center gap-1">
-                          <UserCheck className="h-3 w-3" />
-                          Claimed by {ticket.claimedBy.username}
+                        <p className="text-xs text-muted-foreground">
+                          Created {new Date(ticket.createdAt).toLocaleDateString()}
                         </p>
-                      )}
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
-                        {ticket.hasBusinessResponse && (
-                          <span className="text-green-600">•  New response</span>
-                        )}
                       </div>
+                    </button>
+                  ))}
+                  {tickets.length === 0 && (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                      No tickets found
                     </div>
-                  </button>
-                ))}
-                {filteredTickets.length === 0 && (
-                  <div className="px-4 py-3 text-sm text-muted-foreground">
-                    No tickets found
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
           </Card>
 
           {/* Chat Area */}
           <Card className="col-span-8 flex flex-col h-full">
             <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
-                <div className="h-full">
-                  <div className="p-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold">{selectedTicket?.title}</h2>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Building2 className="h-3 w-3" />
-                          {selectedTicket?.business.username}
-                          {!selectedTicket?.claimedById && (
-                            <span className="ml-2 text-blue-500 flex items-center gap-1">
-                              <CircleDot className="h-3 w-3" />
-                              Broadcasting to all employees
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(selectedTicket?.status || '')}`}>
-                        {selectedTicket?.status.replace("_", " ")}
-                      </span>
-                    </div>
-                  </div>
-                  <TicketChat
-                    ticketId={selectedTicketId}
-                    readonly={false}
-                  />
-                </div>
+                <TicketChat
+                  ticketId={selectedTicketId}
+                  readonly={false}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Select a ticket to start messaging
+                  Select a ticket to view messages
                 </div>
               )}
             </CardContent>

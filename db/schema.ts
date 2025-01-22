@@ -43,6 +43,14 @@ export const tickets = pgTable("tickets", {
   businessId: integer("business_id").references(() => users.id),
   claimedById: integer("claimed_by_id").references(() => users.id),
   claimedAt: timestamp("claimed_at"),
+  // New escalation fields
+  escalationLevel: text("escalation_level", {
+    enum: ["none", "low", "medium", "high"]
+  }).default("none").notNull(),
+  escalatedAt: timestamp("escalated_at"),
+  escalatedById: integer("escalated_by_id").references(() => users.id),
+  escalationReason: text("escalation_reason"),
+  previousAssigneeId: integer("previous_assignee_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
@@ -89,6 +97,22 @@ export const ticketNotes = pgTable("ticket_notes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const ticketEscalations = pgTable("ticket_escalations", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
+  fromLevel: text("from_level", {
+    enum: ["none", "low", "medium", "high"]
+  }).notNull(),
+  toLevel: text("to_level", {
+    enum: ["none", "low", "medium", "high"]
+  }).notNull(),
+  fromAssigneeId: integer("from_assignee_id").references(() => users.id),
+  toAssigneeId: integer("to_assignee_id").references(() => users.id),
+  escalatedById: integer("escalated_by_id").references(() => users.id).notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
   business: one(users, {
     fields: [businessEmployees.businessId],
@@ -120,9 +144,22 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
     fields: [tickets.businessId],
     references: [users.id]
   }),
+  claimedBy: one(users, {
+    fields: [tickets.claimedById],
+    references: [users.id]
+  }),
+  escalatedBy: one(users, {
+    fields: [tickets.escalatedById],
+    references: [users.id]
+  }),
+  previousAssignee: one(users, {
+    fields: [tickets.previousAssigneeId],
+    references: [users.id]
+  }),
   messages: many(messages),
   notes: many(ticketNotes),
-  feedback: many(ticketFeedback)
+  feedback: many(ticketFeedback),
+  escalations: many(ticketEscalations)
 }));
 
 export const ticketFeedbackRelations = relations(ticketFeedback, ({ one }) => ({
@@ -181,6 +218,25 @@ export const unreadMessagesRelations = relations(unreadMessages, ({ one }) => ({
   }),
 }));
 
+export const ticketEscalationsRelations = relations(ticketEscalations, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [ticketEscalations.ticketId],
+    references: [tickets.id]
+  }),
+  fromAssignee: one(users, {
+    fields: [ticketEscalations.fromAssigneeId],
+    references: [users.id]
+  }),
+  toAssignee: one(users, {
+    fields: [ticketEscalations.toAssigneeId],
+    references: [users.id]
+  }),
+  escalatedBy: one(users, {
+    fields: [ticketEscalations.escalatedById],
+    references: [users.id]
+  })
+}));
+
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
@@ -209,3 +265,5 @@ export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 export type TicketFeedback = typeof ticketFeedback.$inferSelect;
 export type NewTicketFeedback = typeof ticketFeedback.$inferInsert;
+export type TicketEscalation = typeof ticketEscalations.$inferSelect;
+export type NewTicketEscalation = typeof ticketEscalations.$inferInsert;

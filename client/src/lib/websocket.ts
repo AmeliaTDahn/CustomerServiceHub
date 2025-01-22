@@ -15,48 +15,72 @@ class WebSocketClient {
   private reconnectTimeout = 1000; // Start with 1 second
   private messageCallbacks: ((message: Message) => void)[] = [];
   private toast: Toast;
+  private userId: number;
+  private role: string;
 
-  constructor(private userId: number, private role: string, toast: Toast) {
+  constructor(userId: number, role: string, toast: Toast) {
+    this.userId = userId;
+    this.role = role;
     this.toast = toast;
     this.connect();
   }
 
   private connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}?userId=${this.userId}&role=${this.role}`;
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?userId=${this.userId}&role=${this.role}`;
 
-    console.log('Connecting to WebSocket:', wsUrl);
-    this.ws = new WebSocket(wsUrl);
+      console.log('Connecting to WebSocket:', wsUrl);
+      this.ws = new WebSocket(wsUrl);
 
-    this.ws.onopen = () => {
-      console.log('WebSocket connected');
-      this.reconnectAttempts = 0;
-      this.reconnectTimeout = 1000;
-    };
+      this.ws.onopen = this.handleOpen.bind(this);
+      this.ws.onmessage = this.handleMessage.bind(this);
+      this.ws.onclose = this.handleClose.bind(this);
+      this.ws.onerror = this.handleError.bind(this);
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+      this.handleError(error);
+    }
+  }
 
-    this.ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('Received message:', message);
-        this.messageCallbacks.forEach(callback => callback(message));
-      } catch (error) {
-        console.error('Error parsing message:', error);
+  private handleOpen() {
+    console.log('WebSocket connected');
+    this.reconnectAttempts = 0;
+    this.reconnectTimeout = 1000;
+  }
+
+  private handleMessage(event: MessageEvent) {
+    try {
+      const message = JSON.parse(event.data);
+      console.log('Received message:', message);
+
+      // Handle connection messages
+      if (message.type === 'connection') {
+        this.toast({
+          title: "Connected",
+          description: "Successfully connected to messaging service",
+        });
+        return;
       }
-    };
 
-    this.ws.onclose = () => {
-      console.log('WebSocket closed');
-      this.handleReconnection();
-    };
+      this.messageCallbacks.forEach(callback => callback(message));
+    } catch (error) {
+      console.error('Error parsing message:', error);
+    }
+  }
 
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      this.toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Lost connection to the messaging server. Attempting to reconnect...",
-      });
-    };
+  private handleClose() {
+    console.log('WebSocket closed');
+    this.handleReconnection();
+  }
+
+  private handleError(error: any) {
+    console.error('WebSocket error:', error);
+    this.toast({
+      variant: "destructive",
+      title: "Connection Error",
+      description: "Lost connection to the messaging server. Attempting to reconnect...",
+    });
   }
 
   private handleReconnection() {
@@ -92,6 +116,7 @@ class WebSocketClient {
       timestamp: new Date().toISOString(),
     };
 
+    console.log('Sending message:', message);
     this.ws.send(JSON.stringify(message));
   }
 

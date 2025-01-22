@@ -55,7 +55,7 @@ export default function EmployeeMessages() {
   );
 
   // Fetch messages
-  const { data: messages = [] } = useQuery<Message[]>({
+  const { data: messages = [], isError, error } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUserId],
     queryFn: async () => {
       if (!selectedUserId || !user) return [];
@@ -75,19 +75,27 @@ export default function EmployeeMessages() {
     if (!user) return;
 
     try {
+      console.log('Setting up WebSocket connection...');
       const wsClient = initializeWebSocket(user.id, user.role, toast);
+
       const unsubscribe = wsClient.onMessage((message) => {
         // Only update messages if they're related to the current conversation
         if (message.senderId === selectedUserId || message.receiverId === selectedUserId) {
+          console.log('Received message for current conversation:', message);
           queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUserId] });
-          toast({
-            title: "New Message",
-            description: "You have received a new message",
-          });
+
+          // Show notification for new messages
+          if (message.senderId !== user.id) {
+            toast({
+              title: "New Message",
+              description: "You have received a new message",
+            });
+          }
         }
       });
 
       return () => {
+        console.log('Cleaning up WebSocket connection...');
         unsubscribe();
       };
     } catch (error) {
@@ -95,7 +103,7 @@ export default function EmployeeMessages() {
       toast({
         variant: "destructive",
         title: "Connection Error",
-        description: "Failed to connect to messaging service",
+        description: error instanceof Error ? error.message : "Failed to connect to messaging service",
       });
     }
   }, [user, selectedUserId, queryClient, toast]);
@@ -121,6 +129,12 @@ export default function EmployeeMessages() {
     }
 
     try {
+      console.log('Attempting to send message:', {
+        senderId: user.id,
+        receiverId: selectedUserId,
+        content: message
+      });
+
       const wsClient = getWebSocketClient();
       wsClient.sendMessage(selectedUserId, message.trim());
       setMessage("");
@@ -133,6 +147,14 @@ export default function EmployeeMessages() {
       });
     }
   };
+
+  if (isError) {
+    toast({
+      variant: "destructive",
+      title: "Error",
+      description: error instanceof Error ? error.message : "Failed to load messages",
+    });
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,9 +235,9 @@ export default function EmployeeMessages() {
                 {selectedUserId ? (
                   <div className="flex flex-col h-[600px]">
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                      {messages.map((msg, index) => (
+                      {messages.map((msg) => (
                         <div
-                          key={msg.id || index}
+                          key={msg.id}
                           className={`flex ${
                             msg.senderId === user?.id ? 'justify-end' : 'justify-start'
                           }`}

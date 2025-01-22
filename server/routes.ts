@@ -569,12 +569,19 @@ export function registerRoutes(app: Express): Server {
 
     try {
       // Get all tickets for the customer with associated business and message data
-      const tickets = await db.select({
+      const customerTickets = await db.select({
         id: tickets.id,
         title: tickets.title,
         description: tickets.description,
         status: tickets.status,
+        priority: tickets.priority,
+        category: tickets.category,
+        customerId: tickets.customerId,
+        businessId: tickets.businessId,
+        claimedById: tickets.claimedById,
+        claimedAt: tickets.claimedAt,
         createdAt: tickets.createdAt,
+        updatedAt: tickets.updatedAt,
         business: {
           id: users.id,
           username: users.username,
@@ -597,7 +604,7 @@ export function registerRoutes(app: Express): Server {
       .where(eq(tickets.customerId, req.user.id))
       .orderBy(desc(tickets.updatedAt));
 
-      res.json(tickets);
+      res.json(customerTickets);
     } catch (error) {
       console.error('Error fetching customer tickets:', error);
       res.status(500).json({ error: "Failed to fetch tickets" });
@@ -905,7 +912,7 @@ export function registerRoutes(app: Express): Server {
   // Ticket notes routes
   app.post("/api/tickets/:id/notes", async (req, res) => {
     try {
-      if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+            if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
         return res.status(403).json({ error: "Only business users and employees can add notes" });
       }
 

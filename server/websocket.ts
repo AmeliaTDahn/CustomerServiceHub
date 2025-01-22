@@ -4,6 +4,8 @@ import type { Express } from 'express';
 import { db } from "@db";
 import { messages, unreadMessages, tickets } from "@db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import pkg from 'pg';
+const { Pool } = pkg;
 
 interface Message {
   type: string;
@@ -34,6 +36,48 @@ const connections = new Map<string, ExtendedWebSocket>();
 export function setupWebSocket(server: Server, app: Express) {
   const wss = new WebSocketServer({ noServer: true });
 
+  // Create a separate pool for LISTEN/NOTIFY
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  // Set up PostgreSQL LISTEN
+  (async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('LISTEN new_message');
+
+      client.on('notification', async (msg) => {
+        if (msg.channel === 'new_message' && msg.payload) {
+          const payload = JSON.parse(msg.payload);
+
+          // Forward message to relevant connected clients
+          const receiverRole = await determineUserRole(payload.receiver_id);
+          if (receiverRole) {
+            const receiverWs = connections.get(`${payload.receiver_id}-${receiverRole}`);
+            if (receiverWs?.readyState === WebSocket.OPEN) {
+              receiverWs.send(JSON.stringify({
+                type: 'message',
+                id: payload.id,
+                senderId: payload.sender_id,
+                receiverId: payload.receiver_id,
+                content: payload.content,
+                status: payload.status,
+                ticketId: payload.ticket_id,
+                sentAt: payload.sent_at,
+                createdAt: payload.created_at
+              }));
+            }
+          }
+        }
+      });
+
+    } catch (err) {
+      console.error('Error setting up PostgreSQL LISTEN:', err);
+      client.release();
+    }
+  })();
+
   // Heartbeat interval (30 seconds)
   const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws: ExtendedWebSocket) => {
@@ -43,14 +87,27 @@ export function setupWebSocket(server: Server, app: Express) {
       }
 
       ws.isAlive = false;
-      // Send JSON ping instead of raw ping
       ws.send(JSON.stringify({ type: 'ping' }));
     });
   }, 30000);
 
   wss.on('close', () => {
     clearInterval(heartbeatInterval);
+    pool.end();
   });
+
+  // Helper function to determine user role
+  async function determineUserRole(userId: number): Promise<string | null> {
+    const [user] = await db.select()
+      .from(messages)
+      .where(eq(messages.senderId, userId))
+      .limit(1);
+
+    if (user) {
+      return user.role; // Assuming messages table has a 'role' column
+    }
+    return null;
+  }
 
   // Handle WebSocket connections
   wss.on('connection', (ws: ExtendedWebSocket, userId: number, role: string) => {
@@ -59,7 +116,6 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.role = role;
     ws.isAlive = true;
 
-    // Store connection with user's actual role
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
 
@@ -110,7 +166,7 @@ export function setupWebSocket(server: Server, app: Express) {
         }
       } catch (error) {
         console.error('Error updating message status:', error);
-        ws.send(JSON.stringify({ 
+        ws.send(JSON.stringify({
           type: 'error',
           error: 'Failed to update message status'
         }));
@@ -121,7 +177,6 @@ export function setupWebSocket(server: Server, app: Express) {
     ws.on('message', async (data: string) => {
       try {
         const message = JSON.parse(data);
-        console.log(`Received message:`, message);
 
         // Handle ping messages
         if (message.type === 'ping') {
@@ -196,22 +251,6 @@ export function setupWebSocket(server: Server, app: Express) {
 
           console.log('Saved message to database:', savedMessage);
 
-          // Update unread messages count
-          await db.insert(unreadMessages)
-            .values({
-              userId: receiverId,
-              ticketId: message.ticketId,
-              count: sql`1`,
-              updatedAt: new Date()
-            })
-            .onConflictDoUpdate({
-              target: [unreadMessages.userId, unreadMessages.ticketId],
-              set: {
-                count: sql`${unreadMessages.count} + 1`,
-                updatedAt: new Date()
-              }
-            });
-
           // Create response message
           const responseMessage = {
             id: savedMessage.id,
@@ -225,45 +264,13 @@ export function setupWebSocket(server: Server, app: Express) {
             ticketId: savedMessage.ticketId
           };
 
-          // Determine receiver's role based on ticket relationship
-          const receiverRole = receiverId === ticket.customerId ? 'customer' : 
-                             receiverId === ticket.businessId ? 'business' : 'employee';
-
-          const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
-          let delivered = false;
-
-          if (receiverWs?.readyState === WebSocket.OPEN) {
-            console.log(`Forwarding message to ${receiverRole} ${receiverId}`);
-            receiverWs.send(JSON.stringify(responseMessage));
-            delivered = true;
-
-            // Update message as delivered immediately
-            await db
-              .update(messages)
-              .set({
-                status: 'delivered',
-                deliveredAt: new Date()
-              })
-              .where(eq(messages.id, savedMessage.id));
-
-            // Send delivery status back to sender
-            const deliveryStatus: StatusUpdate = {
-              type: 'status_update',
-              messageId: savedMessage.id,
-              status: 'delivered',
-              timestamp: new Date().toISOString()
-            };
-            ws.send(JSON.stringify(deliveryStatus));
-          }
-
-          // Send message back to sender for confirmation
-          if (!delivered) {
-            ws.send(JSON.stringify(responseMessage));
-          }
+          // The PostgreSQL trigger will handle notifying the receiver
+          // We only need to confirm receipt to the sender
+          ws.send(JSON.stringify(responseMessage));
         }
       } catch (error) {
         console.error('Error handling message:', error);
-        ws.send(JSON.stringify({ 
+        ws.send(JSON.stringify({
           type: 'error',
           error: 'Failed to process message'
         }));
@@ -285,8 +292,8 @@ export function setupWebSocket(server: Server, app: Express) {
     });
 
     // Send initial connection success message
-    ws.send(JSON.stringify({ 
-      type: 'connection', 
+    ws.send(JSON.stringify({
+      type: 'connection',
       status: 'connected',
       userId: userId,
       role: role

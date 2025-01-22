@@ -2,7 +2,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages } from "@db/schema";
+import { messages, users } from "@db/schema";
+import { eq } from "drizzle-orm";
+import type { User } from "@db/schema";
 
 interface Message {
   type: string;
@@ -47,14 +49,22 @@ export function setupWebSocket(server: Server, app: Express) {
   });
 
   // Handle WebSocket connections
-  wss.on('connection', (ws: WebSocket, userId: number, role: string) => {
-    console.log(`New WebSocket connection for ${role} user ${userId}`);
-    const connectionKey = `${userId}-${role}`;
+  wss.on('connection', async (ws: WebSocket, user: User) => {
+    console.log(`New WebSocket connection for ${user.role} user ${user.id}`);
+    const connectionKey = `${user.id}-${user.role}`;
     connections.set(connectionKey, ws);
 
     // Set up heartbeat
     (ws as any).isAlive = true;
     ws.on('pong', () => heartbeat(ws));
+
+    // Send initial connection success message
+    ws.send(JSON.stringify({ 
+      type: 'connection', 
+      status: 'connected',
+      userId: user.id,
+      role: user.role
+    }));
 
     // Handle incoming messages
     ws.on('message', async (data: string) => {
@@ -67,9 +77,25 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
+        // Validate sender matches authenticated user
+        if (message.senderId !== user.id) {
+          throw new Error('Unauthorized: Sender ID does not match authenticated user');
+        }
+
         // Validate message format
         if (!message.senderId || !message.receiverId || !message.content?.trim()) {
           throw new Error('Invalid message format');
+        }
+
+        // Verify receiver exists
+        const [receiver] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, message.receiverId))
+          .limit(1);
+
+        if (!receiver) {
+          throw new Error('Receiver not found');
         }
 
         // Save message to database
@@ -128,62 +154,69 @@ export function setupWebSocket(server: Server, app: Express) {
 
     // Handle connection close
     ws.on('close', () => {
-      console.log(`User ${userId} (${role}) disconnected`);
+      console.log(`User ${user.id} (${user.role}) disconnected`);
       connections.delete(connectionKey);
     });
 
     // Handle connection errors
     ws.on('error', (error) => {
-      console.error(`WebSocket error for user ${userId} (${role}):`, error);
+      console.error(`WebSocket error for user ${user.id} (${user.role}):`, error);
       connections.delete(connectionKey);
     });
-
-    // Send initial connection success message
-    ws.send(JSON.stringify({ 
-      type: 'connection', 
-      status: 'connected',
-      userId: userId,
-      role: role
-    }));
   });
 
   // Handle upgrade requests
-  server.on('upgrade', (request, socket, head) => {
+  server.on('upgrade', async (request, socket, head) => {
     // Skip vite HMR requests
     if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
       return;
     }
 
     try {
-      const url = new URL(request.url!, `http://${request.headers.host}`);
-      const userId = parseInt(url.searchParams.get('userId') || '');
-      const role = url.searchParams.get('role') || '';
-
-      if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
-        console.error('Invalid WebSocket connection parameters:', { userId, role });
+      // Get session from the request
+      const session = (request as any).session;
+      if (!session?.passport?.user) {
+        console.error('No authenticated session found');
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
 
-      const connectionKey = `${userId}-${role}`;
+      // Get user from database
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, session.passport.user))
+        .limit(1);
+
+      if (!user) {
+        console.error('User not found in database');
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      const connectionKey = `${user.id}-${user.role}`;
       const attempts = connectionAttempts.get(connectionKey) || 0;
 
       if (attempts >= MAX_ATTEMPTS) {
         console.error(`Too many connection attempts for ${connectionKey}`);
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
         socket.destroy();
         return;
       }
 
       connectionAttempts.set(connectionKey, attempts + 1);
 
-      console.log('Upgrading connection for user:', userId, 'role:', role);
+      console.log('Upgrading connection for authenticated user:', user.id, 'role:', user.role);
       wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, userId, role);
+        wss.emit('connection', ws, user);
         // Reset connection attempts on successful connection
         connectionAttempts.delete(connectionKey);
       });
     } catch (error) {
       console.error('Error handling WebSocket upgrade:', error);
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
       socket.destroy();
     }
   });

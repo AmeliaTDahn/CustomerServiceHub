@@ -28,7 +28,8 @@ class WebSocketClient {
   private connect() {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?userId=${this.userId}&role=${this.role}`;
+      // Changed to use /ws path to handle session middleware properly
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
 
       console.log('Connecting to WebSocket:', wsUrl);
       this.ws = new WebSocket(wsUrl);
@@ -44,7 +45,7 @@ class WebSocketClient {
   }
 
   private handleOpen() {
-    console.log('WebSocket connected');
+    console.log('WebSocket connected successfully');
     this.reconnectAttempts = 0;
     this.reconnectTimeout = 1000;
   }
@@ -70,7 +71,7 @@ class WebSocketClient {
   }
 
   private handleClose() {
-    console.log('WebSocket closed');
+    console.log('WebSocket connection closed');
     this.handleReconnection();
   }
 

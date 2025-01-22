@@ -23,7 +23,10 @@ export default function EmployeeDashboard() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
 
-  const filteredTickets = tickets?.filter((ticket) => {
+  // Filter out resolved tickets first, then apply other filters
+  const activeTickets = tickets?.filter(ticket => ticket.status !== "resolved") || [];
+
+  const filteredTickets = activeTickets.filter((ticket) => {
     const matchesSearch = searchTerm === "" || 
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -46,7 +49,7 @@ export default function EmployeeDashboard() {
       default:
         return 0;
     }
-  }) || [];
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -73,7 +76,7 @@ export default function EmployeeDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Customer Tickets</CardTitle>
+            <CardTitle>Active Customer Tickets</CardTitle>
           </CardHeader>
           <CardContent>
             <TicketFilters 

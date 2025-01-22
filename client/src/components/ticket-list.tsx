@@ -29,9 +29,10 @@ interface TicketListProps {
   tickets: Ticket[];
   isBusiness?: boolean;
   isEmployee?: boolean;
+  readonly?: boolean;
 }
 
-export default function TicketList({ tickets, isBusiness = false, isEmployee = false }: TicketListProps) {
+export default function TicketList({ tickets, isBusiness = false, isEmployee = false, readonly = false }: TicketListProps) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -155,6 +156,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   };
 
   const canUpdateTicket = (ticket: Ticket) => {
+    if (readonly) return false;
     if (isBusiness) return true;
     if (isEmployee) {
       return ticket.claimedById === user?.id;
@@ -168,8 +170,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         {tickets.map((ticket) => (
           <Card
             key={ticket.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => setSelectedTicket(ticket)}
+            className={`${readonly ? '' : 'cursor-pointer hover:shadow-md'} transition-shadow`}
+            onClick={() => !readonly && setSelectedTicket(ticket)}
           >
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -196,7 +198,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   <Badge className={getPriorityColor(ticket.priority)}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
-                  {(isBusiness || isEmployee) && (
+                  {!readonly && (isBusiness || isEmployee) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -261,7 +263,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   </div>
 
-                  {(isBusiness || isEmployee) && (
+                  {!readonly && (isBusiness || isEmployee) && (
                     <>
                       <div className="space-y-2">
                         <h3 className="text-sm font-medium">Actions</h3>

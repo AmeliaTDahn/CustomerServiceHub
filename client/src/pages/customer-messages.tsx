@@ -9,12 +9,12 @@ import { Link } from "wouter";
 import TicketChat from "@/components/ticket-chat";
 import type { Ticket } from "@db/schema";
 
-interface TicketWithDetails extends Ticket {
+interface TicketWithClaimInfo extends Ticket {
   claimedBy?: {
     id: number;
     username: string;
   };
-  unreadCount: number;
+  unreadMessages: number;
 }
 
 export default function CustomerMessages() {
@@ -24,8 +24,8 @@ export default function CustomerMessages() {
     ticketId ? parseInt(ticketId) : null
   );
 
-  // Fetch all tickets for the customer
-  const { data: tickets = [] } = useQuery<TicketWithDetails[]>({
+  // Fetch customer's tickets
+  const { data: tickets = [], isLoading } = useQuery<TicketWithClaimInfo[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
       const res = await fetch('/api/tickets/customer', {
@@ -43,22 +43,18 @@ export default function CustomerMessages() {
               credentials: 'include'
             });
             if (userRes.ok) {
-              const userData = await userRes.json();
-              claimedBy = {
-                id: userData.id,
-                username: userData.username
-              };
+              claimedBy = await userRes.json();
             }
           }
 
-          // Get messages to count unread
+          // Get unread message count
           const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`, {
             credentials: 'include'
           });
           if (!messagesRes.ok) throw new Error(await messagesRes.text());
           const messages = await messagesRes.json();
 
-          const unreadCount = messages.filter((m: any) =>
+          const unreadMessages = messages.filter((m: any) =>
             m.message.receiverId === user?.id &&
             m.message.status !== 'read'
           ).length;
@@ -66,23 +62,24 @@ export default function CustomerMessages() {
           return {
             ...ticket,
             claimedBy,
-            unreadCount
+            unreadMessages
           };
         })
       );
 
       return ticketsWithDetails;
-    }
+    },
+    refetchInterval: 5000 // Refresh every 5 seconds to check for new messages
   });
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case "open":
-        return "bg-yellow-100 text-yellow-800";
-      case "in_progress":
-        return "bg-blue-100 text-blue-800";
-      case "resolved":
+      case 'open':
         return "bg-green-100 text-green-800";
+      case 'in_progress':
+        return "bg-blue-100 text-blue-800";
+      case 'resolved':
+        return "bg-gray-100 text-gray-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -90,6 +87,7 @@ export default function CustomerMessages() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* Header */}
       <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -101,58 +99,64 @@ export default function CustomerMessages() {
           <MessageCircle className="h-5 w-5" />
           Message Center
         </h1>
-        <div className="w-[88px]" /> {/* Spacer to center heading */}
+        <div className="w-[88px]" /> {/* Spacer */}
       </div>
 
+      {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
-          {/* Sidebar with Tickets */}
+          {/* Ticket List Sidebar */}
           <Card className="col-span-4 flex flex-col">
             <CardContent className="p-0 flex-1">
               <ScrollArea className="h-full">
                 <div className="divide-y">
-                  {tickets.map((ticket) => (
-                    <button
-                      key={ticket.id}
-                      onClick={() => setSelectedTicketId(ticket.id)}
-                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                        selectedTicketId === ticket.id ? "bg-primary/5" : ""
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{ticket.title}</p>
-                          {ticket.unreadCount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
-                              {ticket.unreadCount}
-                            </span>
-                          )}
-                        </div>
-                        <span className={`px-2 py-1 rounded text-xs ${getStatusColor(ticket.status)}`}>
-                          {ticket.status.replace("_", " ")}
-                        </span>
-                      </div>
-                      <div className="mt-1 space-y-1">
-                        {ticket.claimedBy ? (
-                          <p className="text-xs text-blue-600 flex items-center gap-1">
-                            <UserCheck className="h-3 w-3" />
-                            Assigned to {ticket.claimedBy.username}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Waiting for assignment
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          Created {new Date(ticket.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                  {tickets.length === 0 && (
-                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                  {isLoading ? (
+                    <div className="p-4 text-sm text-muted-foreground">
+                      Loading tickets...
+                    </div>
+                  ) : tickets.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">
                       No tickets found
                     </div>
+                  ) : (
+                    tickets.map((ticket) => (
+                      <button
+                        key={ticket.id}
+                        onClick={() => setSelectedTicketId(ticket.id)}
+                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                          selectedTicketId === ticket.id ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{ticket.title}</p>
+                            {ticket.unreadMessages > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
+                                {ticket.unreadMessages}
+                              </span>
+                            )}
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs ${getStatusBadge(ticket.status)}`}>
+                            {ticket.status.replace("_", " ")}
+                          </span>
+                        </div>
+                        <div className="mt-1 space-y-1">
+                          {ticket.claimedBy ? (
+                            <p className="text-xs text-blue-600 flex items-center gap-1">
+                              <UserCheck className="h-3 w-3" />
+                              Assigned to {ticket.claimedBy.username}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Waiting for assignment
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Created {new Date(ticket.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </button>
+                    ))
                   )}
                 </div>
               </ScrollArea>

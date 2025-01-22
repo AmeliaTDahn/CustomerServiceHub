@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Send, Users, User } from "lucide-react";
 import type { User as UserType } from "@db/schema";
-import { supabase, getMessages, sendMessage } from "@/lib/supabase";
+import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
@@ -26,6 +26,7 @@ export default function EmployeeMessages() {
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
+  const { isConnected, sendMessage: sendWebSocketMessage } = useWebSocket(user?.id, user?.role);
 
   // Fetch customers (only those with tickets)
   const { data: customers = [] } = useQuery<UserType[]>({
@@ -57,39 +58,16 @@ export default function EmployeeMessages() {
   // Fetch messages for selected user
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['messages', selectedUserId],
-    queryFn: () => selectedUserId ? getMessages(user!.id, selectedUserId) : Promise.resolve([]),
+    queryFn: async () => {
+      if (!selectedUserId) return [];
+      const response = await fetch(`/api/messages/${selectedUserId}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch messages');
+      return response.json();
+    },
     enabled: !!selectedUserId && !!user,
   });
-
-  // Set up real-time subscription
-  useEffect(() => {
-    if (!selectedUserId || !user) return;
-
-    // Subscribe to new messages
-    const channel = supabase
-      .channel(`messages:${user.id}-${selectedUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
-          toast({
-            title: "New Message",
-            description: "You have received a new message",
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedUserId, user?.id, queryClient]);
 
   // When loading the page with a customerId, find and select that customer
   useEffect(() => {
@@ -111,11 +89,26 @@ export default function EmployeeMessages() {
       return;
     }
 
+    if (!isConnected) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Not connected to message server. Please try again.",
+      });
+      return;
+    }
+
     try {
-      await sendMessage(user.id, selectedUserId, message.trim());
+      // Send message through WebSocket
+      sendWebSocketMessage({
+        type: 'message',
+        senderId: user.id,
+        receiverId: selectedUserId,
+        content: message.trim(),
+        timestamp: new Date().toISOString()
+      });
+
       setMessage("");
-      // Invalidate the messages query to show the new message immediately
-      queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({
@@ -138,6 +131,12 @@ export default function EmployeeMessages() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        {!isConnected && (
+          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-yellow-800">Connecting to message server...</p>
+          </div>
+        )}
+
         <Tabs defaultValue="customers" className="space-y-4">
           <TabsList>
             <TabsTrigger value="customers" className="flex items-center gap-2">

@@ -100,7 +100,12 @@ export function setupWebSocket(server: Server, app: Express) {
         return ws.terminate();
       }
       ws.isAlive = false;
-      ws.send(JSON.stringify({ type: 'ping' }));
+      try {
+        ws.send(JSON.stringify({ type: 'ping', timestamp: new Date().toISOString() }));
+      } catch (error) {
+        console.error('Error sending ping:', error);
+        ws.terminate();
+      }
     });
   }, 30000);
 

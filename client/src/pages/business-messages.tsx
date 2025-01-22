@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,10 @@ interface Message {
   senderId: number;
   receiverId: number;
   content: string;
+  status: 'sent' | 'delivered' | 'read';
+  sentAt: string;
+  deliveredAt?: string;
+  readAt?: string;
   createdAt: string;
 }
 
@@ -281,9 +285,22 @@ export default function BusinessMessages() {
                         }`}
                       >
                         <p className="text-sm">{message.content}</p>
-                        <p className="text-xs opacity-70 mt-1">
-                          {new Date(message.createdAt).toLocaleTimeString()}
-                        </p>
+                        <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                          <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+                          {message.senderId === user?.id && (
+                            <span className="flex items-center gap-1 ml-2">
+                              {message.status === 'sent' && (
+                                <Check className="h-3 w-3" />
+                              )}
+                              {message.status === 'delivered' && (
+                                <CheckCheck className="h-3 w-3" />
+                              )}
+                              {message.status === 'read' && (
+                                <CheckCheck className="h-3 w-3 text-blue-500" />
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}

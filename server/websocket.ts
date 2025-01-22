@@ -3,12 +3,21 @@ import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
 import { messages } from "@db/schema";
+import { eq, and } from "drizzle-orm";
 
 interface Message {
   type: string;
   senderId: number;
   receiverId: number;
   content: string;
+  timestamp: string;
+  messageId?: number;
+}
+
+interface StatusUpdate {
+  type: string;
+  messageId: number;
+  status: 'delivered' | 'read';
   timestamp: string;
 }
 
@@ -24,23 +33,96 @@ export function setupWebSocket(server: Server, app: Express) {
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
 
+    // Update all undelivered messages to this user as delivered
+    (async () => {
+      try {
+        const [undeliveredMessages] = await db
+          .select()
+          .from(messages)
+          .where(
+            and(
+              eq(messages.receiverId, userId),
+              eq(messages.status, 'sent')
+            )
+          );
+
+        if (undeliveredMessages) {
+          await db
+            .update(messages)
+            .set({
+              status: 'delivered',
+              deliveredAt: new Date()
+            })
+            .where(
+              and(
+                eq(messages.receiverId, userId),
+                eq(messages.status, 'sent')
+              )
+            );
+
+          // Notify senders their messages were delivered
+          const statusUpdate: StatusUpdate = {
+            type: 'status_update',
+            messageId: undeliveredMessages.id,
+            status: 'delivered',
+            timestamp: new Date().toISOString()
+          };
+
+          const senderWs = connections.get(`${undeliveredMessages.senderId}-${role}`);
+          if (senderWs?.readyState === WebSocket.OPEN) {
+            senderWs.send(JSON.stringify(statusUpdate));
+          }
+        }
+      } catch (error) {
+        console.error('Error updating message status:', error);
+      }
+    })();
+
     // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
-        const message: Message = JSON.parse(data);
+        const message = JSON.parse(data);
         console.log(`Received message:`, message);
+
+        if (message.type === 'status_update') {
+          // Handle status update
+          const update = message as StatusUpdate;
+          await db
+            .update(messages)
+            .set({
+              status: update.status,
+              ...(update.status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
+            })
+            .where(eq(messages.id, update.messageId));
+
+          // Forward status update to sender
+          const [updatedMessage] = await db
+            .select()
+            .from(messages)
+            .where(eq(messages.id, update.messageId));
+
+          if (updatedMessage) {
+            const senderWs = connections.get(`${updatedMessage.senderId}-${role}`);
+            if (senderWs?.readyState === WebSocket.OPEN) {
+              senderWs.send(JSON.stringify(update));
+            }
+          }
+          return;
+        }
 
         if (message.type !== 'message') {
           console.log('Ignoring non-message type:', message.type);
           return;
         }
 
-        // Save message to database
+        // Save new message to database
         const [savedMessage] = await db.insert(messages)
           .values({
             content: message.content,
             senderId: message.senderId,
             receiverId: message.receiverId,
+            status: 'sent',
+            sentAt: new Date(),
             createdAt: new Date(message.timestamp)
           })
           .returning();
@@ -50,24 +132,50 @@ export function setupWebSocket(server: Server, app: Express) {
         // Create response message
         const responseMessage = {
           id: savedMessage.id,
+          type: 'message',
           content: savedMessage.content,
           senderId: savedMessage.senderId,
           receiverId: savedMessage.receiverId,
+          status: savedMessage.status,
+          sentAt: savedMessage.sentAt.toISOString(),
           createdAt: savedMessage.createdAt.toISOString()
         };
 
-        // Forward message to receiver if online (try all possible roles)
+        // Forward message to receiver if online
         const receiverRoles = ['business', 'customer', 'employee'];
+        let delivered = false;
+
         for (const receiverRole of receiverRoles) {
           const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
           if (receiverWs?.readyState === WebSocket.OPEN) {
             console.log(`Forwarding message to ${receiverRole} ${message.receiverId}`);
             receiverWs.send(JSON.stringify(responseMessage));
+            delivered = true;
+
+            // Update message as delivered immediately
+            await db
+              .update(messages)
+              .set({
+                status: 'delivered',
+                deliveredAt: new Date()
+              })
+              .where(eq(messages.id, savedMessage.id));
+
+            // Send delivery status back to sender
+            const deliveryStatus: StatusUpdate = {
+              type: 'status_update',
+              messageId: savedMessage.id,
+              status: 'delivered',
+              timestamp: new Date().toISOString()
+            };
+            ws.send(JSON.stringify(deliveryStatus));
           }
         }
 
-        // Send confirmation back to sender
-        ws.send(JSON.stringify(responseMessage));
+        // If not delivered, keep status as 'sent'
+        if (!delivered) {
+          ws.send(JSON.stringify(responseMessage));
+        }
 
       } catch (error) {
         console.error('Error handling message:', error);

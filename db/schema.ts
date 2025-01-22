@@ -50,7 +50,7 @@ export const tickets = pgTable("tickets", {
 export const ticketFeedback = pgTable("ticket_feedback", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
-  rating: integer("rating").notNull(), 
+  rating: integer("rating").notNull(),
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -60,6 +60,10 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   senderId: integer("sender_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
+  status: text("status", { enum: ["sent", "delivered", "read"] }).default("sent").notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

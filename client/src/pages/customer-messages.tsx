@@ -208,7 +208,7 @@ export default function CustomerMessages() {
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Select a ticket to view messages
+                  Select a ticket to start messaging
                 </div>
               )}
             </CardContent>

@@ -14,15 +14,22 @@ import EmployeeDashboard from "@/pages/employee-dashboard";
 import EmployeeMessages from "@/pages/employee-messages";
 import NotFound from "@/pages/not-found";
 
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading your workspace...</p>
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   const { user, isLoading } = useUser();
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-border" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (!user) {
@@ -31,39 +38,47 @@ function Router() {
 
   if (user.role === "business") {
     return (
-      <Switch>
-        <Route path="/" component={BusinessDashboard} />
-        <Route path="/analytics" component={BusinessAnalytics} />
-        <Route path="/messages" component={BusinessMessages} />
-        <Route component={NotFound} />
-      </Switch>
+      <div className="min-h-screen bg-background">
+        <Switch>
+          <Route path="/" component={BusinessDashboard} />
+          <Route path="/analytics" component={BusinessAnalytics} />
+          <Route path="/messages" component={BusinessMessages} />
+          <Route component={NotFound} />
+        </Switch>
+      </div>
     );
   }
 
   if (user.role === "employee") {
     return (
-      <Switch>
-        <Route path="/" component={EmployeeDashboard} />
-        <Route path="/messages" component={EmployeeMessages} />
-        <Route component={NotFound} />
-      </Switch>
+      <div className="min-h-screen bg-background">
+        <Switch>
+          <Route path="/" component={EmployeeDashboard} />
+          <Route path="/messages" component={EmployeeMessages} />
+          <Route component={NotFound} />
+        </Switch>
+      </div>
     );
   }
 
   return (
-    <Switch>
-      <Route path="/" component={CustomerDashboard} />
-      <Route path="/messages" component={CustomerMessages} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="min-h-screen bg-background">
+      <Switch>
+        <Route path="/" component={CustomerDashboard} />
+        <Route path="/messages" component={CustomerMessages} />
+        <Route component={NotFound} />
+      </Switch>
+    </div>
   );
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
-      <Toaster />
+      <div className="antialiased">
+        <Router />
+        <Toaster />
+      </div>
     </QueryClientProvider>
   );
 }

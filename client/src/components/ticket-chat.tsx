@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Loader2, Check, CheckCheck } from "lucide-react";
+import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
@@ -37,6 +37,25 @@ interface TicketChatProps {
   directMessageUserId?: number;
 }
 
+interface MessageHeader {
+  username: string;
+  role: string;
+  isBroadcast?: boolean;
+}
+
+const MessageHeader = ({ username, role, isBroadcast }: MessageHeader) => (
+  <div className="flex items-center gap-2 mb-1">
+    <p className="text-sm font-medium">{username}</p>
+    <span className="text-xs opacity-70">({role})</span>
+    {isBroadcast && (
+      <span className="flex items-center gap-1 text-xs text-blue-500">
+        <Megaphone className="h-3 w-3" />
+        Broadcasting
+      </span>
+    )}
+  </div>
+);
+
 export default function TicketChat({ ticketId, readonly = false, directMessageUserId }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
@@ -64,7 +83,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       return res.json();
     },
     enabled: !!(directMessageUserId || ticketId),
-    refetchInterval: 5000 // Poll every 5 seconds for new messages
+    refetchInterval: 5000
   });
 
   const { data: ticket } = useQuery<Ticket>({
@@ -97,9 +116,22 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         throw new Error("Not connected to message server");
       }
 
-      const receiverId = directMessageUserId || (ticket ?
-        (user!.id === ticket.customerId ? ticket.businessId! : ticket.customerId) :
-        (messages[0]?.sender.id === user!.id ? messages[0]?.message.receiverId : messages[0]?.message.senderId));
+      let receiverId: number;
+      const isCustomer = user?.role === 'customer';
+
+      if (directMessageUserId) {
+        receiverId = directMessageUserId;
+      } else if (ticket) {
+        if (isCustomer) {
+          receiverId = ticket.claimedById || ticket.businessId!;
+        } else {
+          receiverId = ticket.customerId;
+        }
+      } else {
+        throw new Error("Invalid message target");
+      }
+
+      const isBroadcast = isCustomer && ticket && !ticket.claimedById;
 
       const optimisticMessage: Message = {
         message: {
@@ -169,9 +201,19 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   return (
     <div className="flex flex-col h-full relative">
-      <div className="absolute inset-0 bottom-[4.5rem]">
-        <ScrollArea 
-          ref={scrollAreaRef} 
+      {!readonly && ticket && !ticket.claimedById && user?.role === 'customer' && (
+        <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2">
+          <Megaphone className="h-4 w-4" />
+          This ticket is unclaimed. Your messages will be broadcast to all available employees.
+        </div>
+      )}
+      <div className={cn(
+        "absolute inset-0",
+        !readonly && "bottom-[4.5rem]",
+        !readonly && ticket && !ticket.claimedById && user?.role === 'customer' && "top-[2.5rem]"
+      )}>
+        <ScrollArea
+          ref={scrollAreaRef}
           className="h-full relative scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
         >
           <div className="space-y-4 p-4 pb-6">
@@ -194,13 +236,19 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
                         : "bg-muted"
                     )}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-medium">{messageData.sender.username}</p>
-                      <span className="text-xs opacity-70">
-                        ({messageData.sender.role})
-                      </span>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap break-words">{messageData.message.content}</p>
+                    <MessageHeader
+                      username={messageData.sender.username}
+                      role={messageData.sender.role}
+                      isBroadcast={
+                        messageData.sender.id === user?.id &&
+                        user?.role === 'customer' &&
+                        ticket &&
+                        !ticket.claimedById
+                      }
+                    />
+                    <p className="text-sm whitespace-pre-wrap break-words">
+                      {messageData.message.content}
+                    </p>
                     <div className="flex items-center justify-between mt-1 text-xs opacity-70">
                       <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
                       {messageData.sender.id === user?.id && (
@@ -243,7 +291,11 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
               <Input
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                placeholder={
+                  isConnected
+                    ? `Type your message${!ticket?.claimedById && user?.role === 'customer' ? ' (will be broadcast to all employees)' : ''}...`
+                    : "Connecting..."
+                }
                 className="flex-1"
                 disabled={!isConnected || sendMessageMutation.isPending}
               />

@@ -4,7 +4,7 @@ import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
-import { eq, and, or, not, exists } from "drizzle-orm";
+import { eq, and, or, not, exists, desc } from "drizzle-orm";
 import { sql } from 'drizzle-orm/sql';
 
 // Extend Express.User to include our schema
@@ -525,6 +525,48 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add this endpoint after the "/api/tickets" GET route
+  app.get("/api/tickets/customer", async (req, res) => {
+    if (!req.user || req.user.role !== "customer") {
+      return res.status(403).json({ error: "Only customers can view their tickets" });
+    }
+
+    try {
+      // Get all tickets for the customer with associated business and message data
+      const tickets = await db.select({
+        id: tickets.id,
+        title: tickets.title,
+        description: tickets.description,
+        status: tickets.status,
+        createdAt: tickets.createdAt,
+        business: {
+          id: users.id,
+          username: users.username,
+        },
+        hasBusinessResponse: sql<boolean>`EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.ticketId} = ${tickets.id} 
+          AND ${messages.senderId} = ${tickets.businessId}
+        )`,
+        unreadCount: sql<number>`(
+          SELECT COUNT(*) 
+          FROM ${messages} 
+          WHERE ${messages.ticketId} = ${tickets.id} 
+          AND ${messages.receiverId} = ${req.user.id}
+          AND ${messages.status} != 'read'
+        )`
+      })
+      .from(tickets)
+      .innerJoin(users, eq(users.id, tickets.businessId))
+      .where(eq(tickets.customerId, req.user.id))
+      .orderBy(desc(tickets.updatedAt));
+
+      res.json(tickets);
+    } catch (error) {
+      console.error('Error fetching customer tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
+    }
+  });
 
   // Add this endpoint after the "/api/tickets" GET route
   app.get("/api/tickets/businesses", async (req, res) => {

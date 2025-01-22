@@ -2,8 +2,8 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages } from "@db/schema";
-import { eq, and } from "drizzle-orm";
+import { messages, unreadMessages } from "@db/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 interface Message {
   type: string;
@@ -12,6 +12,7 @@ interface Message {
   content: string;
   timestamp: string;
   messageId?: number;
+  ticketId: number; // Added ticketId
 }
 
 interface StatusUpdate {
@@ -123,11 +124,28 @@ export function setupWebSocket(server: Server, app: Express) {
             receiverId: message.receiverId,
             status: 'sent',
             sentAt: new Date(),
-            createdAt: new Date(message.timestamp)
+            createdAt: new Date(message.timestamp),
+            ticketId: message.ticketId // Added ticketId
           })
           .returning();
 
         console.log('Saved message to database:', savedMessage);
+
+        // Update unread messages count
+        await db.insert(unreadMessages)
+          .values({
+            userId: message.receiverId,
+            ticketId: message.ticketId,
+            count: sql`1`,
+            updatedAt: new Date()
+          })
+          .onConflictDoUpdate({
+            target: [unreadMessages.userId, unreadMessages.ticketId],
+            set: {
+              count: sql`${unreadMessages.count} + 1`,
+              updatedAt: new Date()
+            }
+          });
 
         // Create response message
         const responseMessage = {

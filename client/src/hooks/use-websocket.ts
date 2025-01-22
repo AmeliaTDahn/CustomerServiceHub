@@ -8,15 +8,47 @@ interface Message {
   receiverId: number;
   content: string;
   timestamp: string;
+  id?: number; // Added id field to Message interface
+  ticketId?: number; // Added ticketId field to Message interface
+
+}
+
+interface StatusUpdate {
+  type: 'status_update';
+  messageId: number;
+  status: 'delivered' | 'read';
+  timestamp: string;
 }
 
 export function useWebSocket(userId: number | undefined, role: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
+  const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Request notification permission
+  useEffect(() => {
+    async function requestPermission() {
+      if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        setHasNotificationPermission(permission === 'granted');
+      }
+    }
+    requestPermission();
+  }, []);
+
+  // Show browser notification
+  const showNotification = useCallback((title: string, body: string) => {
+    if (hasNotificationPermission && document.hidden) {
+      new Notification(title, {
+        body,
+        icon: '/notification-icon.png',
+      });
+    }
+  }, [hasNotificationPermission]);
 
   const connect = useCallback(() => {
     if (!userId || !role) return;
@@ -46,17 +78,48 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
+        // Handle connection status message
+        if (data.type === 'connection') {
+          console.log('Connection status:', data.status);
+          return;
+        }
+
+        // Handle status updates
+        if (data.type === 'status_update') {
+          const update = data as StatusUpdate;
+          queryClient.invalidateQueries({ queryKey: ['messages'] });
+          return;
+        }
+
         if (data.type === 'message') {
           // Invalidate the messages query to update the UI
           queryClient.invalidateQueries({ queryKey: ['messages', data.senderId] });
-          
-          // Show toast notification for new messages
+          queryClient.invalidateQueries({ queryKey: ['/api/tickets', data.ticketId, 'messages'] });
+
+
+          // Show notification for new messages if not from current user
           if (data.senderId !== userId) {
+            const notificationTitle = `New Message`;
+            const notificationBody = `You have received a new message: ${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`;
+
+            showNotification(notificationTitle, notificationBody);
+
             toast({
-              title: "New Message",
-              description: "You have received a new message",
+              title: notificationTitle,
+              description: notificationBody,
             });
+          }
+
+          // Send delivery confirmation
+          if (data.senderId !== userId) {
+            const deliveryConfirmation: StatusUpdate = {
+              type: 'status_update',
+              messageId: data.id,
+              status: 'delivered',
+              timestamp: new Date().toISOString()
+            };
+            ws.send(JSON.stringify(deliveryConfirmation));
           }
         }
       } catch (error) {
@@ -65,7 +128,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     };
 
     wsRef.current = ws;
-  }, [userId, role, queryClient, toast]);
+  }, [userId, role, queryClient, toast, showNotification]);
 
   useEffect(() => {
     connect();
@@ -89,8 +152,21 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     }
   }, [toast]);
 
+  const sendReadReceipt = useCallback((messageId: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const readReceipt: StatusUpdate = {
+        type: 'status_update',
+        messageId,
+        status: 'read',
+        timestamp: new Date().toISOString()
+      };
+      wsRef.current.send(JSON.stringify(readReceipt));
+    }
+  }, []);
+
   return {
     isConnected,
-    sendMessage
+    sendMessage,
+    sendReadReceipt
   };
 }

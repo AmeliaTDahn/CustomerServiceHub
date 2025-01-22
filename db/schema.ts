@@ -61,11 +61,22 @@ export const messages = pgTable("messages", {
   ticketId: integer("ticket_id").references(() => tickets.id),  
   senderId: integer("sender_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  status: text("status", { enum: ["sent", "delivered", "read"] }).default("sent").notNull(),
+  status: text("status", { 
+    enum: ["sent", "delivered", "read"] 
+  }).default("sent").notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const unreadMessages = pgTable("unread_messages", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
+  count: integer("count").default(0).notNull(),
+  lastReadAt: timestamp("last_read_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const ticketNotes = pgTable("ticket_notes", {
@@ -157,6 +168,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   sentInvitations: many(employeeInvitations, { relationName: "business" }),
   receivedInvitations: many(employeeInvitations, { relationName: "employee" })
 }));
+
+export const unreadMessagesRelations = relations(unreadMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [unreadMessages.userId],
+    references: [users.id],
+  }),
+  ticket: one(tickets, {
+    fields: [unreadMessages.ticketId],
+    references: [tickets.id],
+  }),
+}));
+
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),

@@ -56,8 +56,8 @@ export function setupWebSocket(server: Server, app: Express) {
           createdAt: savedMessage.createdAt.toISOString()
         };
 
-        // Forward message to receiver if online (try both business and customer roles)
-        const receiverRoles = ['business', 'customer'];
+        // Forward message to receiver if online (try all possible roles)
+        const receiverRoles = ['business', 'customer', 'employee'];
         for (const receiverRole of receiverRoles) {
           const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
           if (receiverWs?.readyState === WebSocket.OPEN) {
@@ -105,7 +105,7 @@ export function setupWebSocket(server: Server, app: Express) {
       const userId = parseInt(url.searchParams.get('userId') || '');
       const role = url.searchParams.get('role') || '';
 
-      if (!userId || isNaN(userId) || !role || !['business', 'customer'].includes(role)) {
+      if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
         console.error('Invalid WebSocket connection parameters:', { userId, role });
         socket.destroy();
         return;

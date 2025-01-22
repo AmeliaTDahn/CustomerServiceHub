@@ -6,9 +6,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Loader2, Check, CheckCheck } from "lucide-react";
+import { Loader2, Check, CheckCheck, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import type { Ticket } from "@db/schema";
 
 interface Message {
   message: {
@@ -18,6 +19,8 @@ interface Message {
     senderId: number;
     receiverId: number;
     status: string;
+    chatInitiator: boolean;
+    initiatedAt: string | null;
     sentAt: string;
     createdAt: string;
   };
@@ -61,6 +64,27 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     }
   });
 
+  // Fetch ticket details for context
+  const { data: ticket } = useQuery<Ticket>({
+    queryKey: ['/api/tickets', ticketId],
+    enabled: !!ticketId,
+  });
+
+  // Check if chat is initiated
+  const isChatInitiated = messages.some(msg => msg.message.chatInitiator);
+  const isEmployee = user?.role === 'employee';
+  const isBusiness = user?.role === 'business';
+  const isCustomer = user?.role === 'customer';
+
+  // Determine if user can send messages
+  const canSendMessages = () => {
+    if (readonly) return false;
+    if (directMessageUserId) return true;
+    if (isEmployee || isBusiness) return true;
+    if (isCustomer) return isChatInitiated;
+    return false;
+  };
+
   // Mark messages as read when viewing
   useEffect(() => {
     if (messages.length > 0 && user) {
@@ -82,7 +106,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       // Create optimistic message
       const optimisticMessage: Message = {
         message: {
-          id: Date.now(), // temporary ID
+          id: Date.now(),
           content,
           ticketId: directMessageUserId ? null : ticketId,
           senderId: user!.id,
@@ -90,6 +114,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
             ? messages[0]?.message.receiverId 
             : messages[0]?.message.senderId),
           status: 'sending',
+          chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
+          initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
           sentAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         },
@@ -112,18 +138,17 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           : messages[0]?.message.senderId),
         content: content,
         timestamp: new Date().toISOString(),
-        ticketId: directMessageUserId ? undefined : ticketId
+        ticketId: directMessageUserId ? undefined : ticketId,
+        chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
       });
 
       return optimisticMessage;
     },
     onSuccess: () => {
       setNewMessage("");
-      // Clear optimistic messages after successful send
       setOptimisticMessages([]);
     },
     onError: (error) => {
-      // Remove failed optimistic message
       setOptimisticMessages([]);
       toast({
         variant: "destructive",
@@ -135,7 +160,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || readonly || !user) return;
+    if (!newMessage.trim() || readonly || !user || !canSendMessages()) return;
     sendMessageMutation.mutate(newMessage.trim());
   };
 
@@ -147,6 +172,12 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       <ScrollArea ref={scrollAreaRef} className="flex-1">
         <div className="space-y-4 p-4">
           <AnimatePresence initial={false}>
+            {!isChatInitiated && isCustomer && (
+              <div className="text-center p-4 text-muted-foreground">
+                <Lock className="w-4 h-4 mx-auto mb-2" />
+                <p>Waiting for support to initiate chat</p>
+              </div>
+            )}
             {allMessages?.map((messageData) => (
               <motion.div
                 key={messageData.message.id}
@@ -205,7 +236,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           )}
         </div>
       </ScrollArea>
-      {!readonly && (
+      {canSendMessages() && (
         <form onSubmit={handleSubmit} className="p-4 border-t">
           <div className="flex gap-2">
             <Input

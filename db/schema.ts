@@ -64,6 +64,8 @@ export const messages = pgTable("messages", {
   status: text("status", { 
     enum: ["sent", "delivered", "read"] 
   }).default("sent").notNull(),
+  chatInitiator: boolean("chat_initiator").default(false).notNull(), 
+  initiatedAt: timestamp("initiated_at"), 
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
@@ -87,7 +89,6 @@ export const ticketNotes = pgTable("ticket_notes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Relations
 export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
   business: one(users, {
     fields: [businessEmployees.businessId],
@@ -194,7 +195,6 @@ export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees
 export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
 export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
 
-// Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type BusinessEmployee = typeof businessEmployees.$inferSelect;

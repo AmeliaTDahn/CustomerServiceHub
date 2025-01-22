@@ -15,7 +15,8 @@ interface Message {
   timestamp: string;
   messageId?: number;
   ticketId?: number;
-  directMessageUserId?: number; // Added for direct messages
+  directMessageUserId?: number;
+  chatInitiator?: boolean;
 }
 
 interface StatusUpdate {
@@ -232,11 +233,13 @@ export function setupWebSocket(server: Server, app: Express) {
 
           let receiverId: number;
           let ticketId: number | undefined = message.ticketId;
+          let isInitiator = message.chatInitiator || false;
 
           if (message.directMessageUserId) {
             // Direct message between users
             receiverId = message.directMessageUserId;
             ticketId = undefined;
+            isInitiator = false;
           } else if (message.ticketId) {
             // Get the ticket first to determine the receiver
             const [ticket] = await db
@@ -267,6 +270,8 @@ export function setupWebSocket(server: Server, app: Express) {
               senderId: message.senderId,
               receiverId: receiverId,
               status: 'sent',
+              chatInitiator: isInitiator,
+              initiatedAt: isInitiator ? new Date() : null,
               sentAt: new Date(),
               createdAt: new Date(message.timestamp),
               ticketId: ticketId
@@ -281,6 +286,8 @@ export function setupWebSocket(server: Server, app: Express) {
             senderId: savedMessage.senderId,
             receiverId: receiverId,
             status: savedMessage.status,
+            chatInitiator: savedMessage.chatInitiator,
+            initiatedAt: savedMessage.initiatedAt?.toISOString(),
             sentAt: savedMessage.sentAt.toISOString(),
             createdAt: savedMessage.createdAt.toISOString(),
             ticketId: savedMessage.ticketId

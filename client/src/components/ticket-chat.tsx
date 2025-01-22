@@ -46,7 +46,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const queryClient = useQueryClient();
   const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
 
-  // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: directMessageUserId
       ? ['/api/messages/direct', directMessageUserId]
@@ -67,13 +66,11 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     enabled: !!(directMessageUserId || ticketId)
   });
 
-  // Fetch ticket details for context if needed
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
     enabled: !!ticketId && !directMessageUserId,
   });
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
@@ -81,22 +78,19 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     }
   }, [messages, optimisticMessages]);
 
-  // Check if chat is initiated
   const isChatInitiated = messages?.some(msg => msg.message.chatInitiator);
   const isEmployee = user?.role === 'employee';
   const isBusiness = user?.role === 'business';
   const isCustomer = user?.role === 'customer';
 
-  // Determine if user can send messages
   const canSendMessages = () => {
     if (readonly) return false;
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
-    if (isCustomer && ticketId) return true; // Allow customers to always send messages in their tickets
+    if (isCustomer && ticketId) return true; 
     return false;
   };
 
-  // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!isConnected) {
@@ -107,7 +101,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         (user!.id === ticket.customerId ? ticket.businessId! : ticket.customerId) :
         (messages[0]?.sender.id === user!.id ? messages[0]?.message.receiverId : messages[0]?.message.senderId));
 
-      // Create optimistic message
       const optimisticMessage: Message = {
         message: {
           id: Date.now(),
@@ -128,10 +121,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         },
       };
 
-      // Add optimistic message to state
       setOptimisticMessages(prev => [...prev, optimisticMessage]);
 
-      // Send through WebSocket
       sendMessage({
         type: 'message',
         senderId: user!.id,
@@ -148,7 +139,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     onSuccess: () => {
       setNewMessage("");
 
-      // Invalidate queries to refresh the messages
       if (directMessageUserId) {
         queryClient.invalidateQueries({
           queryKey: ['/api/messages/direct', directMessageUserId]
@@ -160,7 +150,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       }
     },
     onError: (error) => {
-      // Remove optimistic messages on error
       setOptimisticMessages([]);
       toast({
         variant: "destructive",
@@ -170,108 +159,114 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     }
   });
 
-  // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || readonly || !user || !canSendMessages()) return;
     sendMessageMutation.mutate(newMessage.trim());
   };
 
-  // Combine real and optimistic messages
   const allMessages = [...messages, ...optimisticMessages];
 
   return (
     <div className="flex flex-col h-full relative">
-      <ScrollArea ref={scrollAreaRef} className="flex-1 absolute inset-0 bottom-[80px]">
-        <div className="space-y-4 p-4">
-          <AnimatePresence initial={false}>
-            {!isChatInitiated && isCustomer && (
-              <div className="text-center p-4 text-muted-foreground">
-                <Lock className="w-4 h-4 mx-auto mb-2" />
-                <p>Waiting for support to initiate chat</p>
-              </div>
-            )}
-            {allMessages?.map((messageData) => (
-              <motion.div
-                key={messageData.message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className={`flex ${
-                  messageData.sender.id === user?.id ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={cn(
-                    "max-w-[80%] rounded-lg p-3",
-                    messageData.sender.id === user?.id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium">{messageData.sender.username}</p>
-                    <span className="text-xs opacity-70">
-                      ({messageData.sender.role})
-                    </span>
-                  </div>
-                  <p className="text-sm">{messageData.message.content}</p>
-                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                    {messageData.sender.id === user?.id && (
-                      <span className="ml-2 flex items-center gap-1">
-                        {messageData.message.status === 'sending' ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : messageData.message.status === 'sent' ? (
-                          <Check className="h-3 w-3" />
-                        ) : messageData.message.status === 'delivered' ? (
-                          <CheckCheck className="h-3 w-3" />
-                        ) : messageData.message.status === 'read' ? (
-                          <motion.span
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            className="text-blue-500"
-                          >
-                            <CheckCheck className="h-3 w-3" />
-                          </motion.span>
-                        ) : null}
-                      </span>
-                    )}
-                  </div>
+      <div className="absolute inset-0 bottom-[4.5rem]">
+        <ScrollArea 
+          ref={scrollAreaRef} 
+          className="h-full relative"
+        >
+          <div className="space-y-4 p-4 pb-6">
+            <AnimatePresence initial={false}>
+              {!isChatInitiated && isCustomer && (
+                <div className="text-center p-4 text-muted-foreground">
+                  <Lock className="w-4 h-4 mx-auto mb-2" />
+                  <p>Waiting for support to initiate chat</p>
                 </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {allMessages.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No messages yet
-            </p>
-          )}
-        </div>
-      </ScrollArea>
-      {canSendMessages() && (
-        <form onSubmit={handleSubmit} className="absolute bottom-0 left-0 right-0 p-4 border-t bg-background">
-          <div className="flex gap-2">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={isConnected ? "Type your message..." : "Connecting..."}
-              className="flex-1"
-              disabled={!isConnected || sendMessageMutation.isPending}
-            />
-            <Button
-              type="submit"
-              disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
-              className="relative"
-            >
-              {sendMessageMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Send"
               )}
-            </Button>
+              {allMessages?.map((messageData) => (
+                <motion.div
+                  key={messageData.message.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`flex ${
+                    messageData.sender.id === user?.id ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-lg p-3",
+                      messageData.sender.id === user?.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-medium">{messageData.sender.username}</p>
+                      <span className="text-xs opacity-70">
+                        ({messageData.sender.role})
+                      </span>
+                    </div>
+                    <p className="text-sm">{messageData.message.content}</p>
+                    <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                      <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                      {messageData.sender.id === user?.id && (
+                        <span className="ml-2 flex items-center gap-1">
+                          {messageData.message.status === 'sending' ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : messageData.message.status === 'sent' ? (
+                            <Check className="h-3 w-3" />
+                          ) : messageData.message.status === 'delivered' ? (
+                            <CheckCheck className="h-3 w-3" />
+                          ) : messageData.message.status === 'read' ? (
+                            <motion.span
+                              initial={{ scale: 0.8 }}
+                              animate={{ scale: 1 }}
+                              className="text-blue-500"
+                            >
+                              <CheckCheck className="h-3 w-3" />
+                            </motion.span>
+                          ) : null}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {allMessages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No messages yet
+              </p>
+            )}
           </div>
-        </form>
+        </ScrollArea>
+      </div>
+
+      {canSendMessages() && (
+        <div className="absolute bottom-0 left-0 right-0 bg-background border-t">
+          <form onSubmit={handleSubmit} className="p-4">
+            <div className="flex gap-2">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                className="flex-1"
+                disabled={!isConnected || sendMessageMutation.isPending}
+              />
+              <Button
+                type="submit"
+                disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
+                className="relative"
+              >
+                {sendMessageMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Send"
+                )}
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

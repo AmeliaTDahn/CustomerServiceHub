@@ -14,7 +14,7 @@ interface Message {
   content: string;
   timestamp: string;
   messageId?: number;
-  ticketId: number;
+  ticketId?: number;
 }
 
 interface StatusUpdate {
@@ -98,15 +98,26 @@ export function setupWebSocket(server: Server, app: Express) {
 
   // Helper function to determine user role
   async function determineUserRole(userId: number): Promise<string | null> {
-    const [user] = await db.select()
-      .from(messages)
-      .where(eq(messages.senderId, userId))
-      .limit(1);
+    try {
+      const [user] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.customerId, userId))
+        .limit(1);
 
-    if (user) {
-      return user.role; // Assuming messages table has a 'role' column
+      if (user) return 'customer';
+
+      const [business] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.businessId, userId))
+        .limit(1);
+
+      if (business) return 'business';
+
+      return 'employee';
+    } catch (error) {
+      console.error('Error determining user role:', error);
+      return null;
     }
-    return null;
   }
 
   // Handle WebSocket connections
@@ -218,6 +229,10 @@ export function setupWebSocket(server: Server, app: Express) {
             throw new Error('Invalid sender ID');
           }
 
+          if (!message.ticketId) {
+            throw new Error('Ticket ID is required');
+          }
+
           // Get the ticket first to determine the receiver
           const [ticket] = await db
             .select()
@@ -272,7 +287,7 @@ export function setupWebSocket(server: Server, app: Express) {
         console.error('Error handling message:', error);
         ws.send(JSON.stringify({
           type: 'error',
-          error: 'Failed to process message'
+          error: (error as Error).message || 'Failed to process message'
         }));
       }
     });

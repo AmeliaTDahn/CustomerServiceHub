@@ -117,7 +117,7 @@ export default function EmployeeMessages() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-2">
-        <Link href="/dashboard">
+        <Link href="/employee-dashboard">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard

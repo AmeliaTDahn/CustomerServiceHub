@@ -163,12 +163,17 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   };
 
   const canUpdateTicket = (ticket: Ticket) => {
+    // Resolved tickets are always read-only
     if (readonly || ticket.status === "resolved") return false;
-    if (isBusiness) return true; // Business can always update active tickets
+
+    // Business can always update active tickets, even if claimed
+    if (isBusiness) return true;
+
+    // Employee can only update if they claimed the ticket
     if (isEmployee) {
-      // Employee can only update if they claimed the ticket
       return ticket.claimedById === user?.id;
     }
+
     return false;
   };
 
@@ -182,8 +187,22 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         {tickets.map((ticket) => (
           <Card
             key={ticket.id}
-            className={`${readonly || ticket.status === "resolved" ? '' : 'cursor-pointer hover:shadow-md'} transition-shadow`}
-            onClick={() => !readonly && ticket.status !== "resolved" && setSelectedTicket(ticket)}
+            className={`${
+              readonly || (!isBusiness && ticket.claimedById && ticket.claimedById !== user?.id) || ticket.status === "resolved" 
+                ? '' 
+                : 'cursor-pointer hover:shadow-md'
+            } transition-shadow`}
+            onClick={() => {
+              // Allow click if:
+              // - Not readonly AND
+              // - Either business user OR ticket not claimed OR claimed by current user
+              // - AND not resolved
+              if (!readonly && 
+                  (isBusiness || !ticket.claimedById || ticket.claimedById === user?.id) && 
+                  ticket.status !== "resolved") {
+                setSelectedTicket(ticket);
+              }
+            }}
           >
             <CardHeader>
               <div className="flex justify-between items-start">

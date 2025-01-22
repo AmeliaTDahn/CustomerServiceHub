@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { MessageCircle, Search, ArrowLeft, UserCheck } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, UserCheck, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import {
   Select,
@@ -130,6 +130,9 @@ export default function CustomerMessages() {
     }
   };
 
+  // Get the selected ticket details
+  const selectedTicket = tickets.find(ticket => ticket.id === selectedTicketId);
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <div className="p-2">
@@ -195,9 +198,10 @@ export default function CustomerMessages() {
                       </span>
                     </div>
                     <div className="mt-1 flex flex-col gap-1">
-                      <p className="text-sm text-muted-foreground">
-                        {ticket.business.username}
-                      </p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Building2 className="h-3 w-3" />
+                        <p>{ticket.business.username}</p>
+                      </div>
                       {ticket.claimedBy && (
                         <p className="text-xs text-blue-600 flex items-center gap-1">
                           <UserCheck className="h-3 w-3" />
@@ -224,6 +228,20 @@ export default function CustomerMessages() {
             <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
                 <div className="h-full">
+                  <div className="p-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold">{selectedTicket?.title}</h2>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Building2 className="h-3 w-3" />
+                          {selectedTicket?.business.username}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(selectedTicket?.status || '')}`}>
+                        {selectedTicket?.status.replace("_", " ")}
+                      </span>
+                    </div>
+                  </div>
                   <TicketChat
                     ticketId={selectedTicketId}
                     readonly={false}

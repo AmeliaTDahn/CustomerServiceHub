@@ -414,12 +414,32 @@ export function registerRoutes(app: Express): Server {
 
       let receiverId: number;
 
-      // Determine the message receiver based on sender's role
+      // For customers, verify if they can respond (has employee message)
       if (req.user.role === "customer") {
         if (ticket.customerId !== req.user.id) {
           return res.status(403).json({ error: "Not authorized to send messages for this ticket" });
         }
-        receiverId = ticket.businessId!;
+
+        // Check if there's any message from an employee or business
+        const [employeeMessage] = await db.select()
+          .from(messages)
+          .where(
+            and(
+              eq(messages.ticketId, parseInt(ticketId)),
+              or(
+                eq(messages.senderId, ticket.businessId!),
+                eq(messages.senderId, ticket.claimedById!)
+              )
+            )
+          )
+          .limit(1);
+
+        if (!employeeMessage) {
+          return res.status(403).json({ error: "Cannot send messages until an employee responds first" });
+        }
+
+        // Send to claimed employee if exists, otherwise to business
+        receiverId = ticket.claimedById || ticket.businessId!;
       } else if (req.user.role === "employee") {
         // Verify employee has access
         const [hasAccess] = await db.select()

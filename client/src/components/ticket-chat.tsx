@@ -46,7 +46,6 @@ interface MessageHeader {
 const MessageHeader = ({ username, role, isBroadcast }: MessageHeader) => (
   <div className="flex items-center gap-2 mb-1">
     <p className="text-sm font-medium">{username}</p>
-    <span className="text-xs opacity-70">({role})</span>
     {isBroadcast && (
       <span className="flex items-center gap-1 text-xs text-blue-500">
         <Megaphone className="h-3 w-3" />

@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { NewTicket } from "@db/schema";
 
@@ -34,11 +49,13 @@ const CATEGORIES = [
 
 export default function TicketForm() {
   const { register, handleSubmit, reset, setValue } = useForm<TicketFormData>();
+  const [open, setOpen] = useState(false);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch available businesses
-  const { data: businesses } = useQuery<Business[]>({
+  const { data: businesses = [] } = useQuery<Business[]>({
     queryKey: ['/api/businesses'],
   });
 
@@ -60,6 +77,7 @@ export default function TicketForm() {
         description: "Ticket created successfully",
       });
       reset();
+      setSelectedBusinessId(null);
     },
     onError: (error) => {
       toast({
@@ -76,22 +94,48 @@ export default function TicketForm() {
       className="space-y-4"
     >
       <div className="space-y-2">
-        <Label htmlFor="businessId">Select Business</Label>
-        <Select
-          onValueChange={(value) => setValue('businessId', parseInt(value))}
-          required
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select a business" />
-          </SelectTrigger>
-          <SelectContent>
-            {businesses?.map((business) => (
-              <SelectItem key={business.id} value={business.id.toString()}>
-                {business.username}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label>Select Business</Label>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="w-full justify-between"
+            >
+              {selectedBusinessId
+                ? businesses.find((business) => business.id === selectedBusinessId)?.username
+                : "Search for a business..."}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-full p-0">
+            <Command>
+              <CommandInput placeholder="Search businesses..." />
+              <CommandEmpty>No business found.</CommandEmpty>
+              <CommandGroup>
+                {businesses.map((business) => (
+                  <CommandItem
+                    key={business.id}
+                    onSelect={() => {
+                      setSelectedBusinessId(business.id);
+                      setValue('businessId', business.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        selectedBusinessId === business.id ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {business.username}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="space-y-2">
@@ -133,7 +177,7 @@ export default function TicketForm() {
         />
       </div>
 
-      <Button type="submit" disabled={createTicket.isPending}>
+      <Button type="submit" disabled={createTicket.isPending || !selectedBusinessId}>
         {createTicket.isPending ? "Creating..." : "Create Ticket"}
       </Button>
     </form>

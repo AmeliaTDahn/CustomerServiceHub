@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages, unreadMessages } from "@db/schema";
+import { messages, unreadMessages, tickets } from "@db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 interface Message {
@@ -62,10 +62,6 @@ export function setupWebSocket(server: Server, app: Express) {
     // Store connection with user's actual role
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
-
-    // Also store a map of user IDs to their roles for proper lookup
-    const userRoleMap = new Map<number, string>();
-    userRoleMap.set(userId, role);
 
     // Handle pong messages for heartbeat
     ws.on('pong', () => {
@@ -134,13 +130,8 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
-        // Validate message sender matches connection user
-        if (message.senderId !== userId) {
-          throw new Error('Invalid sender ID');
-        }
-
+        // Handle status update
         if (message.type === 'status_update') {
-          // Handle status update
           const update = message as StatusUpdate;
           await db
             .update(messages)
@@ -165,82 +156,84 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
-        if (message.type !== 'message') {
-          console.log('Ignoring non-message type:', message.type);
-          return;
-        }
-
-        // Save new message to database
-        const [savedMessage] = await db.insert(messages)
-          .values({
-            content: message.content,
-            senderId: message.senderId,
-            receiverId: message.receiverId,
-            status: 'sent',
-            sentAt: new Date(),
-            createdAt: new Date(message.timestamp),
-            ticketId: message.ticketId
-          })
-          .returning();
-
-        console.log('Saved message to database:', savedMessage);
-
-        // Update unread messages count
-        await db.insert(unreadMessages)
-          .values({
-            userId: message.receiverId,
-            ticketId: message.ticketId,
-            count: sql`1`,
-            updatedAt: new Date()
-          })
-          .onConflictDoUpdate({
-            target: [unreadMessages.userId, unreadMessages.ticketId],
-            set: {
-              count: sql`${unreadMessages.count} + 1`,
-              updatedAt: new Date()
-            }
-          });
-
-        // Create response message
-        const responseMessage = {
-          id: savedMessage.id,
-          type: 'message',
-          content: savedMessage.content,
-          senderId: savedMessage.senderId,
-          receiverId: savedMessage.receiverId,
-          status: savedMessage.status,
-          sentAt: savedMessage.sentAt.toISOString(),
-          createdAt: savedMessage.createdAt.toISOString()
-        };
-
-        // Forward message to receiver if online - use ticket info to determine role
-        const [ticket] = await db.select()
-          .from(tickets)
-          .where(eq(tickets.id, message.ticketId));
-
-        if (!ticket) {
-          throw new Error('Invalid ticket');
-        }
-
-        // Set receiverId based on sender's role and ticket relationship
-        if (!message.receiverId) {
-          if (message.senderId === ticket.customerId) {
-            message.receiverId = ticket.businessId!;
-          } else {
-            message.receiverId = ticket.customerId;
+        // Handle message
+        if (message.type === 'message') {
+          // Validate message sender matches connection user
+          if (message.senderId !== userId) {
+            throw new Error('Invalid sender ID');
           }
-        }
 
-        // Determine receiver's role based on ticket relationship
-        const receiverRole = message.receiverId === ticket.customerId ? 'customer' : 
-                           message.receiverId === ticket.businessId ? 'business' : 'employee';
-        
-        const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
-        let delivered = false;
-        
-        if (receiverWs?.readyState === WebSocket.OPEN) {
+          // Get the ticket first to determine the receiver
+          const [ticket] = await db
+            .select()
+            .from(tickets)
+            .where(eq(tickets.id, message.ticketId));
+
+          if (!ticket) {
+            throw new Error('Invalid ticket');
+          }
+
+          // Set receiverId based on sender's role and ticket relationship
+          let receiverId: number;
+          if (message.senderId === ticket.customerId) {
+            receiverId = ticket.businessId!;
+          } else {
+            receiverId = ticket.customerId;
+          }
+
+          // Save new message to database with determined receiverId
+          const [savedMessage] = await db.insert(messages)
+            .values({
+              content: message.content,
+              senderId: message.senderId,
+              receiverId: receiverId,
+              status: 'sent',
+              sentAt: new Date(),
+              createdAt: new Date(message.timestamp),
+              ticketId: message.ticketId
+            })
+            .returning();
+
+          console.log('Saved message to database:', savedMessage);
+
+          // Update unread messages count
+          await db.insert(unreadMessages)
+            .values({
+              userId: receiverId,
+              ticketId: message.ticketId,
+              count: sql`1`,
+              updatedAt: new Date()
+            })
+            .onConflictDoUpdate({
+              target: [unreadMessages.userId, unreadMessages.ticketId],
+              set: {
+                count: sql`${unreadMessages.count} + 1`,
+                updatedAt: new Date()
+              }
+            });
+
+          // Create response message
+          const responseMessage = {
+            id: savedMessage.id,
+            type: 'message',
+            content: savedMessage.content,
+            senderId: savedMessage.senderId,
+            receiverId: receiverId,
+            status: savedMessage.status,
+            sentAt: savedMessage.sentAt.toISOString(),
+            createdAt: savedMessage.createdAt.toISOString(),
+            ticketId: savedMessage.ticketId
+          };
+
+          // Determine receiver's role based on ticket relationship
+          const receiverRole = receiverId === ticket.customerId ? 'customer' : 
+                             receiverId === ticket.businessId ? 'business' : 'employee';
+
+          const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+          let delivered = false;
+
           if (receiverWs?.readyState === WebSocket.OPEN) {
-            console.log(`Forwarding message to ${receiverRole} ${message.receiverId}`);
+            console.log(`Forwarding message to ${receiverRole} ${receiverId}`);
             receiverWs.send(JSON.stringify(responseMessage));
             delivered = true;
 
@@ -262,18 +255,17 @@ export function setupWebSocket(server: Server, app: Express) {
             };
             ws.send(JSON.stringify(deliveryStatus));
           }
-        }
 
-        // If not delivered, keep status as 'sent'
-        if (!delivered) {
-          ws.send(JSON.stringify(responseMessage));
+          // Send message back to sender for confirmation
+          if (!delivered) {
+            ws.send(JSON.stringify(responseMessage));
+          }
         }
-
       } catch (error) {
         console.error('Error handling message:', error);
         ws.send(JSON.stringify({ 
           type: 'error',
-          error: 'Failed to process message' 
+          error: 'Failed to process message'
         }));
       }
     });
@@ -318,9 +310,6 @@ export function setupWebSocket(server: Server, app: Express) {
         socket.destroy();
         return;
       }
-
-      // Validate user authentication here if needed
-      // You can check session/token validity
 
       console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {

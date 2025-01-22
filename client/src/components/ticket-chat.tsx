@@ -181,9 +181,9 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const allMessages = [...messages, ...optimisticMessages];
 
   return (
-    <div className="flex flex-col h-full">
-      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full">
-        <div className="space-y-4 p-4 min-h-full">
+    <div className="flex flex-col h-full relative">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 absolute inset-0 bottom-[80px]">
+        <div className="space-y-4 p-4">
           <AnimatePresence initial={false}>
             {!isChatInitiated && isCustomer && (
               <div className="text-center p-4 text-muted-foreground">
@@ -250,7 +250,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         </div>
       </ScrollArea>
       {canSendMessages() && (
-        <form onSubmit={handleSubmit} className="p-4 border-t">
+        <form onSubmit={handleSubmit} className="absolute bottom-0 left-0 right-0 p-4 border-t bg-background">
           <div className="flex gap-2">
             <Input
               value={newMessage}

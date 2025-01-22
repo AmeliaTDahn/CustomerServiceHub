@@ -6,6 +6,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { Loader2, Check, CheckCheck } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
   message: {
@@ -32,6 +35,7 @@ interface TicketChatProps {
 
 export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -68,7 +72,31 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
         throw new Error("Not connected to message server");
       }
 
-      // Send through WebSocket first
+      // Create optimistic message
+      const optimisticMessage: Message = {
+        message: {
+          id: Date.now(), // temporary ID
+          content,
+          ticketId,
+          senderId: user!.id,
+          receiverId: messages[0]?.sender.id === user!.id 
+            ? messages[0]?.message.receiverId 
+            : messages[0]?.message.senderId,
+          status: 'sending',
+          sentAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        },
+        sender: {
+          id: user!.id,
+          username: user!.username,
+          role: user!.role,
+        },
+      };
+
+      // Add optimistic message to state
+      setOptimisticMessages(prev => [...prev, optimisticMessage]);
+
+      // Send through WebSocket
       sendMessage({
         type: 'message',
         senderId: user!.id,
@@ -80,12 +108,16 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
         ticketId: ticketId
       });
 
-      return true;
+      return optimisticMessage;
     },
     onSuccess: () => {
       setNewMessage("");
+      // Clear optimistic messages after successful send
+      setOptimisticMessages([]);
     },
     onError: (error) => {
+      // Remove failed optimistic message
+      setOptimisticMessages([]);
       toast({
         variant: "destructive",
         title: "Error",
@@ -100,47 +132,66 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
     sendMessageMutation.mutate(newMessage.trim());
   };
 
+  // Combine real and optimistic messages
+  const allMessages = [...messages, ...optimisticMessages];
+
   return (
     <div className="flex flex-col h-full">
       <ScrollArea ref={scrollAreaRef} className="flex-1">
         <div className="space-y-4 p-4">
-          {messages?.map((messageData) => (
-            <div
-              key={messageData.message.id}
-              className={`flex ${
-                messageData.sender.id === user?.id ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg p-3 ${
-                  messageData.sender.id === user?.id
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+          <AnimatePresence initial={false}>
+            {allMessages?.map((messageData) => (
+              <motion.div
+                key={messageData.message.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`flex ${
+                  messageData.sender.id === user?.id ? "justify-end" : "justify-start"
                 }`}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-medium">{messageData.sender.username}</p>
-                  <span className="text-xs opacity-70">
-                    ({messageData.sender.role})
-                  </span>
-                </div>
-                <p className="text-sm">{messageData.message.content}</p>
-                <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                  <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                  {messageData.sender.id === user?.id && (
-                    <span className="ml-2">
-                      {messageData.message.status === 'sent' && '✓'}
-                      {messageData.message.status === 'delivered' && '✓✓'}
-                      {messageData.message.status === 'read' && (
-                        <span className="text-blue-500">✓✓</span>
-                      )}
-                    </span>
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg p-3",
+                    messageData.sender.id === user?.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
                   )}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-medium">{messageData.sender.username}</p>
+                    <span className="text-xs opacity-70">
+                      ({messageData.sender.role})
+                    </span>
+                  </div>
+                  <p className="text-sm">{messageData.message.content}</p>
+                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                    {messageData.sender.id === user?.id && (
+                      <span className="ml-2 flex items-center gap-1">
+                        {messageData.message.status === 'sending' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : messageData.message.status === 'sent' ? (
+                          <Check className="h-3 w-3" />
+                        ) : messageData.message.status === 'delivered' ? (
+                          <CheckCheck className="h-3 w-3" />
+                        ) : messageData.message.status === 'read' ? (
+                          <motion.span
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            className="text-blue-500"
+                          >
+                            <CheckCheck className="h-3 w-3" />
+                          </motion.span>
+                        ) : null}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
-          {messages.length === 0 && (
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {allMessages.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">
               No messages yet
             </p>
@@ -160,8 +211,13 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
             <Button 
               type="submit" 
               disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
+              className="relative"
             >
-              Send
+              {sendMessageMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Send"
+              )}
             </Button>
           </div>
         </form>

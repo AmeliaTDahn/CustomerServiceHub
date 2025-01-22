@@ -1,25 +1,31 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Send, Users, User } from "lucide-react";
-import type { Message, User as UserType } from "@db/schema";
+import type { User as UserType } from "@db/schema";
+import { supabase, getMessages, sendMessage } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
+
+interface Message {
+  id: number;
+  sender_id: number;
+  receiver_id: number;
+  content: string;
+  created_at: string;
+}
 
 export default function EmployeeMessages() {
   const customerId = new URLSearchParams(window.location.search).get('customerId');
   const { user } = useUser();
+  const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-
-  // Fetch conversations
-  const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedUserId],
-    enabled: !!selectedUserId,
-  });
+  const queryClient = useQueryClient();
 
   // Fetch customers (only those with tickets)
   const { data: customers = [] } = useQuery<UserType[]>({
@@ -48,8 +54,46 @@ export default function EmployeeMessages() {
     staff.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Fetch messages for selected user
+  const { data: messages = [] } = useQuery<Message[]>({
+    queryKey: ['messages', selectedUserId],
+    queryFn: () => selectedUserId ? getMessages(user!.id, selectedUserId) : Promise.resolve([]),
+    enabled: !!selectedUserId && !!user,
+  });
+
+  // Set up real-time subscription
+  useEffect(() => {
+    if (!selectedUserId || !user) return;
+
+    // Subscribe to new messages
+    const channel = supabase
+      .channel(`messages:${user.id}-${selectedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
+        },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
+          // Optional: Play a notification sound or show a toast
+          toast({
+            title: "New Message",
+            description: "You have received a new message",
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedUserId, user?.id, queryClient]);
+
   // When loading the page with a customerId, find and select that customer
-  useState(() => {
+  useEffect(() => {
     if (customerId && customers.length > 0) {
       const customer = customers.find(c => c.id === parseInt(customerId));
       if (customer) {
@@ -58,24 +102,20 @@ export default function EmployeeMessages() {
     }
   }, [customerId, customers]);
 
-  const sendMessage = async () => {
-    if (!selectedUserId || !message.trim()) return;
+  const handleSendMessage = async () => {
+    if (!selectedUserId || !message.trim() || !user) return;
 
     try {
-      const response = await fetch(`/api/messages/${selectedUserId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content: message }),
-        credentials: 'include',
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-
+      await sendMessage(user.id, selectedUserId, message.trim());
       setMessage("");
+      // The query will be automatically invalidated by the subscription
     } catch (error) {
       console.error('Failed to send message:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+      });
     }
   };
 
@@ -162,19 +202,19 @@ export default function EmployeeMessages() {
                         <div
                           key={msg.id}
                           className={`flex ${
-                            msg.senderId === user?.id ? 'justify-end' : 'justify-start'
+                            msg.sender_id === user?.id ? 'justify-end' : 'justify-start'
                           }`}
                         >
                           <div
                             className={`rounded-lg px-4 py-2 max-w-[70%] ${
-                              msg.senderId === user?.id
+                              msg.sender_id === user?.id
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted'
                             }`}
                           >
                             <p>{msg.content}</p>
                             <span className="text-xs opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString()}
+                              {new Date(msg.created_at).toLocaleTimeString()}
                             </span>
                           </div>
                         </div>
@@ -190,11 +230,11 @@ export default function EmployeeMessages() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
-                              sendMessage();
+                              handleSendMessage();
                             }
                           }}
                         />
-                        <Button onClick={sendMessage}>
+                        <Button onClick={handleSendMessage}>
                           <Send className="h-4 w-4" />
                         </Button>
                       </div>

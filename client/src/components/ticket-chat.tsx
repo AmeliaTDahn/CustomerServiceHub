@@ -105,7 +105,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (readonly) return false;
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
-    if (isCustomer && ticketId) return true;
+    if (isCustomer && ticketId && ticket?.claimedById) return true;
     return false;
   };
 

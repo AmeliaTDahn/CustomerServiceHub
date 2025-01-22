@@ -14,7 +14,7 @@ interface Message {
   message: {
     id: number;
     content: string;
-    ticketId: number;
+    ticketId: number | null;
     senderId: number;
     receiverId: number;
     status: string;
@@ -31,9 +31,10 @@ interface Message {
 interface TicketChatProps {
   ticketId: number;
   readonly?: boolean;
+  directMessageUserId?: number;
 }
 
-export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
+export default function TicketChat({ ticketId, readonly = false, directMessageUserId }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const { user } = useUser();
@@ -44,9 +45,15 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
 
   // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/tickets', ticketId, 'messages'],
+    queryKey: directMessageUserId 
+      ? ['/api/messages/direct', directMessageUserId]
+      : ['/api/tickets', ticketId, 'messages'],
     queryFn: async () => {
-      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
+      const endpoint = directMessageUserId 
+        ? `/api/messages/direct/${directMessageUserId}`
+        : `/api/tickets/${ticketId}/messages`;
+
+      const res = await fetch(endpoint, {
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
@@ -77,11 +84,11 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
         message: {
           id: Date.now(), // temporary ID
           content,
-          ticketId,
+          ticketId: directMessageUserId ? null : ticketId,
           senderId: user!.id,
-          receiverId: messages[0]?.sender.id === user!.id 
+          receiverId: directMessageUserId || (messages[0]?.sender.id === user!.id 
             ? messages[0]?.message.receiverId 
-            : messages[0]?.message.senderId,
+            : messages[0]?.message.senderId),
           status: 'sending',
           sentAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
@@ -100,12 +107,12 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
       sendMessage({
         type: 'message',
         senderId: user!.id,
-        receiverId: messages[0]?.sender.id === user!.id 
+        receiverId: directMessageUserId || (messages[0]?.sender.id === user!.id 
           ? messages[0]?.message.receiverId 
-          : messages[0]?.message.senderId,
+          : messages[0]?.message.senderId),
         content: content,
         timestamp: new Date().toISOString(),
-        ticketId: ticketId
+        ticketId: directMessageUserId ? undefined : ticketId
       });
 
       return optimisticMessage;

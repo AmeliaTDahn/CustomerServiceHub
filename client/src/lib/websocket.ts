@@ -1,5 +1,4 @@
-import { type ToastProps } from "@/components/ui/toast";
-import { toast as showToast } from "@/hooks/use-toast";
+import type { Toast } from "@/hooks/use-toast";
 
 interface Message {
   type: string;
@@ -15,65 +14,39 @@ class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectTimeout = 1000; // Start with 1 second
   private messageCallbacks: ((message: Message) => void)[] = [];
-  private toast: typeof showToast;
+  private toast: Toast;
   private userId: number;
   private role: string;
-  private connectionPromise: Promise<void> | null = null;
-  private isConnecting = false;
 
-  constructor(userId: number, role: string, toast: typeof showToast) {
+  constructor(userId: number, role: string, toast: Toast) {
     this.userId = userId;
     this.role = role;
     this.toast = toast;
     this.connect();
   }
 
-  private connect(): Promise<void> {
-    if (this.isConnecting) {
-      return this.connectionPromise!;
+  private connect() {
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?userId=${this.userId}&role=${this.role}`;
+
+      console.log('Connecting to WebSocket:', wsUrl);
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = this.handleOpen.bind(this);
+      this.ws.onmessage = this.handleMessage.bind(this);
+      this.ws.onclose = this.handleClose.bind(this);
+      this.ws.onerror = this.handleError.bind(this);
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+      this.handleError(error);
     }
+  }
 
-    this.isConnecting = true;
-    this.connectionPromise = new Promise((resolve, reject) => {
-      try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws?userId=${this.userId}&role=${this.role}`;
-
-        console.log('Connecting to WebSocket:', wsUrl);
-        this.ws = new WebSocket(wsUrl);
-
-        this.ws.onopen = () => {
-          console.log('WebSocket connected successfully');
-          this.reconnectAttempts = 0;
-          this.reconnectTimeout = 1000;
-          this.isConnecting = false;
-          resolve();
-        };
-
-        this.ws.onmessage = this.handleMessage.bind(this);
-
-        this.ws.onclose = () => {
-          console.log('WebSocket connection closed');
-          this.isConnecting = false;
-          this.handleReconnection();
-          reject(new Error('WebSocket connection closed'));
-        };
-
-        this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          this.isConnecting = false;
-          this.handleError(error);
-          reject(error);
-        };
-      } catch (error) {
-        console.error('Error creating WebSocket:', error);
-        this.isConnecting = false;
-        this.handleError(error);
-        reject(error);
-      }
-    });
-
-    return this.connectionPromise;
+  private handleOpen() {
+    console.log('WebSocket connected');
+    this.reconnectAttempts = 0;
+    this.reconnectTimeout = 1000;
   }
 
   private handleMessage(event: MessageEvent) {
@@ -96,6 +69,11 @@ class WebSocketClient {
     }
   }
 
+  private handleClose() {
+    console.log('WebSocket closed');
+    this.handleReconnection();
+  }
+
   private handleError(error: any) {
     console.error('WebSocket error:', error);
     this.toast({
@@ -105,21 +83,17 @@ class WebSocketClient {
     });
   }
 
-  private async handleReconnection() {
+  private handleReconnection() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
 
-      await new Promise(resolve => setTimeout(resolve, this.reconnectTimeout));
+      setTimeout(() => {
+        this.connect();
+      }, this.reconnectTimeout);
 
       // Exponential backoff
       this.reconnectTimeout *= 2;
-
-      try {
-        await this.connect();
-      } catch (error) {
-        console.error('Reconnection attempt failed:', error);
-      }
     } else {
       this.toast({
         variant: "destructive",
@@ -129,17 +103,12 @@ class WebSocketClient {
     }
   }
 
-  public async sendMessage(receiverId: number, content: string) {
+  public sendMessage(receiverId: number, content: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket not ready, attempting to connect...');
-      try {
-        await this.connect();
-      } catch (error) {
-        throw new Error('Failed to establish WebSocket connection');
-      }
+      throw new Error('WebSocket is not connected');
     }
 
-    const message = {
+    const message: Message = {
       type: 'message',
       senderId: this.userId,
       receiverId,
@@ -148,7 +117,7 @@ class WebSocketClient {
     };
 
     console.log('Sending message:', message);
-    this.ws!.send(JSON.stringify(message));
+    this.ws.send(JSON.stringify(message));
   }
 
   public onMessage(callback: (message: Message) => void) {
@@ -158,13 +127,10 @@ class WebSocketClient {
     };
   }
 
-  public isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  public async ensureConnection(): Promise<void> {
-    if (!this.isConnected()) {
-      await this.connect();
+  public disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
   }
 }
@@ -172,7 +138,7 @@ class WebSocketClient {
 // Singleton instance
 let wsClient: WebSocketClient | null = null;
 
-export function initializeWebSocket(userId: number, role: string, toast: typeof showToast) {
+export function initializeWebSocket(userId: number, role: string, toast: Toast) {
   if (!wsClient) {
     wsClient = new WebSocketClient(userId, role, toast);
   }

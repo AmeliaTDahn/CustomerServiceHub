@@ -61,7 +61,7 @@ export default function CustomerMessages() {
     const connectWebSocket = () => {
       console.log('Connecting WebSocket...');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}`;
+      const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.user_metadata.role}`;
       const wsInstance = new WebSocket(wsUrl);
 
       wsInstance.onopen = () => {

@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
 import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
@@ -15,7 +14,14 @@ declare global {
 }
 
 export function registerRoutes(app: Express): Server {
-  setupAuth(app);
+  // Create HTTP server
+  const httpServer = createServer(app);
+
+  // Setup WebSocket server
+  setupWebSocket(httpServer, app);
+
+  // put application routes here
+  // prefix all routes with /api
 
   // Employee management routes
   app.post("/api/businesses/employees/invite", async (req, res) => {
@@ -1004,10 +1010,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  const httpServer = createServer(app);
-
-  // Setup WebSocket server
-  setupWebSocket(httpServer, app);
-
+  // Return the server instance
   return httpServer;
 }

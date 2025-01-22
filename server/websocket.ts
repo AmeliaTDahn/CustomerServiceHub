@@ -2,8 +2,8 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages, unreadMessages, tickets } from "@db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { messages, unreadMessages, tickets, businessEmployees } from "@db/schema";
+import { eq, and, or } from "drizzle-orm";
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -32,28 +32,42 @@ interface ExtendedWebSocket extends WebSocket {
   isAlive?: boolean;
 }
 
-// Store active connections with role information
 const connections = new Map<string, ExtendedWebSocket>();
+
+async function validateDirectMessage(senderId: number, receiverId: number) {
+  const [relationship] = await db.select()
+    .from(businessEmployees)
+    .where(
+      or(
+        and(
+          eq(businessEmployees.businessId, senderId),
+          eq(businessEmployees.employeeId, receiverId),
+          eq(businessEmployees.isActive, true)
+        ),
+        and(
+          eq(businessEmployees.businessId, receiverId),
+          eq(businessEmployees.employeeId, senderId),
+          eq(businessEmployees.isActive, true)
+        )
+      )
+    );
+
+  return !!relationship;
+}
 
 export function setupWebSocket(server: Server, app: Express) {
   const wss = new WebSocketServer({ noServer: true });
-
-  // Create a separate pool for LISTEN/NOTIFY
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
   });
 
-  // Set up PostgreSQL LISTEN
   (async () => {
     const client = await pool.connect();
     try {
       await client.query('LISTEN new_message');
-
       client.on('notification', async (msg) => {
         if (msg.channel === 'new_message' && msg.payload) {
           const payload = JSON.parse(msg.payload);
-
-          // Forward message to relevant connected clients
           const receiverRole = await determineUserRole(payload.receiver_id);
           if (receiverRole) {
             const receiverWs = connections.get(`${payload.receiver_id}-${receiverRole}`);
@@ -73,21 +87,18 @@ export function setupWebSocket(server: Server, app: Express) {
           }
         }
       });
-
     } catch (err) {
       console.error('Error setting up PostgreSQL LISTEN:', err);
       client.release();
     }
   })();
 
-  // Heartbeat interval (30 seconds)
   const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws: ExtendedWebSocket) => {
       if (ws.isAlive === false) {
         console.log(`Terminating inactive connection for user ${ws.userId}`);
         return ws.terminate();
       }
-
       ws.isAlive = false;
       ws.send(JSON.stringify({ type: 'ping' }));
     });
@@ -98,23 +109,18 @@ export function setupWebSocket(server: Server, app: Express) {
     pool.end();
   });
 
-  // Helper function to determine user role
   async function determineUserRole(userId: number): Promise<string | null> {
     try {
       const [user] = await db.select()
         .from(tickets)
         .where(eq(tickets.customerId, userId))
         .limit(1);
-
       if (user) return 'customer';
-
       const [business] = await db.select()
         .from(tickets)
         .where(eq(tickets.businessId, userId))
         .limit(1);
-
       if (business) return 'business';
-
       return 'employee';
     } catch (error) {
       console.error('Error determining user role:', error);
@@ -122,22 +128,17 @@ export function setupWebSocket(server: Server, app: Express) {
     }
   }
 
-  // Handle WebSocket connections
   wss.on('connection', (ws: ExtendedWebSocket, userId: number, role: string) => {
     console.log(`New WebSocket connection for ${role} user ${userId}`);
     ws.userId = userId;
     ws.role = role;
     ws.isAlive = true;
-
     const connectionKey = `${userId}-${role}`;
     connections.set(connectionKey, ws);
-
-    // Handle pong messages for heartbeat
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
-    // Update all undelivered messages to this user as delivered
     (async () => {
       try {
         const [undeliveredMessages] = await db
@@ -149,7 +150,6 @@ export function setupWebSocket(server: Server, app: Express) {
               eq(messages.status, 'sent')
             )
           );
-
         if (undeliveredMessages) {
           await db
             .update(messages)
@@ -163,15 +163,12 @@ export function setupWebSocket(server: Server, app: Express) {
                 eq(messages.status, 'sent')
               )
             );
-
-          // Notify senders their messages were delivered
           const statusUpdate: StatusUpdate = {
             type: 'status_update',
             messageId: undeliveredMessages.id,
             status: 'delivered',
             timestamp: new Date().toISOString()
           };
-
           const senderWs = connections.get(`${undeliveredMessages.senderId}-${role}`);
           if (senderWs?.readyState === WebSocket.OPEN) {
             senderWs.send(JSON.stringify(statusUpdate));
@@ -186,19 +183,14 @@ export function setupWebSocket(server: Server, app: Express) {
       }
     })();
 
-    // Handle incoming messages
     ws.on('message', async (data: string) => {
       try {
         const message = JSON.parse(data);
-
-        // Handle ping messages
         if (message.type === 'ping') {
           ws.isAlive = true;
           ws.send(JSON.stringify({ type: 'pong' }));
           return;
         }
-
-        // Handle status update
         if (message.type === 'status_update') {
           const update = message as StatusUpdate;
           await db
@@ -208,13 +200,10 @@ export function setupWebSocket(server: Server, app: Express) {
               ...(update.status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
             })
             .where(eq(messages.id, update.messageId));
-
-          // Forward status update to sender
           const [updatedMessage] = await db
             .select()
             .from(messages)
             .where(eq(messages.id, update.messageId));
-
           if (updatedMessage) {
             const senderWs = connections.get(`${updatedMessage.senderId}-${role}`);
             if (senderWs?.readyState === WebSocket.OPEN) {
@@ -223,47 +212,43 @@ export function setupWebSocket(server: Server, app: Express) {
           }
           return;
         }
-
-        // Handle message
         if (message.type === 'message') {
-          // Validate message sender matches connection user
           if (message.senderId !== userId) {
             throw new Error('Invalid sender ID');
           }
-
           let receiverId: number;
           let ticketId: number | undefined = message.ticketId;
           let isInitiator = message.chatInitiator || false;
-
           if (message.directMessageUserId) {
-            // Direct message between users
             receiverId = message.directMessageUserId;
             ticketId = undefined;
-            isInitiator = false;
+            const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
+            if (!isValidDirectMessage) {
+              throw new Error('Unauthorized direct message');
+            }
           } else if (message.ticketId) {
-            // Get the ticket first to determine the receiver
             const [ticket] = await db
               .select()
               .from(tickets)
               .where(eq(tickets.id, message.ticketId));
-
             if (!ticket) {
               throw new Error('Invalid ticket');
             }
-
-            // Set receiverId based on sender's role and ticket relationship
             if (message.senderId === ticket.customerId) {
               receiverId = ticket.businessId!;
             } else {
               receiverId = ticket.customerId;
             }
-
             ticketId = ticket.id;
+          } else if (message.receiverId) {
+            receiverId = message.receiverId;
+            const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
+            if (!isValidDirectMessage) {
+              throw new Error('Unauthorized direct message');
+            }
           } else {
-            throw new Error('Either ticketId or directMessageUserId is required');
+            throw new Error('Invalid message: missing recipient information');
           }
-
-          // Save new message to database with determined receiverId
           const [savedMessage] = await db.insert(messages)
             .values({
               content: message.content,
@@ -277,8 +262,6 @@ export function setupWebSocket(server: Server, app: Express) {
               ticketId: ticketId
             })
             .returning();
-
-          // Create response message
           const responseMessage = {
             id: savedMessage.id,
             type: 'message',
@@ -292,11 +275,7 @@ export function setupWebSocket(server: Server, app: Express) {
             createdAt: savedMessage.createdAt.toISOString(),
             ticketId: savedMessage.ticketId
           };
-
-          // Send confirmation to sender
           ws.send(JSON.stringify(responseMessage));
-
-          // Forward message to receiver if online
           const receiverRole = await determineUserRole(receiverId);
           if (receiverRole) {
             const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
@@ -313,22 +292,16 @@ export function setupWebSocket(server: Server, app: Express) {
         }));
       }
     });
-
-    // Handle connection close
     ws.on('close', () => {
       console.log(`User ${userId} (${role}) disconnected`);
       ws.isAlive = false;
       connections.delete(`${userId}-${role}`);
     });
-
-    // Handle connection errors
     ws.on('error', (error) => {
       console.error(`WebSocket error for user ${userId}:`, error);
       ws.isAlive = false;
       connections.delete(`${userId}-${role}`);
     });
-
-    // Send initial connection success message
     ws.send(JSON.stringify({
       type: 'connection',
       status: 'connected',
@@ -336,25 +309,19 @@ export function setupWebSocket(server: Server, app: Express) {
       role: role
     }));
   });
-
-  // Handle upgrade requests
   server.on('upgrade', (request, socket, head) => {
-    // Skip vite HMR requests
     if (request.headers['sec-websocket-protocol'] === 'vite-hmr') {
       return;
     }
-
     try {
       const url = new URL(request.url!, `http://${request.headers.host}`);
       const userId = parseInt(url.searchParams.get('userId') || '');
       const role = url.searchParams.get('role') || '';
-
       if (!userId || isNaN(userId) || !role || !['business', 'customer', 'employee'].includes(role)) {
         console.error('Invalid WebSocket connection parameters:', { userId, role });
         socket.destroy();
         return;
       }
-
       console.log('Upgrading connection for user:', userId, 'role:', role);
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, userId, role);

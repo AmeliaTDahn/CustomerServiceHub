@@ -88,17 +88,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     return false;
   };
 
-  // Mark messages as read when viewing
-  useEffect(() => {
-    if (messages.length > 0 && user) {
-      messages.forEach(msg => {
-        if (msg.message.receiverId === user.id && msg.message.status !== 'read') {
-          sendReadReceipt(msg.message.id);
-        }
-      });
-    }
-  }, [messages, user, sendReadReceipt]);
-
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -111,7 +100,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         message: {
           id: Date.now(),
           content,
-          ticketId: directMessageUserId ? null : ticketId,
+          ticketId: ticketId || null,
           senderId: user!.id,
           receiverId: directMessageUserId || (messages[0]?.sender.id === user!.id 
             ? messages[0]?.message.receiverId 
@@ -141,8 +130,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
           : messages[0]?.message.senderId),
         content: content,
         timestamp: new Date().toISOString(),
-        ticketId: directMessageUserId ? undefined : ticketId,
-        chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
+        ticketId: ticketId || undefined,
+        directMessageUserId: directMessageUserId,
       });
 
       return optimisticMessage;
@@ -168,6 +157,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     }
   });
 
+  // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || readonly || !user || !canSendMessages()) return;

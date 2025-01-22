@@ -76,9 +76,8 @@ export default function EmployeeMessages() {
           table: 'messages',
           filter: `sender_id=eq.${selectedUserId},receiver_id=eq.${user.id}`,
         },
-        (payload) => {
+        () => {
           queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
-          // Optional: Play a notification sound or show a toast
           toast({
             title: "New Message",
             description: "You have received a new message",
@@ -103,18 +102,26 @@ export default function EmployeeMessages() {
   }, [customerId, customers]);
 
   const handleSendMessage = async () => {
-    if (!selectedUserId || !message.trim() || !user) return;
+    if (!selectedUserId || !message.trim() || !user) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select a user and enter a message.",
+      });
+      return;
+    }
 
     try {
       await sendMessage(user.id, selectedUserId, message.trim());
       setMessage("");
-      // The query will be automatically invalidated by the subscription
+      // Invalidate the messages query to show the new message immediately
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedUserId] });
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
       });
     }
   };

@@ -30,11 +30,15 @@ export async function sendMessage(senderId: number, receiverId: number, content:
         sender_id: senderId,
         receiver_id: receiverId,
         content,
+        created_at: new Date().toISOString()
       },
     ])
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Supabase error:', error);
+    throw new Error(error.message);
+  }
   return data;
 }

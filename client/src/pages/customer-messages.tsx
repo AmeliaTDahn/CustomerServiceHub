@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,33 @@ export default function CustomerMessages() {
   );
   const [newMessage, setNewMessage] = useState("");
   const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
+  const queryClient = useQueryClient();
+
+  // Auto-refresh tickets when WebSocket receives a message
+  useEffect(() => {
+    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}?userId=${user?.id}&role=${user?.role}`);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'message' && data.receiverId === user?.id) {
+          // Invalidate tickets query to refresh the list
+          queryClient.invalidateQueries({ queryKey: ['/api/tickets/customer'] });
+
+          // If this is a new ticket and no ticket is selected, select it
+          if (!selectedTicketId && data.ticketId) {
+            setSelectedTicketId(data.ticketId);
+          }
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [user?.id, user?.role, selectedTicketId, queryClient]);
 
   // Fetch all tickets for the customer with business response status and unread count
   const { data: tickets = [] } = useQuery<TicketWithBusiness[]>({
@@ -57,15 +84,15 @@ export default function CustomerMessages() {
           const messages = await messagesRes.json();
 
           // Count unread messages
-          const unreadCount = messages.filter((m: Message) => 
-            m.receiverId === user?.id && 
+          const unreadCount = messages.filter((m: Message) =>
+            m.receiverId === user?.id &&
             m.status !== 'read'
           ).length;
 
           return {
             ...ticket,
-            hasBusinessResponse: messages.some((m: Message) => 
-              m.senderId === ticket.business.id || 
+            hasBusinessResponse: messages.some((m: Message) =>
+              m.senderId === ticket.business.id ||
               (m.senderId !== user?.id && m.senderId !== ticket.business.id)
             ),
             unreadCount
@@ -277,8 +304,8 @@ export default function CustomerMessages() {
                       !canSendMessage
                         ? "Waiting for business to respond first..."
                         : isConnected
-                        ? "Type your message..."
-                        : "Connecting..."
+                          ? "Type your message..."
+                          : "Connecting..."
                     }
                     className="flex-1"
                     disabled={!isConnected || !canSendMessage}

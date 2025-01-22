@@ -15,6 +15,7 @@ interface Message {
   timestamp: string;
   messageId?: number;
   ticketId?: number;
+  directMessageUserId?: number; // Added for direct messages
 }
 
 interface StatusUpdate {
@@ -229,26 +230,34 @@ export function setupWebSocket(server: Server, app: Express) {
             throw new Error('Invalid sender ID');
           }
 
-          if (!message.ticketId) {
-            throw new Error('Ticket ID is required');
-          }
-
-          // Get the ticket first to determine the receiver
-          const [ticket] = await db
-            .select()
-            .from(tickets)
-            .where(eq(tickets.id, message.ticketId));
-
-          if (!ticket) {
-            throw new Error('Invalid ticket');
-          }
-
-          // Set receiverId based on sender's role and ticket relationship
           let receiverId: number;
-          if (message.senderId === ticket.customerId) {
-            receiverId = ticket.businessId!;
+          let ticketId: number | undefined = message.ticketId;
+
+          if (message.directMessageUserId) {
+            // Direct message between users
+            receiverId = message.directMessageUserId;
+            ticketId = undefined;
+          } else if (message.ticketId) {
+            // Get the ticket first to determine the receiver
+            const [ticket] = await db
+              .select()
+              .from(tickets)
+              .where(eq(tickets.id, message.ticketId));
+
+            if (!ticket) {
+              throw new Error('Invalid ticket');
+            }
+
+            // Set receiverId based on sender's role and ticket relationship
+            if (message.senderId === ticket.customerId) {
+              receiverId = ticket.businessId!;
+            } else {
+              receiverId = ticket.customerId;
+            }
+
+            ticketId = ticket.id;
           } else {
-            receiverId = ticket.customerId;
+            throw new Error('Either ticketId or directMessageUserId is required');
           }
 
           // Save new message to database with determined receiverId
@@ -260,11 +269,9 @@ export function setupWebSocket(server: Server, app: Express) {
               status: 'sent',
               sentAt: new Date(),
               createdAt: new Date(message.timestamp),
-              ticketId: message.ticketId
+              ticketId: ticketId
             })
             .returning();
-
-          console.log('Saved message to database:', savedMessage);
 
           // Create response message
           const responseMessage = {
@@ -279,9 +286,17 @@ export function setupWebSocket(server: Server, app: Express) {
             ticketId: savedMessage.ticketId
           };
 
-          // The PostgreSQL trigger will handle notifying the receiver
-          // We only need to confirm receipt to the sender
+          // Send confirmation to sender
           ws.send(JSON.stringify(responseMessage));
+
+          // Forward message to receiver if online
+          const receiverRole = await determineUserRole(receiverId);
+          if (receiverRole) {
+            const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+            if (receiverWs?.readyState === WebSocket.OPEN) {
+              receiverWs.send(JSON.stringify(responseMessage));
+            }
+          }
         }
       } catch (error) {
         console.error('Error handling message:', error);

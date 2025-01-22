@@ -127,7 +127,7 @@ export default function EmployeeMessages() {
                   <Input
                     placeholder={activeTab === "tickets" ? "Search tickets..." : "Search users..."}
                     value={activeTab === "tickets" ? ticketSearchTerm : userSearchTerm}
-                    onChange={(e) => activeTab === "tickets" 
+                    onChange={(e) => activeTab === "tickets"
                       ? setTicketSearchTerm(e.target.value)
                       : setUserSearchTerm(e.target.value)
                     }
@@ -151,8 +151,8 @@ export default function EmployeeMessages() {
                           <p className="font-medium">{ticket.title}</p>
                           <span className={`px-2 py-1 rounded text-xs ${
                             ticket.status === 'open' ? 'bg-green-100 text-green-800' :
-                            ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
+                              ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                'bg-gray-100 text-gray-800'
                           }`}>
                             {ticket.status}
                           </span>
@@ -190,8 +190,8 @@ export default function EmployeeMessages() {
                         <button
                           onClick={() => handleUserSelect(businessUser.id)}
                           className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                            selectedUserId === businessUser.id 
-                              ? "bg-primary text-primary-foreground" 
+                            selectedUserId === businessUser.id
+                              ? "bg-primary text-primary-foreground"
                               : "bg-background hover:bg-muted"
                           }`}
                         >
@@ -216,8 +216,8 @@ export default function EmployeeMessages() {
                             key={otherUser.id}
                             onClick={() => handleUserSelect(otherUser.id)}
                             className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                              selectedUserId === otherUser.id 
-                                ? "bg-primary text-primary-foreground" 
+                              selectedUserId === otherUser.id
+                                ? "bg-primary text-primary-foreground"
                                 : "hover:bg-muted"
                             }`}
                           >
@@ -247,12 +247,14 @@ export default function EmployeeMessages() {
             <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
                 <div className="h-full">
-                  <TicketChat ticketId={selectedTicketId} />
+                  <TicketChat
+                    ticketId={selectedTicketId}
+                    readonly={false}
+                  />
                 </div>
               ) : selectedUserId ? (
                 <div className="h-full">
-                  <TicketChat 
-                    ticketId={0} 
+                  <TicketChat
                     directMessageUserId={selectedUserId}
                     readonly={false}
                   />

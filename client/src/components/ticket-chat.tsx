@@ -5,8 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useWebSocket } from "@/hooks/use-websocket";
-import { Loader2, Check, CheckCheck, Lock } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
@@ -19,9 +18,6 @@ interface Message {
     senderId: number;
     receiverId: number;
     status: string;
-    chatInitiator?: boolean;
-    initiatedAt?: string | null;
-    sentAt: string;
     createdAt: string;
   };
   sender: {
@@ -39,21 +35,26 @@ interface TicketChatProps {
 
 export default function TicketChat({ ticketId, readonly = false, directMessageUserId }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
-  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const { user } = useUser();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
+
+  // Verify that either ticketId or directMessageUserId is provided
+  if (!ticketId && !directMessageUserId) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted-foreground">No chat selected</p>
+      </div>
+    );
+  }
 
   // Fetch messages
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: directMessageUserId 
       ? ['/api/messages/direct', directMessageUserId]
-      : ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
+      : ['/api/tickets', ticketId, 'messages'],
     queryFn: async () => {
-      if (!directMessageUserId && !ticketId) return [];
-
       const endpoint = directMessageUserId 
         ? `/api/messages/direct/${directMessageUserId}`
         : `/api/tickets/${ticketId}/messages`;
@@ -64,10 +65,11 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: !!(directMessageUserId || ticketId)
+    enabled: !!(directMessageUserId || ticketId),
+    refetchInterval: 5000 // Poll every 5 seconds
   });
 
-  // Fetch ticket details for context if needed
+  // Fetch ticket details if needed
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
     enabled: !!ticketId && !directMessageUserId,
@@ -79,89 +81,47 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       const scrollArea = scrollAreaRef.current;
       scrollArea.scrollTop = scrollArea.scrollHeight;
     }
-  }, [messages, optimisticMessages]);
+  }, [messages]);
 
-  // Check if chat is initiated
-  const isChatInitiated = messages?.some(msg => msg.message.chatInitiator);
   const isEmployee = user?.role === 'employee';
   const isBusiness = user?.role === 'business';
-  const isCustomer = user?.role === 'customer';
-
-  // Determine if user can send messages
-  const canSendMessages = () => {
-    if (readonly) return false;
-    if (directMessageUserId) return true;
-    if (isEmployee || isBusiness) return true;
-    if (isCustomer) return isChatInitiated;
-    return false;
-  };
 
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!isConnected) {
-        throw new Error("Not connected to message server");
-      }
+      const endpoint = directMessageUserId 
+        ? `/api/messages/direct/${directMessageUserId}`
+        : `/api/tickets/${ticketId}/messages`;
 
-      const receiverId = directMessageUserId || (messages[0]?.sender.id === user!.id 
-        ? messages[0]?.message.receiverId 
-        : messages[0]?.message.senderId);
-
-      // Create optimistic message
-      const optimisticMessage: Message = {
-        message: {
-          id: Date.now(),
-          content,
-          ticketId: ticketId || null,
-          senderId: user!.id,
-          receiverId,
-          status: 'sending',
-          chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
-          initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
-          sentAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        sender: {
-          id: user!.id,
-          username: user!.username,
-          role: user!.role,
-        },
-      };
-
-      // Add optimistic message to state
-      setOptimisticMessages(prev => [...prev, optimisticMessage]);
-
-      // Send through WebSocket
-      sendMessage({
-        type: 'message',
-        senderId: user!.id,
-        receiverId,
-        content,
-        timestamp: new Date().toISOString(),
-        ticketId: ticketId || undefined,
-        directMessageUserId,
-        chatInitiator: messages.length === 0 && (isEmployee || isBusiness),
+        credentials: 'include',
+        body: JSON.stringify({ content })
       });
 
-      return optimisticMessage;
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (newMessage) => {
       setNewMessage("");
 
-      // Invalidate queries to refresh the messages
+      // Update the messages cache with the new message
       if (directMessageUserId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/messages/direct', directMessageUserId] 
-        });
+        queryClient.setQueryData<Message[]>(
+          ['/api/messages/direct', directMessageUserId],
+          (old = []) => [...old, newMessage]
+        );
       } else if (ticketId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/tickets', ticketId, 'messages'] 
-        });
+        queryClient.setQueryData<Message[]>(
+          ['/api/tickets', ticketId, 'messages'],
+          (old = []) => [...old, newMessage]
+        );
       }
     },
     onError: (error) => {
-      // Remove optimistic messages on error
-      setOptimisticMessages([]);
       toast({
         variant: "destructive",
         title: "Error",
@@ -173,25 +133,16 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   // Handle form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || readonly || !user || !canSendMessages()) return;
+    if (!newMessage.trim() || readonly || !user) return;
     sendMessageMutation.mutate(newMessage.trim());
   };
-
-  // Combine real and optimistic messages
-  const allMessages = [...messages, ...optimisticMessages];
 
   return (
     <div className="flex flex-col h-full">
       <ScrollArea ref={scrollAreaRef} className="flex-1">
         <div className="space-y-4 p-4">
           <AnimatePresence initial={false}>
-            {!isChatInitiated && isCustomer && (
-              <div className="text-center p-4 text-muted-foreground">
-                <Lock className="w-4 h-4 mx-auto mb-2" />
-                <p>Waiting for support to initiate chat</p>
-              </div>
-            )}
-            {allMessages?.map((messageData) => (
+            {messages?.map((messageData) => (
               <motion.div
                 key={messageData.message.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -216,52 +167,35 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
                     </span>
                   </div>
                   <p className="text-sm">{messageData.message.content}</p>
-                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                    {messageData.sender.id === user?.id && (
-                      <span className="ml-2 flex items-center gap-1">
-                        {messageData.message.status === 'sending' ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : messageData.message.status === 'sent' ? (
-                          <Check className="h-3 w-3" />
-                        ) : messageData.message.status === 'delivered' ? (
-                          <CheckCheck className="h-3 w-3" />
-                        ) : messageData.message.status === 'read' ? (
-                          <motion.span
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            className="text-blue-500"
-                          >
-                            <CheckCheck className="h-3 w-3" />
-                          </motion.span>
-                        ) : null}
-                      </span>
-                    )}
+                  <div className="flex items-center justify-end mt-1">
+                    <span className="text-xs opacity-70">
+                      {new Date(messageData.message.createdAt).toLocaleTimeString()}
+                    </span>
                   </div>
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
-          {allMessages.length === 0 && (
+          {messages.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">
               No messages yet
             </p>
           )}
         </div>
       </ScrollArea>
-      {canSendMessages() && (
+      {!readonly && (
         <form onSubmit={handleSubmit} className="p-4 border-t">
           <div className="flex gap-2">
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={isConnected ? "Type your message..." : "Connecting..."}
+              placeholder="Type your message..."
               className="flex-1"
-              disabled={!isConnected || sendMessageMutation.isPending}
+              disabled={sendMessageMutation.isPending}
             />
             <Button 
               type="submit" 
-              disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
+              disabled={!newMessage.trim() || sendMessageMutation.isPending}
               className="relative"
             >
               {sendMessageMutation.isPending ? (

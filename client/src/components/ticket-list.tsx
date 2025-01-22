@@ -338,13 +338,12 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                           Message Customer
                         </Button>
                       </div>
-                      {isBusiness && (
-                        <>
-                          <ScrollArea className="h-[200px] rounded-md border p-4">
-                            <TicketNotes ticketId={selectedTicket.id} />
-                          </ScrollArea>
-                        </>
-                      )}
+
+                      <div className="mt-6">
+                        <ScrollArea className="h-[200px] rounded-md border p-4">
+                          <TicketNotes ticketId={selectedTicket.id} />
+                        </ScrollArea>
+                      </div>
                     </>
                   )}
                   {!isBusiness && !isEmployee && (

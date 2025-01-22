@@ -6,6 +6,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -164,6 +171,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     return false;
   };
 
+  const handleStatusChange = (ticketId: number, newStatus: string) => {
+    updateTicket.mutate({ id: ticketId, status: newStatus });
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -241,9 +252,25 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </DialogDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Badge className={getStatusColor(selectedTicket.status)}>
-                      {selectedTicket.status.replace("_", " ")}
-                    </Badge>
+                    {canUpdateTicket(selectedTicket) ? (
+                      <Select
+                        defaultValue={selectedTicket.status}
+                        onValueChange={(value) => handleStatusChange(selectedTicket.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="resolved">Resolved</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge className={getStatusColor(selectedTicket.status)}>
+                        {selectedTicket.status.replace("_", " ")}
+                      </Badge>
+                    )}
                     <Badge className={getPriorityColor(selectedTicket.priority)}>
                       {selectedTicket.priority.toUpperCase()}
                     </Badge>
@@ -290,44 +317,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                                 Unclaim Ticket
                               </Button>
                             )
-                          )}
-                          {canUpdateTicket(selectedTicket) && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  updateTicket.mutate({
-                                    id: selectedTicket.id,
-                                    status: "in_progress",
-                                  })
-                                }
-                                disabled={
-                                  selectedTicket.status === "in_progress" ||
-                                  updateTicket.isPending ||
-                                  (isEmployee && !canUpdateTicket(selectedTicket))
-                                }
-                              >
-                                Mark In Progress
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  updateTicket.mutate({
-                                    id: selectedTicket.id,
-                                    status: "resolved",
-                                  })
-                                }
-                                disabled={
-                                  selectedTicket.status === "resolved" ||
-                                  updateTicket.isPending ||
-                                  (isEmployee && !canUpdateTicket(selectedTicket))
-                                }
-                              >
-                                Mark Resolved
-                              </Button>
-                            </>
                           )}
                         </div>
                         <Button

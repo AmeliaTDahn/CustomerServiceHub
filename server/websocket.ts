@@ -16,7 +16,6 @@ interface Message {
 const connections = new Map<string, WebSocket>();
 
 export function setupWebSocket(server: Server, app: Express) {
-  // Create WebSocket server with noServer option
   const wss = new WebSocketServer({ noServer: true });
 
   // Keep track of connection attempts
@@ -156,15 +155,7 @@ export function setupWebSocket(server: Server, app: Express) {
     }
 
     try {
-      // Parse URL with specific path for WebSocket
       const url = new URL(request.url!, `http://${request.headers.host}`);
-
-      // Only handle WebSocket connections at /ws path
-      if (!url.pathname.startsWith('/ws')) {
-        socket.destroy();
-        return;
-      }
-
       const userId = parseInt(url.searchParams.get('userId') || '');
       const role = url.searchParams.get('role') || '';
 

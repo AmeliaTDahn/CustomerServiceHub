@@ -29,6 +29,7 @@ interface TicketWithBusiness extends Ticket {
     username: string;
   };
   hasBusinessResponse: boolean;
+  unreadCount?: number;
 }
 
 export default function CustomerMessages() {
@@ -41,7 +42,7 @@ export default function CustomerMessages() {
   const [newMessage, setNewMessage] = useState("");
   const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
 
-  // Fetch all tickets for the customer with business response status
+  // Fetch all tickets for the customer with business response status and unread count
   const { data: tickets = [] } = useQuery<TicketWithBusiness[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
@@ -49,22 +50,30 @@ export default function CustomerMessages() {
       if (!res.ok) throw new Error(await res.text());
       const tickets = await res.json();
 
-      // For each ticket, check if there are any business responses
-      const ticketsWithResponses = await Promise.all(
+      // For each ticket, check if there are any business responses and unread messages
+      const ticketsWithDetails = await Promise.all(
         tickets.map(async (ticket: TicketWithBusiness) => {
           const messagesRes = await fetch(`/api/tickets/${ticket.id}/messages`);
           const messages = await messagesRes.json();
+
+          // Count unread messages
+          const unreadCount = messages.filter((m: Message) => 
+            m.receiverId === user?.id && 
+            m.status !== 'read'
+          ).length;
+
           return {
             ...ticket,
             hasBusinessResponse: messages.some((m: Message) => 
               m.senderId === ticket.business.id || 
               (m.senderId !== user?.id && m.senderId !== ticket.business.id)
-            )
+            ),
+            unreadCount
           };
         })
       );
 
-      return ticketsWithResponses;
+      return ticketsWithDetails;
     }
   });
 
@@ -131,7 +140,14 @@ export default function CustomerMessages() {
           </Button>
         </Link>
       </div>
-      <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+          <h1 className="text-3xl font-bold text-gray-900">Support Tickets</h1>
+          <p className="mt-1 text-sm text-gray-500">View and manage your support tickets</p>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-12rem)] max-w-7xl mx-auto w-full mt-6">
         <Card className="col-span-4 flex flex-col">
           <div className="p-4 border-b">
             <div className="relative">
@@ -155,7 +171,14 @@ export default function CustomerMessages() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <p className="font-medium">{ticket.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{ticket.title}</p>
+                      {ticket.unreadCount ? (
+                        <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs">
+                          {ticket.unreadCount}
+                        </span>
+                      ) : null}
+                    </div>
                     <span className={`px-2 py-1 rounded text-xs ${getStatusColor(ticket.status)}`}>
                       {ticket.status.replace("_", " ")}
                     </span>
@@ -203,6 +226,9 @@ export default function CustomerMessages() {
                     </span>
                   )}
                 </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {selectedTicket.description}
+                </p>
               </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">

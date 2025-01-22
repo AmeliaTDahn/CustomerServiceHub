@@ -146,22 +146,24 @@ export default function CustomerMessages() {
           <Card className="col-span-8 flex flex-col h-full">
             <CardContent className="p-0 flex-1">
               {selectedTicketId ? (
-                selectedTicket?.claimedById ? (
-                  <TicketChat
-                    ticketId={selectedTicketId}
-                    readonly={false}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center p-4">
-                    <Alert>
-                      <AlertDescription className="flex items-center gap-2 text-muted-foreground">
-                        <Lock className="h-4 w-4" />
-                        This ticket hasn't been claimed by an employee yet. 
-                        You'll be able to chat once an employee is assigned.
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                )
+                <div className="h-full">
+                  {selectedTicket?.claimedById ? (
+                    <TicketChat
+                      ticketId={selectedTicketId}
+                      readonly={false}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center p-4">
+                      <Alert>
+                        <AlertDescription className="flex items-center gap-2 text-muted-foreground">
+                          <Lock className="h-4 w-4" />
+                          This ticket hasn't been claimed by an employee yet. 
+                          You'll be able to chat once an employee is assigned.
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                   Select a ticket to view messages

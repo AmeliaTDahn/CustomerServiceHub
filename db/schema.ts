@@ -3,6 +3,10 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Table Definitions
+// ================
+
+// Base user table to store auth info
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").unique().notNull(),
@@ -11,23 +15,35 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+// Business details table - separate from user auth info
+export const businessProfiles = pgTable("business_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull().unique(), // One-to-one with business user
+  businessName: text("business_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Keep existing businessEmployees table but reference businessProfiles instead
 export const businessEmployees = pgTable("business_employees", {
   id: serial("id").primaryKey(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
+  businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
   employeeId: integer("employee_id").references(() => users.id).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+// Employee invitations to reference businessProfiles
 export const employeeInvitations = pgTable("employee_invitations", {
   id: serial("id").primaryKey(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
+  businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
   employeeId: integer("employee_id").references(() => users.id).notNull(),
   status: text("status", { enum: ["pending", "accepted", "rejected"] }).default("pending").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+// Tickets reference businessProfiles
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -40,7 +56,7 @@ export const tickets = pgTable("tickets", {
     enum: ["low", "medium", "high", "urgent"]
   }).default("medium").notNull(),
   customerId: integer("customer_id").references(() => users.id).notNull(),
-  businessId: integer("business_id").references(() => users.id),
+  businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
   claimedById: integer("claimed_by_id").references(() => users.id),
   claimedAt: timestamp("claimed_at"),
   escalationLevel: text("escalation_level", {
@@ -91,7 +107,7 @@ export const unreadMessages = pgTable("unread_messages", {
 export const ticketNotes = pgTable("ticket_notes", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
-  businessId: integer("business_id").references(() => users.id).notNull(),
+  businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -120,17 +136,30 @@ export const directMessages = pgTable("direct_messages", {
   status: text("status", { 
     enum: ["sent", "delivered", "read"] 
   }).default("sent").notNull(),
-  businessId: integer("business_id").references(() => users.id),
+  businessProfileId: integer("business_profile_id").references(() => businessProfiles.id),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Relations Definitions
+// ===================
+
+export const businessProfilesRelations = relations(businessProfiles, ({ one, many }) => ({
+  user: one(users, {
+    fields: [businessProfiles.userId],
+    references: [users.id],
+  }),
+  employees: many(businessEmployees),
+  tickets: many(tickets),
+  invitations: many(employeeInvitations)
+}));
+
 export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
-  business: one(users, {
-    fields: [businessEmployees.businessId],
-    references: [users.id]
+  businessProfile: one(businessProfiles, {
+    fields: [businessEmployees.businessProfileId],
+    references: [businessProfiles.id]
   }),
   employee: one(users, {
     fields: [businessEmployees.employeeId],
@@ -139,9 +168,9 @@ export const businessEmployeesRelations = relations(businessEmployees, ({ one })
 }));
 
 export const employeeInvitationsRelations = relations(employeeInvitations, ({ one }) => ({
-  business: one(users, {
-    fields: [employeeInvitations.businessId],
-    references: [users.id]
+  businessProfile: one(businessProfiles, {
+    fields: [employeeInvitations.businessProfileId],
+    references: [businessProfiles.id]
   }),
   employee: one(users, {
     fields: [employeeInvitations.employeeId],
@@ -154,9 +183,9 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
     fields: [tickets.customerId],
     references: [users.id]
   }),
-  business: one(users, {
-    fields: [tickets.businessId],
-    references: [users.id]
+  businessProfile: one(businessProfiles, {
+    fields: [tickets.businessProfileId],
+    references: [businessProfiles.id]
   }),
   claimedBy: one(users, {
     fields: [tickets.claimedById],
@@ -188,9 +217,9 @@ export const ticketNotesRelations = relations(ticketNotes, ({ one }) => ({
     fields: [ticketNotes.ticketId],
     references: [tickets.id]
   }),
-  business: one(users, {
-    fields: [ticketNotes.businessId],
-    references: [users.id]
+  businessProfile: one(businessProfiles, {
+    fields: [ticketNotes.businessProfileId],
+    references: [businessProfiles.id]
   })
 }));
 
@@ -207,20 +236,6 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     fields: [messages.ticketId],
     references: [tickets.id]
   })
-}));
-
-export const usersRelations = relations(users, ({ many }) => ({
-  customerTickets: many(tickets, { relationName: "customer" }),
-  businessTickets: many(tickets, { relationName: "business" }),
-  ticketNotes: many(ticketNotes),
-  sentMessages: many(messages, { relationName: "sender" }),
-  receivedMessages: many(messages, { relationName: "receiver" }),
-  sentDirectMessages: many(directMessages, { relationName: "sender" }),
-  receivedDirectMessages: many(directMessages, { relationName: "receiver" }),
-  employeeOf: many(businessEmployees, { relationName: "employee" }),
-  employees: many(businessEmployees, { relationName: "business" }),
-  sentInvitations: many(employeeInvitations, { relationName: "business" }),
-  receivedInvitations: many(employeeInvitations, { relationName: "employee" })
 }));
 
 export const unreadMessagesRelations = relations(unreadMessages, ({ one }) => ({
@@ -262,16 +277,34 @@ export const directMessagesRelations = relations(directMessages, ({ one }) => ({
     fields: [directMessages.receiverId],
     references: [users.id]
   }),
-  business: one(users, {
-    fields: [directMessages.businessId],
-    references: [users.id]
+  businessProfile: one(businessProfiles, {
+    fields: [directMessages.businessProfileId],
+    references: [businessProfiles.id]
   })
 }));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  customerTickets: many(tickets, { relationName: "customer" }),
+  businessTickets: many(tickets, { relationName: "businessProfile" }),
+  ticketNotes: many(ticketNotes),
+  sentMessages: many(messages, { relationName: "sender" }),
+  receivedMessages: many(messages, { relationName: "receiver" }),
+  sentDirectMessages: many(directMessages, { relationName: "sender" }),
+  receivedDirectMessages: many(directMessages, { relationName: "receiver" }),
+  employeeOf: many(businessEmployees, { relationName: "employee" }),
+  employees: many(businessEmployees, { relationName: "businessProfile" }),
+  sentInvitations: many(employeeInvitations, { relationName: "businessProfile" }),
+  receivedInvitations: many(employeeInvitations, { relationName: "employee" })
+}));
+
+// Schemas and Types
+// ===============
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["business", "customer", "employee"])
+  role: z.enum(["business", "customer", "employee"]),
+  businessName: z.string().optional()
 };
 
 export const insertUserSchema = z.object(baseUserSchema);
@@ -280,9 +313,13 @@ export const insertBusinessEmployeeSchema = createInsertSchema(businessEmployees
 export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees);
 export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
 export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
+export const insertBusinessProfileSchema = createInsertSchema(businessProfiles);
+export const selectBusinessProfileSchema = createSelectSchema(businessProfiles);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type BusinessProfile = typeof businessProfiles.$inferSelect;
+export type NewBusinessProfile = typeof businessProfiles.$inferInsert;
 export type BusinessEmployee = typeof businessEmployees.$inferSelect;
 export type NewBusinessEmployee = typeof businessEmployees.$inferInsert;
 export type EmployeeInvitation = typeof employeeInvitations.$inferSelect;

@@ -5,7 +5,7 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { users, insertUserSchema, type User } from "@db/schema";
+import { users, businessProfiles, insertUserSchema, type User } from "@db/schema";
 import { db } from "@db";
 import { eq } from "drizzle-orm";
 
@@ -106,8 +106,9 @@ export function setupAuth(app: Express) {
           .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
       }
 
-      const { username, password, role } = result.data;
+      const { username, password, role, businessName } = result.data;
 
+      // Check if username already exists
       const [existingUser] = await db
         .select()
         .from(users)
@@ -120,22 +121,49 @@ export function setupAuth(app: Express) {
 
       const hashedPassword = await crypto.hash(password);
 
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          username,
-          password: hashedPassword,
-          role
-        })
-        .returning();
+      // Start a transaction to ensure user and business profile are created together
+      const newUser = await db.transaction(async (tx) => {
+        // Create the user first
+        const [user] = await tx
+          .insert(users)
+          .values({
+            username,
+            password: hashedPassword,
+            role
+          })
+          .returning();
 
+        // If this is a business account, create the business profile
+        if (role === "business") {
+          if (!businessName) {
+            throw new Error("Business name is required for business accounts");
+          }
+
+          await tx
+            .insert(businessProfiles)
+            .values({
+              userId: user.id,
+              businessName,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+        }
+
+        return user;
+      });
+
+      // Log the user in after registration
       req.login(newUser, (err) => {
         if (err) {
           return next(err);
         }
         return res.json({
           message: "Registration successful",
-          user: { id: newUser.id, username: newUser.username, role: newUser.role },
+          user: { 
+            id: newUser.id, 
+            username: newUser.username, 
+            role: newUser.role 
+          },
         });
       });
     } catch (error) {

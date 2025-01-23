@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages, unreadMessages, tickets, businessEmployees, users } from "@db/schema";
+import { messages, businessEmployees, tickets } from "@db/schema";
 import { eq, and, or } from "drizzle-orm";
 import pkg from 'pg';
 const { Pool } = pkg;
@@ -10,7 +10,7 @@ const { Pool } = pkg;
 interface Message {
   type: string;
   senderId: number;
-  receiverId: number;
+  receiverId?: number;
   content: string;
   timestamp: string;
   messageId?: number;
@@ -26,18 +26,10 @@ interface StatusUpdate {
   timestamp: string;
 }
 
-interface TicketResolution {
-  type: 'ticket_resolved';
-  ticketId: number;
-  customerId: number;
-  resolvedBy: number;
-  timestamp: string;
-}
-
 interface ExtendedWebSocket extends WebSocket {
   userId?: number;
   role?: string;
-  isAlive?: boolean;
+  isAlive: boolean;
 }
 
 const connections = new Map<string, ExtendedWebSocket>();
@@ -68,24 +60,7 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
       return senderEmployee.businessId === receiverEmployee.businessId;
     }
 
-    return !!(await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        or(
-          and(
-            eq(businessEmployees.businessId, senderId),
-            eq(businessEmployees.employeeId, receiverId),
-            eq(businessEmployees.isActive, true)
-          ),
-          and(
-            eq(businessEmployees.businessId, receiverId),
-            eq(businessEmployees.employeeId, senderId),
-            eq(businessEmployees.isActive, true)
-          )
-        )
-      )
-      .limit(1));
+    return false;
   } catch (error) {
     console.error('Error validating direct message:', error);
     return false;
@@ -94,6 +69,7 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
 
 async function determineUserRole(userId: number): Promise<string | null> {
   try {
+    // First check if user is an employee
     const [employee] = await db
       .select()
       .from(businessEmployees)
@@ -107,6 +83,7 @@ async function determineUserRole(userId: number): Promise<string | null> {
 
     if (employee) return 'employee';
 
+    // Then check if user is a business
     const [business] = await db
       .select()
       .from(businessEmployees)
@@ -115,6 +92,7 @@ async function determineUserRole(userId: number): Promise<string | null> {
 
     if (business) return 'business';
 
+    // Finally check if user is a customer
     const [customer] = await db
       .select()
       .from(tickets)
@@ -131,189 +109,36 @@ async function determineUserRole(userId: number): Promise<string | null> {
   }
 }
 
-async function handleMessage(ws: ExtendedWebSocket, message: Message) {
-  try {
-    if (!message.senderId || message.senderId !== ws.userId) {
-      throw new Error('Invalid sender ID');
-    }
-
-    let receiverId: number;
-    let ticketId: number | undefined = message.ticketId;
-
-    if (message.ticketId) {
-      const [ticket] = await db
-        .select()
-        .from(tickets)
-        .where(eq(tickets.id, message.ticketId));
-
-      if (!ticket) {
-        throw new Error('Invalid ticket');
-      }
-
-      if (message.senderId === ticket.customerId) {
-        receiverId = ticket.claimedById || ticket.businessId!;
-      } else {
-        receiverId = ticket.customerId;
-      }
-    } else if (message.directMessageUserId) {
-      receiverId = message.directMessageUserId;
-      const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
-      if (!isValidDirectMessage) {
-        throw new Error('Unauthorized direct message');
-      }
-    } else {
-      throw new Error('Either ticketId or directMessageUserId is required');
-    }
-
-    const [savedMessage] = await db.insert(messages)
-      .values({
-        content: message.content,
-        senderId: message.senderId,
-        receiverId,
-        status: 'sent',
-        chatInitiator: message.chatInitiator || false,
-        initiatedAt: message.chatInitiator ? new Date() : null,
-        sentAt: new Date(),
-        createdAt: new Date(),
-        ticketId
-      })
-      .returning();
-
-    const responseMessage = {
-      type: 'message',
-      id: savedMessage.id,
-      content: savedMessage.content,
-      senderId: savedMessage.senderId,
-      receiverId: savedMessage.receiverId,
-      status: savedMessage.status,
-      chatInitiator: savedMessage.chatInitiator,
-      initiatedAt: savedMessage.initiatedAt?.toISOString(),
-      sentAt: savedMessage.sentAt.toISOString(),
-      createdAt: savedMessage.createdAt.toISOString(),
-      ticketId: savedMessage.ticketId
-    };
-
-    // Send confirmation to sender
-    ws.send(JSON.stringify(responseMessage));
-
-    // Determine receiver's role and send message
-    const receiverRole = await determineUserRole(receiverId);
-    if (receiverRole) {
-      const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
-      if (receiverWs?.readyState === WebSocket.OPEN) {
-        receiverWs.send(JSON.stringify(responseMessage));
-      } else {
-        console.log(`Receiver ${receiverId} (${receiverRole}) is not connected or WebSocket not open`);
-      }
-    }
-
-    // For ticket messages, handle broadcasting if needed
-    if (ticketId) {
-      const [ticket] = await db
-        .select()
-        .from(tickets)
-        .where(eq(tickets.id, ticketId));
-
-      if (ticket && message.senderId === ticket.customerId && !ticket.claimedById) {
-        await broadcastToEmployees(responseMessage, ticket.businessId!);
-      }
-    }
-  } catch (error) {
-    console.error('Error handling message:', error);
-    ws.send(JSON.stringify({
-      type: 'error',
-      error: (error as Error).message
-    }));
-  }
-}
-
-async function broadcastToEmployees(message: any, businessId: number) {
-  try {
-    const employees = await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        and(
-          eq(businessEmployees.businessId, businessId),
-          eq(businessEmployees.isActive, true)
-        )
-      );
-
-    for (const employee of employees) {
-      const employeeWs = connections.get(`${employee.employeeId}-employee`);
-      if (employeeWs?.readyState === WebSocket.OPEN) {
-        employeeWs.send(JSON.stringify(message));
-      }
-    }
-  } catch (error) {
-    console.error('Error broadcasting message:', error);
-  }
-}
-
-export function setupWebSocket(server: Server, app: Express) {
+export function setupWebSocket(server: Server, _app: Express) {
   const wss = new WebSocketServer({ noServer: true });
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  });
 
-  (async () => {
-    const client = await pool.connect();
-    try {
-      await client.query('LISTEN new_message');
-      client.on('notification', async (msg) => {
-        if (msg.channel === 'new_message' && msg.payload) {
-          const payload = JSON.parse(msg.payload);
-          const receiverWs = connections.get(`${payload.receiver_id}-${payload.receiver_role}`);
-          if (receiverWs?.readyState === WebSocket.OPEN) {
-            receiverWs.send(JSON.stringify({
-              type: 'message',
-              id: payload.id,
-              senderId: payload.sender_id,
-              receiverId: payload.receiver_id,
-              content: payload.content,
-              status: payload.status,
-              ticketId: payload.ticket_id,
-              sentAt: payload.sent_at,
-              createdAt: payload.created_at
-            }));
-          }
-        }
-      });
-    } catch (err) {
-      console.error('Error setting up PostgreSQL LISTEN:', err);
-      client.release();
-    }
-  })();
+  const heartbeat = (ws: ExtendedWebSocket) => {
+    ws.isAlive = true;
+  };
 
-  const heartbeatInterval = setInterval(() => {
+  const interval = setInterval(() => {
     wss.clients.forEach((ws: ExtendedWebSocket) => {
       if (ws.isAlive === false) {
         console.log(`Terminating inactive connection for user ${ws.userId}`);
         return ws.terminate();
       }
+
       ws.isAlive = false;
-      try {
-        ws.send(JSON.stringify({ type: 'ping', timestamp: new Date().toISOString() }));
-      } catch (error) {
-        console.error('Error sending ping:', error);
-        ws.terminate();
-      }
+      ws.ping();
     });
   }, 30000);
 
   wss.on('close', () => {
-    clearInterval(heartbeatInterval);
-    pool.end();
+    clearInterval(interval);
   });
 
-
-  wss.on('connection', (ws: ExtendedWebSocket, userId: number, role: string) => {
+  wss.on('connection', async (ws: ExtendedWebSocket, userId: number, role: string) => {
     console.log(`New WebSocket connection for ${role} user ${userId}`);
     ws.userId = userId;
     ws.role = role;
     ws.isAlive = true;
-    const connectionKey = `${userId}-${role}`;
 
+    const connectionKey = `${userId}-${role}`;
     const existingConnection = connections.get(connectionKey);
     if (existingConnection) {
       console.log(`Closing existing connection for ${connectionKey}`);
@@ -323,13 +148,11 @@ export function setupWebSocket(server: Server, app: Express) {
 
     connections.set(connectionKey, ws);
 
-    ws.on('pong', () => {
-      ws.isAlive = true;
-    });
+    ws.on('pong', () => heartbeat(ws));
 
     ws.on('message', async (data: string) => {
       try {
-        const message = JSON.parse(data);
+        const message: Message = JSON.parse(data);
 
         if (message.type === 'ping') {
           ws.isAlive = true;
@@ -337,50 +160,90 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
-        if (message.type === 'message') {
-          await handleMessage(ws, message);
-        } else if (message.type === 'status_update') {
-          const update = message as StatusUpdate;
-          await db
-            .update(messages)
-            .set({
-              status: update.status,
-              ...(update.status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
-            })
-            .where(eq(messages.id, update.messageId));
+        if (message.type !== 'message') {
+          return;
+        }
 
-          const [updatedMessage] = await db
-            .select()
-            .from(messages)
-            .where(eq(messages.id, update.messageId));
+        if (!message.senderId || message.senderId !== userId) {
+          throw new Error('Invalid sender ID');
+        }
 
-          if (updatedMessage) {
-            const senderWs = connections.get(`${updatedMessage.senderId}-${role}`);
-            if (senderWs?.readyState === WebSocket.OPEN) {
-              senderWs.send(JSON.stringify(update));
-            }
+        let receiverId: number;
+        const ticketId = message.ticketId;
+
+        // Handle direct messages
+        if (message.directMessageUserId) {
+          receiverId = message.directMessageUserId;
+          const isValidDirectMessage = await validateDirectMessage(userId, receiverId);
+          if (!isValidDirectMessage) {
+            throw new Error('Unauthorized direct message');
           }
-        } else if (message.type === 'ticket_resolved') {
-          const resolution = message as TicketResolution;
+        } 
+        // Handle ticket messages
+        else if (ticketId) {
           const [ticket] = await db
             .select()
             .from(tickets)
-            .where(eq(tickets.id, resolution.ticketId));
+            .where(eq(tickets.id, ticketId));
 
           if (!ticket) {
             throw new Error('Invalid ticket');
           }
 
-          const customerWs = connections.get(`${ticket.customerId}-customer`);
-          if (customerWs?.readyState === WebSocket.OPEN) {
-            customerWs.send(JSON.stringify({
-              type: 'ticket_resolved',
-              ticketId: ticket.id,
-              resolvedBy: resolution.resolvedBy,
-              timestamp: new Date().toISOString()
-            }));
+          if (message.senderId === ticket.customerId) {
+            receiverId = ticket.claimedById || ticket.businessId!;
+          } else {
+            receiverId = ticket.customerId;
+          }
+        } else {
+          throw new Error('Either ticketId or directMessageUserId is required');
+        }
+
+        // Save message to database
+        const [savedMessage] = await db
+          .insert(messages)
+          .values({
+            content: message.content,
+            senderId: userId,
+            receiverId,
+            ticketId,
+            status: 'sent',
+            chatInitiator: message.chatInitiator || false,
+            initiatedAt: message.chatInitiator ? new Date() : null,
+            sentAt: new Date(),
+            createdAt: new Date(),
+          })
+          .returning();
+
+        const responseMessage = {
+          type: 'message',
+          id: savedMessage.id,
+          content: savedMessage.content,
+          senderId: savedMessage.senderId,
+          receiverId: savedMessage.receiverId,
+          ticketId: savedMessage.ticketId,
+          status: savedMessage.status,
+          chatInitiator: savedMessage.chatInitiator,
+          initiatedAt: savedMessage.initiatedAt?.toISOString(),
+          sentAt: savedMessage.sentAt.toISOString(),
+          createdAt: savedMessage.createdAt.toISOString(),
+        };
+
+        // Send confirmation to sender
+        ws.send(JSON.stringify(responseMessage));
+
+        // Send to receiver
+        const receiverRole = await determineUserRole(receiverId);
+        if (receiverRole) {
+          console.log(`Sending message to ${receiverId} with role ${receiverRole}`);
+          const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+          if (receiverWs?.readyState === WebSocket.OPEN) {
+            receiverWs.send(JSON.stringify(responseMessage));
+          } else {
+            console.log(`Receiver ${receiverId} (${receiverRole}) is not connected or WebSocket not open`);
           }
         }
+
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
         ws.send(JSON.stringify({
@@ -392,21 +255,20 @@ export function setupWebSocket(server: Server, app: Express) {
 
     ws.on('close', () => {
       console.log(`User ${userId} (${role}) disconnected`);
-      ws.isAlive = false;
-      connections.delete(`${userId}-${role}`);
+      connections.delete(connectionKey);
     });
 
     ws.on('error', (error) => {
       console.error(`WebSocket error for user ${userId}:`, error);
-      ws.isAlive = false;
-      connections.delete(`${userId}-${role}`);
+      connections.delete(connectionKey);
     });
 
+    // Send connection confirmation
     ws.send(JSON.stringify({
       type: 'connection',
       status: 'connected',
-      userId: userId,
-      role: role
+      userId,
+      role
     }));
   });
 

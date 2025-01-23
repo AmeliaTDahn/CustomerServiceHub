@@ -222,13 +222,13 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
+    <div>
+      <div className="mb-4 flex items-center justify-between">
         <Select
           value={viewType}
           onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[160px] h-8 text-sm">
             <SelectValue placeholder="Select view" />
           </SelectTrigger>
           <SelectContent>
@@ -239,58 +239,58 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         </Select>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {filterTickets(viewType).map((ticket) => (
           <Card
             key={ticket.id}
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => setSelectedTicket(ticket)}
           >
-            <CardHeader>
+            <CardHeader className="py-3">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle>{ticket.title}</CardTitle>
+                    <CardTitle className="text-base">{ticket.title}</CardTitle>
                     {ticket.unreadCount > 0 && (
-                      <Badge variant="secondary">
+                      <Badge variant="secondary" className="text-xs">
                         {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
                       </Badge>
                     )}
                   </div>
-                  <CardDescription>
-                    <div className="space-y-1">
+                  <CardDescription className="text-sm">
+                    <div className="space-y-0.5">
                       <div>From: {ticket.customer.username}</div>
-                      <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                      <div>Created: {new Date(ticket.createdAt).toLocaleDateString()}</div>
                       {viewType !== 'history' && ticket.claimedAt && (
-                        <div>Claimed on {new Date(ticket.claimedAt).toLocaleDateString()}</div>
+                        <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
                       )}
                       {viewType === 'history' && (
-                        <div>Resolved on {new Date(ticket.updatedAt).toLocaleDateString()}</div>
+                        <div>Resolved: {new Date(ticket.updatedAt).toLocaleDateString()}</div>
                       )}
                     </div>
                   </CardDescription>
                 </div>
-                <div className="flex gap-2 items-center">
-                  <Badge className={getStatusColor(ticket.status)}>
+                <div className="flex gap-1.5 items-center">
+                  <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
                     {ticket.status.replace("_", " ")}
                   </Badge>
-                  <Badge className={getPriorityColor(ticket.priority)}>
+                  <Badge className={`${getPriorityColor(ticket.priority)} text-xs`}>
                     {ticket.priority.toUpperCase()}
                   </Badge>
                   {viewType === 'history' && ticket.hasFeedback && (
-                    <Badge variant="outline">Feedback Provided</Badge>
+                    <Badge variant="outline" className="text-xs">Feedback</Badge>
                   )}
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+            <CardContent className="py-2">
+              <Badge variant="outline" className="text-xs">{getCategoryLabel(ticket.category)}</Badge>
             </CardContent>
           </Card>
         ))}
         {filterTickets(viewType).length === 0 && (
           <Card>
-            <CardContent className="py-8 text-center text-gray-500">
+            <CardContent className="py-6 text-center text-gray-500 text-sm">
               No {viewType === 'active' ? 'active' : viewType === 'my-tickets' ? 'claimed' : 'resolved'} tickets
             </CardContent>
           </Card>
@@ -377,7 +377,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
+                          onClick={() => handleMessageClick(selectedTicket.customer.id)}
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
                           View Messages

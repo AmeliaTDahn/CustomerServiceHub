@@ -103,33 +103,16 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
 
 async function determineUserRole(userId: number): Promise<string | null> {
   try {
-    // First check if user is an employee
-    const [employee] = await db
+    // Check user role directly from the users table first
+    const [user] = await db
       .select()
-      .from(businessEmployees)
-      .where(
-        and(
-          eq(businessEmployees.employeeId, userId),
-          eq(businessEmployees.isActive, true)
-        )
-      )
+      .from(users)
+      .where(eq(users.id, userId))
       .limit(1);
 
-    if (employee) {
-      console.log(`User ${userId} is an employee`);
-      return 'employee';
-    }
-
-    // Then check if user is a business
-    const [business] = await db
-      .select()
-      .from(businessEmployees)
-      .where(eq(businessEmployees.businessId, userId))
-      .limit(1);
-
-    if (business) {
-      console.log(`User ${userId} is a business`);
-      return 'business';
+    if (user) {
+      console.log(`User ${userId} role found:`, user.role);
+      return user.role;
     }
 
     // Finally check if user is a customer

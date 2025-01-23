@@ -93,7 +93,8 @@ export default function EmployeeMessages() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Fixed Header */}
       <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -108,17 +109,19 @@ export default function EmployeeMessages() {
         <div className="w-[88px]" /> {/* Spacer to center heading */}
       </div>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
-          {/* Sidebar with Tabs */}
-          <Card className="col-span-4 flex flex-col">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+      {/* Main Content Area - Takes remaining height */}
+      <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8 overflow-hidden">
+        <div className="grid grid-cols-12 gap-4 h-full">
+          {/* Sidebar */}
+          <Card className="col-span-4 flex flex-col overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
               <TabsList className="w-full">
                 <TabsTrigger value="tickets" className="flex-1">Support Tickets</TabsTrigger>
                 <TabsTrigger value="direct" className="flex-1">Direct Messages</TabsTrigger>
               </TabsList>
 
-              <div className="p-4">
+              {/* Search Area - Fixed at top */}
+              <div className="p-4 border-b">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -133,8 +136,9 @@ export default function EmployeeMessages() {
                 </div>
               </div>
 
-              <TabsContent value="tickets" className="flex-1 border-0 m-0 p-0">
-                <CardContent className="p-0 flex-1 overflow-auto">
+              {/* Scrollable Content Area */}
+              <TabsContent value="tickets" className="flex-1 border-0 m-0 p-0 overflow-auto">
+                <CardContent className="p-0">
                   <div className="divide-y">
                     {filteredTickets.map((ticket) => (
                       <button
@@ -174,8 +178,8 @@ export default function EmployeeMessages() {
                 </CardContent>
               </TabsContent>
 
-              <TabsContent value="direct" className="flex-1 border-0 m-0 p-0">
-                <CardContent className="p-0 flex-1 overflow-auto">
+              <TabsContent value="direct" className="flex-1 border-0 m-0 p-0 overflow-auto">
+                <CardContent className="p-0">
                   <div className="divide-y">
                     {/* Business User Section */}
                     {businessUser && (
@@ -240,17 +244,17 @@ export default function EmployeeMessages() {
           </Card>
 
           {/* Chat Area */}
-          <Card className="col-span-8 flex flex-col h-full">
-            <CardContent className="p-0 flex-1">
+          <Card className="col-span-8 flex flex-col overflow-hidden">
+            <CardContent className="p-0 flex-1 flex flex-col h-full">
               {selectedTicketId ? (
-                <div className="h-full">
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
                   <TicketChat
                     ticketId={selectedTicketId}
                     readonly={false}
                   />
                 </div>
               ) : selectedUserId ? (
-                <div className="h-full">
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
                   <TicketChat
                     directMessageUserId={selectedUserId}
                     readonly={false}
@@ -264,7 +268,7 @@ export default function EmployeeMessages() {
             </CardContent>
           </Card>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

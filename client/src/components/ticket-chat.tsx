@@ -80,7 +80,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     refetchInterval: 5000
   });
 
-  // Process new messages and send read receipts
   useEffect(() => {
     if (!user) return;
 
@@ -90,21 +89,15 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     messages.forEach(messageData => {
       const messageId = messageData.message.id;
 
-      // Only process messages that:
-      // 1. Haven't been processed before
-      // 2. Are from other users
-      // 3. Haven't been marked as read
       if (!processedMessages.has(messageId) && 
           messageData.sender.id !== user.id &&
           messageData.message.status !== 'read') {
 
-        // Send read receipt
         sendReadReceipt(messageId);
         processedMessages.add(messageId);
       }
     });
 
-    // Clean up processed messages that are no longer in the current set
     Array.from(processedMessages).forEach(id => {
       if (!currentMessages.has(id)) {
         processedMessages.delete(id);
@@ -114,7 +107,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     lastProcessedMessagesRef.current = processedMessages;
   }, [messages, user, sendReadReceipt]);
 
-  // Scroll to bottom whenever messages change
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -135,7 +127,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
 
-    // For customers, always show the input box if they have the ticket
     if (isCustomer && ticketId && ticket?.customerId === user?.id) {
       return true;
     }
@@ -232,84 +223,82 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const allMessages = [...messages, ...optimisticMessages];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
-        <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2">
+        <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2 absolute top-0 left-0 right-0 z-10">
           <Megaphone className="h-4 w-4" />
           Your message will be sent to support staff.
         </div>
       )}
 
-      <div className="flex-1 min-h-0"> {/* This ensures proper scrolling */}
-        <ScrollArea className="h-full">
-          <div className="space-y-4 p-4">
-            <AnimatePresence initial={false}>
-              {allMessages?.map((messageData) => (
-                <motion.div
-                  key={messageData.message.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className={`flex ${
-                    messageData.sender.id === user?.id ? "justify-end" : "justify-start"
-                  }`}
+      <ScrollArea className="flex-1 px-4">
+        <div className="space-y-4 py-4">
+          <AnimatePresence initial={false}>
+            {allMessages?.map((messageData) => (
+              <motion.div
+                key={messageData.message.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`flex ${
+                  messageData.sender.id === user?.id ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg p-3",
+                    messageData.sender.id === user?.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  )}
                 >
-                  <div
-                    className={cn(
-                      "max-w-[80%] rounded-lg p-3",
-                      messageData.sender.id === user?.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    )}
-                  >
-                    <MessageHeader
-                      username={messageData.sender.username}
-                      role={messageData.sender.role}
-                      isBroadcast={
-                        messageData.sender.id === user?.id &&
-                        user?.role === 'customer' &&
-                        ticket &&
-                        !ticket.claimedById
-                      }
-                    />
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {messageData.message.content}
-                    </p>
-                    <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                      <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                      {messageData.sender.id === user?.id && (
-                        <span className="ml-2 flex items-center gap-1">
-                          {messageData.message.status === 'sending' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : messageData.message.status === 'sent' ? (
-                            <Check className="h-3 w-3" />
-                          ) : messageData.message.status === 'delivered' ? (
+                  <MessageHeader
+                    username={messageData.sender.username}
+                    role={messageData.sender.role}
+                    isBroadcast={
+                      messageData.sender.id === user?.id &&
+                      user?.role === 'customer' &&
+                      ticket &&
+                      !ticket.claimedById
+                    }
+                  />
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {messageData.message.content}
+                  </p>
+                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                    {messageData.sender.id === user?.id && (
+                      <span className="ml-2 flex items-center gap-1">
+                        {messageData.message.status === 'sending' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : messageData.message.status === 'sent' ? (
+                          <Check className="h-3 w-3" />
+                        ) : messageData.message.status === 'delivered' ? (
+                          <CheckCheck className="h-3 w-3" />
+                        ) : messageData.message.status === 'read' ? (
+                          <motion.span
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            className="text-blue-500"
+                          >
                             <CheckCheck className="h-3 w-3" />
-                          ) : messageData.message.status === 'read' ? (
-                            <motion.span
-                              initial={{ scale: 0.8 }}
-                              animate={{ scale: 1 }}
-                              className="text-blue-500"
-                            >
-                              <CheckCheck className="h-3 w-3" />
-                            </motion.span>
-                          ) : null}
-                        </span>
-                      )}
-                    </div>
+                          </motion.span>
+                        ) : null}
+                      </span>
+                    )}
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            {allMessages.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No messages yet
-              </p>
-            )}
-            <div ref={messagesEndRef} /> {/* Scroll anchor */}
-          </div>
-        </ScrollArea>
-      </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {allMessages.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No messages yet
+            </p>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
 
       {canSendMessages() && (
         <div className="border-t p-4 bg-background mt-auto">

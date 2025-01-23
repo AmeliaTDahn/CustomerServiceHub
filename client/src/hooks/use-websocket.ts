@@ -67,11 +67,23 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
       }
+      let pingTimeout: NodeJS.Timeout;
+      
+      const heartbeat = () => {
+        clearTimeout(pingTimeout);
+        pingTimeout = setTimeout(() => {
+          ws.close();
+        }, 45000);
+      };
+
       pingInterval.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
+          heartbeat();
           ws.send(JSON.stringify({ type: 'ping' }));
         }
       }, 15000);
+
+      heartbeat(); // Initial heartbeat
     };
 
     ws.onopen = () => {
@@ -117,7 +129,12 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           return;
         }
 
-        if (data.type === 'ping' || data.type === 'pong') {
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+        if (data.type === 'pong') {
+          heartbeat();
           return;
         }
 

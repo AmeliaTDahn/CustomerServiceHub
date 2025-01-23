@@ -25,23 +25,14 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, X, Search, Pause, Play, UserMinus } from "lucide-react";
+import { UserPlus, Search, Pause, Play, UserMinus } from "lucide-react";
 
 interface Employee {
-  employee: {
-    id: number;
-    username: string;
-    role: string;
-  };
-  relation: {
-    id: number;
-    isActive: boolean;
-  };
-}
-
-interface User {
   id: number;
   username: string;
+  role: string;
+  isActive: boolean;
+  relationId: number;
 }
 
 export default function EmployeeManagement() {
@@ -57,7 +48,7 @@ export default function EmployeeManagement() {
   });
 
   // Fetch available employees to invite
-  const { data: availableEmployees = [] } = useQuery<User[]>({
+  const { data: availableEmployees = [] } = useQuery<Employee[]>({
     queryKey: ['/api/employees'],
     enabled: isInviteDialogOpen,
   });
@@ -154,7 +145,7 @@ export default function EmployeeManagement() {
 
   // Filter current employees based on search term
   const filteredEmployees = employees.filter(emp =>
-    emp.employee.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
+    emp.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
   );
 
   return (
@@ -189,21 +180,21 @@ export default function EmployeeManagement() {
                 />
                 <CommandEmpty>No employees found</CommandEmpty>
                 <CommandGroup>
-                  {filteredEmployees.map((employee) => (
+                  {availableEmployees.map((employee) => (
                     <CommandItem
-                      key={employee.employee.id}
+                      key={employee.id}
                       onSelect={() => {
-                        inviteEmployee.mutate(employee.employee.id);
+                        inviteEmployee.mutate(employee.id);
                         setCurrentEmployeeSearch("");
                       }}
                       className="flex items-center justify-between p-2"
                     >
-                      <span>{employee.employee.username}</span>
+                      <span>{employee.username}</span>
                       <Button
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          inviteEmployee.mutate(employee.employee.id);
+                          inviteEmployee.mutate(employee.id);
                         }}
                         disabled={inviteEmployee.isPending}
                       >
@@ -228,18 +219,18 @@ export default function EmployeeManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredEmployees.map(({ employee, relation }) => (
+            {filteredEmployees.map((employee) => (
               <TableRow key={employee.id}>
-                <TableCell>{employee.employee.username}</TableCell>
+                <TableCell>{employee.username}</TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
-                      relation.isActive
+                      employee.isActive
                         ? "bg-green-100 text-green-800"
                         : "bg-red-100 text-red-800"
                     }`}
                   >
-                    {relation.isActive ? "Active" : "Paused"}
+                    {employee.isActive ? "Active" : "Paused"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right">
@@ -250,7 +241,7 @@ export default function EmployeeManagement() {
                       onClick={() => toggleEmployeeStatus.mutate(employee.id)}
                       disabled={toggleEmployeeStatus.isPending}
                     >
-                      {relation.isActive ? (
+                      {employee.isActive ? (
                         <Pause className="h-4 w-4" />
                       ) : (
                         <Play className="h-4 w-4" />

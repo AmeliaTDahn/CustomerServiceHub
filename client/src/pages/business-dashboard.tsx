@@ -64,6 +64,9 @@ export default function BusinessDashboard() {
               <Button variant="outline" className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4" />
                 Messages
+                {tickets?.some(t => t.unreadCount > 0) && (
+                  <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                )}
               </Button>
             </Link>
             <Link href="/analytics">

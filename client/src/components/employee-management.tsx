@@ -83,6 +83,7 @@ export default function EmployeeManagement() {
         title: "Success",
         description: "Invitation sent successfully",
       });
+      setIsInviteDialogOpen(false);
     },
     onError: (error) => {
       toast({
@@ -152,13 +153,8 @@ export default function EmployeeManagement() {
   });
 
   // Filter current employees based on search term
-  const filteredEmployees = employees.filter((emp) =>
+  const filteredEmployees = employees.filter(emp =>
     emp.employee.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
-  );
-
-  // Filter available employees based on search term
-  const filteredAvailableEmployees = availableEmployees.filter((emp) =>
-    emp.username.toLowerCase().includes(currentEmployeeSearch.toLowerCase())
   );
 
   return (
@@ -193,21 +189,21 @@ export default function EmployeeManagement() {
                 />
                 <CommandEmpty>No employees found</CommandEmpty>
                 <CommandGroup>
-                  {filteredAvailableEmployees.map((employee) => (
+                  {filteredEmployees.map((employee) => (
                     <CommandItem
-                      key={employee.id}
+                      key={employee.employee.id}
                       onSelect={() => {
-                        inviteEmployee.mutate(employee.id);
+                        inviteEmployee.mutate(employee.employee.id);
                         setCurrentEmployeeSearch("");
                       }}
                       className="flex items-center justify-between p-2"
                     >
-                      <span>{employee.username}</span>
+                      <span>{employee.employee.username}</span>
                       <Button
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          inviteEmployee.mutate(employee.id);
+                          inviteEmployee.mutate(employee.employee.id);
                         }}
                         disabled={inviteEmployee.isPending}
                       >
@@ -234,7 +230,7 @@ export default function EmployeeManagement() {
           <TableBody>
             {filteredEmployees.map(({ employee, relation }) => (
               <TableRow key={employee.id}>
-                <TableCell>{employee.username}</TableCell>
+                <TableCell>{employee.employee.username}</TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
@@ -263,7 +259,11 @@ export default function EmployeeManagement() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => removeEmployee.mutate(employee.id)}
+                      onClick={() => {
+                        if (confirm('Are you sure you want to remove this employee? This action cannot be undone.')) {
+                          removeEmployee.mutate(employee.id);
+                        }
+                      }}
                       disabled={removeEmployee.isPending}
                       className="text-red-500 hover:text-red-700"
                     >

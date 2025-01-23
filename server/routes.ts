@@ -1449,7 +1449,22 @@ export function registerRoutes(app: Express): Server {
           eq(businessEmployees.businessId, req.user.id)
         ));
 
-      res.json({ success: true });
+      // Also delete any direct messages between business and employee
+      await db.delete(directMessages)
+        .where(
+          or(
+            and(
+              eq(directMessages.senderId, req.user.id),
+              eq(directMessages.receiverId, parseInt(id))
+            ),
+            and(
+              eq(directMessages.senderId, parseInt(id)),
+              eq(directMessages.receiverId, req.user.id)
+            )
+          )
+        );
+
+      res.json({ message: "Employee removed successfully" });
     } catch (error) {
       console.error('Error removing employee:', error);
       res.status(500).json({ error: "Failed to remove employee" });

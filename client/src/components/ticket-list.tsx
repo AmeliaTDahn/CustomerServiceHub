@@ -55,10 +55,22 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
+  // Sort tickets with resolved ones at the bottom
+  const sortTickets = (tickets: TicketListProps['tickets']) => {
+    return [...tickets].sort((a, b) => {
+      // First, separate resolved and unresolved tickets
+      if (a.status === 'resolved' && b.status !== 'resolved') return 1;
+      if (a.status !== 'resolved' && b.status === 'resolved') return -1;
+
+      // If both are resolved or both are unresolved, sort by date
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  };
+
   const filterTickets = (view: 'active' | 'my-tickets' | 'history') => {
-    return tickets.filter(ticket => {
+    const filtered = tickets.filter(ticket => {
       const isResolved = ticket.status === "resolved";
-      
+
       if (isEmployee) {
         switch (view) {
           case 'active':
@@ -74,6 +86,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         return view === 'history' ? isResolved : !isResolved;
       }
     });
+
+    // Apply sorting to the filtered tickets
+    return sortTickets(filtered);
   };
 
   const claimTicket = useMutation({

@@ -11,7 +11,7 @@ interface Message {
   ticketId?: number;
   directMessageUserId?: number;
   chatInitiator?: boolean;
-  id?: number; // Added id property for message
+  id?: number;
 }
 
 interface StatusUpdate {
@@ -37,6 +37,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const pingInterval = useRef<ReturnType<typeof setInterval>>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const hasShownErrorRef = useRef(false);
 
   // Request notification permission
   useEffect(() => {
@@ -97,13 +98,14 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         }
       }, 15000);
 
-      heartbeat(); // Initial heartbeat
+      heartbeat();
     };
 
     ws.onopen = () => {
       console.log('WebSocket connected');
       setIsConnected(true);
       reconnectAttempts.current = 0;
+      hasShownErrorRef.current = false;
       setupPing();
 
       // Initial message queries invalidation
@@ -124,11 +126,15 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         reconnectAttempts.current++;
         setTimeout(connect, timeout);
 
-        toast({
-          title: "Disconnected",
-          description: `Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`,
-        });
-      } else {
+        // Only show reconnection toast if we've been disconnected for a while
+        if (reconnectAttempts.current > 2) {
+          toast({
+            title: "Reconnecting...",
+            description: `Attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`,
+          });
+        }
+      } else if (!hasShownErrorRef.current) {
+        hasShownErrorRef.current = true;
         toast({
           variant: "destructive",
           title: "Connection Failed",
@@ -158,22 +164,23 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         }
 
         if (data.error) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: data.error,
-          });
+          // Only show error toast for non-connection related errors
+          if (!data.error.includes('connection')) {
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: data.error,
+            });
+          }
           return;
         }
 
         if (data.type === 'ticket_resolved') {
-          // Invalidate tickets query to refresh the list
           queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
           queryClient.invalidateQueries({ 
             queryKey: ['/api/tickets', data.ticketId] 
           });
 
-          // Show notification for ticket resolution
           if (role === 'customer') {
             showNotification(
               'Ticket Resolved',
@@ -184,37 +191,31 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         }
 
         if (data.type === 'status_update') {
-          // Invalidate queries for both direct messages and ticket messages
           if (data.ticketId) {
             queryClient.invalidateQueries({ 
               queryKey: ['/api/tickets', data.ticketId, 'messages'] 
             });
           } else {
-            // Invalidate all direct messages queries to ensure proper refresh
             queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           }
           return;
         }
 
         if (data.type === 'message' || data.type === 'direct_message') {
-          // Invalidate the appropriate queries based on message type
           if (data.ticketId) {
             queryClient.invalidateQueries({ 
               queryKey: ['/api/tickets', data.ticketId, 'messages'] 
             });
           } else {
-            // Invalidate all direct messages queries
             queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           }
 
-          // Only show notification for messages received from other users
           if (data.senderId !== userId && data.receiverId === userId) {
             const notificationTitle = `New Message`;
             const notificationBody = `${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`;
 
             showNotification(notificationTitle, notificationBody);
 
-            // Send delivery confirmation
             const deliveryConfirmation: StatusUpdate = {
               type: 'status_update',
               messageId: data.id,
@@ -231,11 +232,15 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Please check your internet connection.",
-      });
+      // Only show the error toast if we're not already reconnecting
+      if (reconnectAttempts.current === 0 && !hasShownErrorRef.current) {
+        hasShownErrorRef.current = true;
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Please check your internet connection.",
+        });
+      }
     };
 
     wsRef.current = ws;
@@ -260,11 +265,14 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     } else {
       console.error('WebSocket is not connected');
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Connection lost. Please try again.",
-      });
+      if (!hasShownErrorRef.current) {
+        hasShownErrorRef.current = true;
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Connection lost. Please try again.",
+        });
+      }
     }
   }, [queryClient, toast]);
 

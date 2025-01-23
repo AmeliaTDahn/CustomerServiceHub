@@ -126,61 +126,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     },
   });
 
-  const updateTicket = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await fetch(`/api/tickets/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({
-        title: "Success",
-        description: "Ticket status updated successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: (error as Error).message,
-      });
-    },
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open":
-        return "bg-yellow-100 text-yellow-800";
-      case "in_progress":
-        return "bg-blue-100 text-blue-800";
-      case "resolved":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
   const handleMessageClick = (customerId: number) => {
     setLocation(`/messages?customerId=${customerId}`);
-  };
-
-  const canUpdateTicket = (ticket: Ticket) => {
-    if (!isBusiness && readonly) return false;
-    if (isBusiness) return true;
-    if (isEmployee) {
-      return ticket.claimedById === user?.id && ticket.status !== "resolved";
-    }
-    return false;
-  };
-
-  const handleStatusChange = (ticketId: number, newStatus: string) => {
-    updateTicket.mutate({ id: ticketId, status: newStatus });
   };
 
   return (
@@ -232,11 +179,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     )}
                   </div>
                 </div>
-                <div>
-                  <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
-                    {ticket.status.replace("_", " ")}
-                  </Badge>
-                </div>
               </div>
             </div>
           </Card>
@@ -259,27 +201,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     <DialogDescription>
                       Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
                     </DialogDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    {canUpdateTicket(selectedTicket) ? (
-                      <Select
-                        defaultValue={selectedTicket.status}
-                        onValueChange={(value) => handleStatusChange(selectedTicket.id, value)}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="open">Open</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="resolved">Resolved</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Badge className={getStatusColor(selectedTicket.status)}>
-                        {selectedTicket.status.replace("_", " ")}
-                      </Badge>
-                    )}
                   </div>
                 </div>
               </DialogHeader>

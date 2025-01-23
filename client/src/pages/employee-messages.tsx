@@ -21,7 +21,7 @@ interface TicketWithCustomer extends Ticket {
     id: number;
     username: string;
   };
-  lastMessageAt?: string; // Added to track last message time
+  lastMessageAt?: string;
 }
 
 interface User {
@@ -48,9 +48,28 @@ export default function EmployeeMessages() {
   const [viewType, setViewType] = useState<'active' | 'resolved' | 'direct'>('active');
 
   // Fetch all tickets with their last message timestamps
-  const { data: tickets = [] } = useQuery<TicketWithCustomer[]>({
+  const { data: tickets = [], isLoading: ticketsLoading } = useQuery<TicketWithCustomer[]>({
     queryKey: ['/api/tickets']
   });
+
+  // Fetch users for direct messaging
+  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
+    queryKey: ['/api/users/staff'],
+    enabled: viewType === 'direct'
+  });
+
+  // Fetch business user for direct messaging
+  const { data: businessUser, isLoading: businessUserLoading } = useQuery<BusinessUser>({
+    queryKey: ['/api/users/connected-business'],
+    enabled: viewType === 'direct'
+  });
+
+  // Filter users based on search term, excluding current user and business user
+  const filteredUsers = users.filter(u =>
+    u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) &&
+    u.id !== user?.id &&
+    u.id !== businessUser?.id
+  );
 
   // Sort tickets by last message time and status
   const sortTickets = (tickets: TicketWithCustomer[]) => {
@@ -71,7 +90,7 @@ export default function EmployeeMessages() {
     const matchesSearch = ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
       ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
 
-    const matchesViewType = viewType === 'active' 
+    const matchesViewType = viewType === 'active'
       ? ticket.status !== 'resolved'
       : ticket.status === 'resolved';
 
@@ -184,36 +203,34 @@ export default function EmployeeMessages() {
                         </button>
                       ))
                     ) : (
-                      // Direct messages UI remains unchanged
-                      <div>
-                        {/* Existing direct messages content */}
-                        <div className="divide-y">
-                          {/* Business User Section */}
-                          {businessUser && (
-                            <div className="p-4 bg-muted/50">
-                              <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                                <Building2 className="h-4 w-4" />
-                                Business Account
-                              </h3>
-                              <button
-                                onClick={() => handleUserSelect(businessUser.id)}
-                                className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                                  selectedUserId === businessUser.id
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-background hover:bg-muted"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <p className="font-medium">{businessUser.username}</p>
-                                  <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-                                    Business Owner
-                                  </span>
-                                </div>
-                              </button>
-                            </div>
-                          )}
+                      <div className="divide-y">
+                        {/* Business User Section */}
+                        {viewType === 'direct' && businessUser && (
+                          <div className="p-4 bg-muted/50">
+                            <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                              <Building2 className="h-4 w-4" />
+                              Business Account
+                            </h3>
+                            <button
+                              onClick={() => handleUserSelect(businessUser.id)}
+                              className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                                selectedUserId === businessUser.id
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-background hover:bg-muted"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <p className="font-medium">{businessUser.username}</p>
+                                <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                                  Business Owner
+                                </span>
+                              </div>
+                            </button>
+                          </div>
+                        )}
 
-                          {/* Other Users Section */}
+                        {/* Other Users Section */}
+                        {viewType === 'direct' && (
                           <div className="p-4">
                             <h3 className="text-sm font-medium text-muted-foreground mb-2">
                               Other Employees
@@ -244,7 +261,7 @@ export default function EmployeeMessages() {
                               )}
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>

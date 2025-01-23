@@ -34,8 +34,8 @@ export const tickets = pgTable("tickets", {
   description: text("description").notNull(),
   status: text("status", { enum: ["open", "in_progress", "resolved"] }).default("open").notNull(),
   category: text("category", {
-    enum: ["academic_support", "enrollment", "financial_aid", "technical_support", "course_materials", "student_services"]
-  }).default("academic_support").notNull(),
+    enum: ["technical", "billing", "feature_request", "general_inquiry", "bug_report"]
+  }).default("general_inquiry").notNull(),
   priority: text("priority", {
     enum: ["low", "medium", "high", "urgent"]
   }).default("medium").notNull(),
@@ -51,11 +51,6 @@ export const tickets = pgTable("tickets", {
   escalatedById: integer("escalated_by_id").references(() => users.id),
   escalationReason: text("escalation_reason"),
   previousAssigneeId: integer("previous_assignee_id").references(() => users.id),
-  studentId: text("student_id"),
-  courseId: text("course_id"),
-  semester: text("semester"),
-  academicYear: text("academic_year"),
-  departmentId: text("department_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });

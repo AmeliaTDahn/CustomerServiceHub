@@ -14,6 +14,7 @@ interface DirectMessage {
   content: string;
   timestamp: string;
   businessId?: number;
+  visibleTo?: number; // Add visibleTo field to control chat visibility
 }
 
 interface Message {
@@ -146,7 +147,7 @@ export function setupWebSocket(server: Server, _app: Express) {
             throw new Error('Only employees and businesses can send direct messages');
           }
 
-          // For employee-to-employee direct messages
+          // If sender is an employee, add business context
           if (sender.role === 'employee') {
             const [senderBusiness] = await db
               .select()
@@ -185,6 +186,10 @@ export function setupWebSocket(server: Server, _app: Express) {
             }
           }
 
+          // For employee-to-employee chat, set visibleTo to sender's ID
+          const isEmployeeToEmployee = sender.role === 'employee' && 
+            (await determineUserRole(message.receiverId)) === 'employee';
+
           // Save the message to the database
           const [savedMessage] = await db
             .insert(directMessages)
@@ -196,6 +201,7 @@ export function setupWebSocket(server: Server, _app: Express) {
               status: 'sent',
               sentAt: new Date(),
               createdAt: new Date(),
+              visibleTo: isEmployeeToEmployee ? userId : null // Only set visibleTo for employee-to-employee chats
             })
             .returning();
 
@@ -209,16 +215,21 @@ export function setupWebSocket(server: Server, _app: Express) {
             status: savedMessage.status,
             sentAt: savedMessage.sentAt.toISOString(),
             createdAt: savedMessage.createdAt.toISOString(),
+            visibleTo: savedMessage.visibleTo
           };
 
-          // Send the message to both sender and receiver WebSocket connections
+          // Send the message to sender's WebSocket
           ws.send(JSON.stringify(responseMessage));
 
+          // Send to receiver's WebSocket if they're connected
           const receiverRole = await determineUserRole(message.receiverId);
           if (receiverRole) {
             const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
             if (receiverWs?.readyState === WebSocket.OPEN) {
-              receiverWs.send(JSON.stringify(responseMessage));
+              receiverWs.send(JSON.stringify({
+                ...responseMessage,
+                visibleTo: null // Don't expose visibleTo to receiver
+              }));
               console.log('Direct message sent successfully to receiver');
             } else {
               console.log(`Receiver ${message.receiverId} (${receiverRole}) is not connected`);

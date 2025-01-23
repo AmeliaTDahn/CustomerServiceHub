@@ -11,6 +11,7 @@ interface Message {
   ticketId?: number;
   directMessageUserId?: number;
   chatInitiator?: boolean;
+  id?: number; // Added id property for message
 }
 
 interface StatusUpdate {
@@ -33,7 +34,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
-  const pingInterval = useRef<NodeJS.Timer>();
+  const pingInterval = useRef<ReturnType<typeof setInterval>>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -48,6 +49,13 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     requestPermission();
   }, []);
 
+  // Invalidate direct messages queries on mount
+  useEffect(() => {
+    if (userId) {
+      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+    }
+  }, [userId, queryClient]);
+
   const showNotification = useCallback((title: string, body: string) => {
     if (hasNotificationPermission && document.hidden) {
       new Notification(title, {
@@ -56,6 +64,12 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       });
     }
   }, [hasNotificationPermission]);
+
+  const handleHeartbeat = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'pong' }));
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (!userId || !role) return;
@@ -67,8 +81,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
       }
-      let pingTimeout: NodeJS.Timeout;
-      
+      let pingTimeout: ReturnType<typeof setTimeout>;
+
       const heartbeat = () => {
         clearTimeout(pingTimeout);
         pingTimeout = setTimeout(() => {
@@ -91,6 +105,9 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       setIsConnected(true);
       reconnectAttempts.current = 0;
       setupPing();
+
+      // Initial message queries invalidation
+      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     };
 
     ws.onclose = () => {
@@ -126,6 +143,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
         if (data.type === 'connection') {
           console.log('Connection status:', data.status);
+          // Invalidate message queries on successful connection
+          queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           return;
         }
 
@@ -134,7 +153,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           return;
         }
         if (data.type === 'pong') {
-          heartbeat();
+          handleHeartbeat();
           return;
         }
 
@@ -171,29 +190,21 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
               queryKey: ['/api/tickets', data.ticketId, 'messages'] 
             });
           } else {
-            queryClient.invalidateQueries({ 
-              queryKey: ['/api/messages/direct', data.senderId] 
-            });
-            queryClient.invalidateQueries({ 
-              queryKey: ['/api/messages/direct', data.receiverId] 
-            });
+            // Invalidate all direct messages queries to ensure proper refresh
+            queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           }
           return;
         }
 
-        if (data.type === 'message') {
+        if (data.type === 'message' || data.type === 'direct_message') {
           // Invalidate the appropriate queries based on message type
           if (data.ticketId) {
             queryClient.invalidateQueries({ 
               queryKey: ['/api/tickets', data.ticketId, 'messages'] 
             });
           } else {
-            queryClient.invalidateQueries({ 
-              queryKey: ['/api/messages/direct', data.senderId] 
-            });
-            queryClient.invalidateQueries({ 
-              queryKey: ['/api/messages/direct', data.receiverId] 
-            });
+            // Invalidate all direct messages queries
+            queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           }
 
           // Only show notification for messages received from other users
@@ -228,7 +239,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     };
 
     wsRef.current = ws;
-  }, [userId, role, queryClient, toast, showNotification]);
+  }, [userId, role, queryClient, toast, showNotification, handleHeartbeat]);
 
   useEffect(() => {
     connect();
@@ -245,6 +256,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const sendMessage = useCallback((message: Message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
+      // Immediately invalidate queries to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     } else {
       console.error('WebSocket is not connected');
       toast({
@@ -253,7 +266,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         description: "Connection lost. Please try again.",
       });
     }
-  }, [toast]);
+  }, [queryClient, toast]);
 
   const sendReadReceipt = useCallback((messageId: number) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -264,8 +277,10 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         timestamp: new Date().toISOString()
       };
       wsRef.current.send(JSON.stringify(readReceipt));
+      // Immediately invalidate queries after sending read receipt
+      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     }
-  }, []);
+  }, [queryClient]);
 
   return {
     isConnected,

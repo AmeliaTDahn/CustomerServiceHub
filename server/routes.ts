@@ -739,24 +739,8 @@ export function registerRoutes(app: Express): Server {
         .where(eq(tickets.id, parseInt(id)))
         .returning();
 
-      // Initialize the chat with a system message
-      const [initialMessage] = await db.insert(messages)
-        .values({
-          content: `Ticket claimed by ${req.user.username}`,
-          ticketId: parseInt(id),
-          senderId: req.user.id,
-          receiverId: ticket.customerId,
-          status: 'sent',
-          chatInitiator: true,
-          initiatedAt: new Date(),
-          sentAt: new Date(),
-          createdAt: new Date()
-        })
-        .returning();
-
       res.json({
-        ticket: updatedTicket,
-        message: initialMessage
+        ticket: updatedTicket
       });
     } catch (error) {
       console.error('Error claiming ticket:', error);
@@ -1020,7 +1004,7 @@ export function registerRoutes(app: Express): Server {
       console.error('Error adding note:', error);
       res.status(500).json({ error: "Failed to add note" });
         }
-  });
+    });
 
   app.get("/api/tickets/:id/notes", async (req, res) => {
     try {

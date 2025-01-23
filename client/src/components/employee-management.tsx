@@ -135,8 +135,12 @@ export default function EmployeeManagement() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
+    onSuccess: (_, employeeId) => {
+      // Immediately update the employees list to remove the deleted employee
+      queryClient.setQueryData<EmployeeData[]>(['/api/businesses/employees'], (old) => {
+        return old?.filter(emp => emp.employee.id !== employeeId) ?? [];
+      });
+
       toast({
         title: "Success",
         description: "Employee removed successfully",

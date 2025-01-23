@@ -17,6 +17,31 @@ declare global {
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add this endpoint before the employee management routes
+  app.get("/api/employees/active-businesses", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view their business connections" });
+      }
+
+      // Get all active business connections for the employee
+      const activeBusinesses = await db
+        .select({
+          businessId: businessEmployees.businessId
+        })
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
+
+      res.json(activeBusinesses);
+    } catch (error) {
+      console.error('Error fetching active businesses:', error);
+      res.status(500).json({ error: "Failed to fetch active businesses" });
+    }
+  });
+
   // Employee management routes
   app.post("/api/businesses/employees/invite", async (req, res) => {
     try {

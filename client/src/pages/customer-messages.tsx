@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, Building2, Clock } from "lucide-react";
 import { Link } from "wouter";
 import {
   Tabs,
@@ -17,6 +17,7 @@ import TicketChat from "@/components/ticket-chat";
 import TicketFeedback from "@/components/ticket-feedback";
 import type { Ticket } from "@db/schema";
 import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
 
 interface TicketWithInfo extends Ticket {
   business?: {
@@ -25,6 +26,7 @@ interface TicketWithInfo extends Ticket {
   };
   hasBusinessResponse: boolean;
   unreadCount: number;
+  hasFeedback?: boolean;
 }
 
 export default function CustomerMessages() {
@@ -49,7 +51,7 @@ export default function CustomerMessages() {
     refetchInterval: 5000
   });
 
-  // Get the business user for the selected ticket
+  // Get the selected ticket
   const selectedTicket = tickets.find(t => t.id === selectedTicketId);
 
   // Filter tickets based on search term and status
@@ -64,7 +66,7 @@ export default function CustomerMessages() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -182,6 +184,15 @@ export default function CustomerMessages() {
                                       {ticket.business.username}
                                     </p>
                                   )}
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    Resolved {format(new Date(ticket.updatedAt), 'MMM d, yyyy')}
+                                  </p>
+                                  {!ticket.hasFeedback && (
+                                    <Badge variant="outline" className="w-fit text-orange-600 border-orange-600">
+                                      Feedback needed
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                               <Badge variant="secondary">
@@ -201,20 +212,57 @@ export default function CustomerMessages() {
           {/* Chat Area */}
           <Card className="col-span-8 flex flex-col h-full">
             <CardContent className="p-0 flex-1">
-              {selectedTicketId ? (
-                <div className="h-full">
-                  <TicketChat
-                    ticketId={selectedTicketId}
-                    readonly={selectedTicket?.status === "resolved"} // Read-only for resolved tickets
-                  />
-                  {selectedTicket?.status === "resolved" && (
-                    <div className="p-4 border-t">
-                      <TicketFeedback
-                        ticketId={selectedTicketId}
-                        isResolved={true}
-                      />
+              {selectedTicketId && selectedTicket ? (
+                <div className="h-full flex flex-col">
+                  {/* Ticket Details Header */}
+                  <div className="border-b p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h2 className="text-xl font-semibold">{selectedTicket.title}</h2>
+                        <div className="mt-1 space-y-1">
+                          {selectedTicket.business && (
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Building2 className="h-4 w-4" />
+                              {selectedTicket.business.username}
+                            </p>
+                          )}
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            Created {format(new Date(selectedTicket.createdAt), 'MMM d, yyyy')}
+                          </p>
+                          {selectedTicket.status === 'resolved' && (
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              Resolved {format(new Date(selectedTicket.updatedAt), 'MMM d, yyyy')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant={
+                        selectedTicket.status === 'open' ? 'default' :
+                        selectedTicket.status === 'in_progress' ? 'default' :
+                        'secondary'
+                      }>
+                        {selectedTicket.status.replace("_", " ")}
+                      </Badge>
                     </div>
-                  )}
+                  </div>
+
+                  {/* Chat and Feedback Section */}
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <TicketChat
+                      ticketId={selectedTicketId}
+                      readonly={selectedTicket.status === "resolved"}
+                    />
+                    {selectedTicket.status === "resolved" && (
+                      <div className="p-4 border-t">
+                        <TicketFeedback
+                          ticketId={selectedTicketId}
+                          isResolved={true}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">

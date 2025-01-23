@@ -165,9 +165,27 @@ export function setupWebSocket(server: Server, _app: Express) {
               if (message.businessId !== senderBusiness.businessId) {
                 throw new Error('Not authorized to send messages to this business');
               }
+            } else {
+              // For employee-to-employee messages, verify they belong to the same business
+              const [receiverBusiness] = await db
+                .select()
+                .from(businessEmployees)
+                .where(and(
+                  eq(businessEmployees.employeeId, message.receiverId),
+                  eq(businessEmployees.businessId, senderBusiness.businessId),
+                  eq(businessEmployees.isActive, true)
+                ));
+
+              if (!receiverBusiness) {
+                throw new Error('Cannot send messages to employees from different businesses');
+              }
+
+              // Set the businessId for employee-to-employee messages
+              message.businessId = senderBusiness.businessId;
             }
           }
 
+          // Save the message to the database
           const [savedMessage] = await db
             .insert(directMessages)
             .values({
@@ -193,6 +211,7 @@ export function setupWebSocket(server: Server, _app: Express) {
             createdAt: savedMessage.createdAt.toISOString(),
           };
 
+          // Send the message to both sender and receiver WebSocket connections
           ws.send(JSON.stringify(responseMessage));
 
           const receiverRole = await determineUserRole(message.receiverId);

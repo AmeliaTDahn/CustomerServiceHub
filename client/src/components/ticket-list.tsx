@@ -57,21 +57,21 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   const filterTickets = (view: 'active' | 'my-tickets' | 'history') => {
     return tickets.filter(ticket => {
+      const isResolved = ticket.status === "resolved";
+      
       if (isEmployee) {
         switch (view) {
           case 'active':
-            return ticket.status !== "resolved" && !ticket.claimedById;
+            return !isResolved && !ticket.claimedById;
           case 'my-tickets':
-            return ticket.status !== "resolved" && ticket.claimedById === user?.id;
+            return !isResolved && ticket.claimedById === user?.id;
           case 'history':
-            return ticket.status === "resolved" && ticket.claimedById === user?.id;
+            return isResolved && (ticket.claimedById === user?.id || ticket.claimedById === null);
+          default:
+            return false;
         }
       } else {
-        if (view === 'history') {
-          return ticket.status === "resolved";
-        } else {
-          return ticket.status !== "resolved";
-        }
+        return view === 'history' ? isResolved : !isResolved;
       }
     });
   };

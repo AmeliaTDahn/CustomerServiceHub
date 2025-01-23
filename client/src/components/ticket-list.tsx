@@ -76,6 +76,19 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     });
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "open":
+        return "bg-yellow-100 text-yellow-800";
+      case "in_progress":
+        return "bg-blue-100 text-blue-800";
+      case "resolved":
+        return "bg-green-100 text-green-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
   const claimTicket = useMutation({
     mutationFn: async (ticketId: number) => {
       const res = await fetch(`/api/tickets/${ticketId}/claim`, {
@@ -132,23 +145,25 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   return (
     <div>
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-        <div className="flex items-center justify-end h-12 px-4">
-          <Select
-            value={viewType}
-            onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
-          >
-            <SelectTrigger className="w-[140px] h-8 text-xs">
-              <SelectValue placeholder="Select view" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Active Tickets</SelectItem>
-              {isEmployee && <SelectItem value="my-tickets">My Tickets</SelectItem>}
-              <SelectItem value="history">Ticket History</SelectItem>
-            </SelectContent>
-          </Select>
+      {isEmployee && (
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+          <div className="flex items-center justify-end h-12 px-4">
+            <Select
+              value={viewType}
+              onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
+            >
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="Select view" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active Tickets</SelectItem>
+                <SelectItem value="my-tickets">My Tickets</SelectItem>
+                <SelectItem value="history">History</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="px-4 py-2 space-y-2">
         {filterTickets(viewType).map((ticket) => (
@@ -169,10 +184,17 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground space-y-0.5">
-                    <div className="flex items-center gap-4">
-                      <span>{ticket.customer.username}</span>
-                      <span>·</span>
-                      <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-2">
+                      {!isEmployee && (
+                        <>
+                          <span>By: {ticket.customer.username}</span>
+                          <span>·</span>
+                        </>
+                      )}
+                      <span>Created: {new Date(ticket.createdAt).toLocaleDateString()}</span>
+                      <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
+                        {ticket.status.replace("_", " ")}
+                      </Badge>
                     </div>
                     {viewType !== 'history' && ticket.claimedAt && (
                       <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
@@ -199,7 +221,12 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   <div className="space-y-1">
                     <DialogTitle>{selectedTicket.title}</DialogTitle>
                     <DialogDescription>
-                      Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
+                      <div className="space-y-1">
+                        <div>Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}</div>
+                        <Badge className={`${getStatusColor(selectedTicket.status)} text-xs`}>
+                          {selectedTicket.status.replace("_", " ")}
+                        </Badge>
+                      </div>
                     </DialogDescription>
                   </div>
                 </div>

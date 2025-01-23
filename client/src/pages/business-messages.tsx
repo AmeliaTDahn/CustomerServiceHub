@@ -31,10 +31,9 @@ interface Message {
 export default function BusinessMessages() {
   const { user } = useUser();
   const { toast } = useToast();
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
-  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -45,23 +44,14 @@ export default function BusinessMessages() {
     queryKey: ['/api/customers'],
   });
 
-  // Fetch all employees
-  const { data: employees = [] } = useQuery<User[]>({
-    queryKey: ['/api/businesses/employees'],
-  });
-
-  // Fetch messages for selected user
+  // Fetch messages for selected customer
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedUser?.id],
-    enabled: !!selectedUser,
+    queryKey: ['/api/messages', selectedCustomer?.id],
+    enabled: !!selectedCustomer,
   });
 
   const filteredCustomers = customers?.filter(customer =>
     customer.username.toLowerCase().includes(customerSearchTerm.toLowerCase())
-  );
-
-  const filteredEmployees = employees?.filter(employee =>
-    employee.employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   );
 
   // Scroll to bottom when new messages arrive
@@ -107,9 +97,9 @@ export default function BusinessMessages() {
               return;
             }
 
-            // Handle regular message - update messages if it's from/to current selected user
-            if (selectedUser && (data.senderId === selectedUser.id || data.receiverId === selectedUser.id)) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedUser.id] });
+            // Handle regular message - update messages if it's from/to current selected customer
+            if (selectedCustomer && (data.senderId === selectedCustomer.id || data.receiverId === selectedCustomer.id)) {
+              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedCustomer.id] });
             }
           } catch (error) {
             console.error('Error parsing message:', error);
@@ -156,12 +146,12 @@ export default function BusinessMessages() {
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUser || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!newMessage.trim() || !selectedCustomer || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     const message = {
       type: "message",
       senderId: user.id,
-      receiverId: selectedUser.id,
+      receiverId: selectedCustomer.id,
       content: newMessage.trim(),
       timestamp: new Date().toISOString()
     };
@@ -189,84 +179,46 @@ export default function BusinessMessages() {
         </Link>
       </div>
       <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
-        {/* Sidebar with Tabs */}
+        {/* Customer List */}
         <Card className="col-span-4 flex flex-col">
-          <Tabs defaultValue="customers" className="w-full">
-            <TabsList className="w-full">
-              <TabsTrigger value="customers" className="flex-1">Customers</TabsTrigger>
-              <TabsTrigger value="employees" className="flex-1">Employees</TabsTrigger>
-            </TabsList>
+          <div className="p-4">
+            <Input
+              placeholder="Search customers..."
+              value={customerSearchTerm}
+              onChange={(e) => setCustomerSearchTerm(e.target.value)}
+            />
+          </div>
 
-            <div className="p-4">
-              <Input
-                placeholder={`Search ${
-                  customerSearchTerm ? "customers" : "employees"
-                }...`}
-                value={customerSearchTerm ? customerSearchTerm : employeeSearchTerm}
-                onChange={(e) =>
-                  customerSearchTerm
-                    ? setCustomerSearchTerm(e.target.value)
-                    : setEmployeeSearchTerm(e.target.value)
-                }
-              />
+          <ScrollArea className="flex-1">
+            <div className="space-y-2 p-2">
+              {filteredCustomers?.map((customer) => (
+                <div
+                  key={customer.id}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedCustomer?.id === customer.id
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                  onClick={() => setSelectedCustomer(customer)}
+                >
+                  <div className="font-medium">{customer.username}</div>
+                </div>
+              ))}
+              {filteredCustomers?.length === 0 && (
+                <div className="p-3 text-sm text-muted-foreground">
+                  No customers found
+                </div>
+              )}
             </div>
-
-            <ScrollArea className="flex-1">
-              <TabsContent value="customers" className="m-0">
-                <div className="space-y-2 p-2">
-                  {filteredCustomers?.map((customer) => (
-                    <div
-                      key={customer.id}
-                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                        selectedUser?.id === customer.id
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-muted"
-                      }`}
-                      onClick={() => setSelectedUser(customer)}
-                    >
-                      <div className="font-medium">{customer.username}</div>
-                    </div>
-                  ))}
-                  {filteredCustomers?.length === 0 && (
-                    <div className="p-3 text-sm text-muted-foreground">
-                      No customers found
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="employees" className="m-0">
-                <div className="space-y-2 p-2">
-                  {filteredEmployees?.map((employee) => (
-                    <div
-                      key={employee.employee.id}
-                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                        selectedUser?.id === employee.employee.id
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-muted"
-                      }`}
-                      onClick={() => setSelectedUser(employee.employee)}
-                    >
-                      <div className="font-medium">{employee.employee.username}</div>
-                    </div>
-                  ))}
-                  {filteredEmployees?.length === 0 && (
-                    <div className="p-3 text-sm text-muted-foreground">
-                      No employees found
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </ScrollArea>
-          </Tabs>
+          </ScrollArea>
         </Card>
 
         {/* Chat Area */}
         <Card className="col-span-8 flex flex-col">
-          {selectedUser ? (
+          {selectedCustomer ? (
             <>
               <div className="p-4 border-b">
-                <h2 className="font-semibold">{selectedUser.username}</h2>
+                <h2 className="font-semibold">{selectedCustomer.username}</h2>
               </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
@@ -323,7 +275,7 @@ export default function BusinessMessages() {
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a user to start messaging
+              Select a customer to start messaging
             </div>
           )}
         </Card>

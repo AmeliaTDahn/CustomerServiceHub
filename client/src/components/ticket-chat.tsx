@@ -22,6 +22,7 @@ interface Message {
     status: string;
     chatInitiator?: boolean;
     initiatedAt?: string | null;
+    businessId?: number;
     sentAt: string;
     createdAt: string;
   };
@@ -34,6 +35,8 @@ interface Message {
 
 interface TicketChatProps {
   ticketId?: number;
+  directMessageUserId?: number;
+  chatType?: 'ticket' | 'business' | 'employee';
   readonly?: boolean;
 }
 
@@ -49,7 +52,7 @@ const MessageHeader = ({ username, role, isBroadcast }: { username: string; role
   </div>
 );
 
-export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
+export default function TicketChat({ ticketId, directMessageUserId, chatType = 'ticket', readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Map<number, Message>>(new Map());
   const { user } = useUser();
@@ -59,18 +62,36 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
   const { isConnected, sendMessage, sendReadReceipt } = useWebSocket(user?.id, user?.role);
   const lastProcessedMessagesRef = useRef<Set<number>>(new Set());
 
+  // Query for messages - either ticket messages or direct messages
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
+    queryKey: ticketId 
+      ? ['/api/tickets', ticketId, 'messages']
+      : directMessageUserId 
+        ? ['/api/direct-messages', directMessageUserId]
+        : [],
     queryFn: async () => {
-      if (!ticketId) return [];
-
-      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      if (ticketId) {
+        const res = await fetch(`/api/tickets/${ticketId}/messages`, {
+          credentials: 'include'
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      } else if (directMessageUserId) {
+        const res = await fetch(`/api/direct-messages/${directMessageUserId}`, {
+          credentials: 'include'
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+      return [];
     },
-    enabled: !!ticketId
+    enabled: !!(ticketId || directMessageUserId)
+  });
+
+  // Get ticket details if in ticket mode
+  const { data: ticket } = useQuery<Ticket>({
+    queryKey: ['/api/tickets', ticketId],
+    enabled: !!ticketId,
   });
 
   useEffect(() => {
@@ -125,66 +146,68 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
   }, [messages, user, sendReadReceipt]);
 
   useEffect(() => {
-    if (!ticketId || !user || readonly) return;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, optimisticMessages]);
+
+  // Mark messages as read
+  useEffect(() => {
+    if ((!ticketId && !directMessageUserId) || !user || readonly) return;
 
     async function markMessagesAsRead() {
       try {
-        await fetch(`/api/tickets/${ticketId}/messages/read`, {
-          method: 'POST',
-          credentials: 'include'
-        });
-        // Invalidate the unread count query
-        queryClient.invalidateQueries({
-          queryKey: ['/api/tickets/customer']
-        });
+        if (ticketId) {
+          await fetch(`/api/tickets/${ticketId}/messages/read`, {
+            method: 'POST',
+            credentials: 'include'
+          });
+          queryClient.invalidateQueries({
+            queryKey: ['/api/tickets']
+          });
+        } else if (directMessageUserId) {
+          await fetch(`/api/direct-messages/${directMessageUserId}/read`, {
+            method: 'POST',
+            credentials: 'include'
+          });
+        }
       } catch (error) {
         console.error('Error marking messages as read:', error);
       }
     }
 
     markMessagesAsRead();
-  }, [ticketId, user, readonly, queryClient]);
-
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, optimisticMessages]);
-
-  const { data: ticket } = useQuery<Ticket>({
-    queryKey: ['/api/tickets', ticketId],
-    enabled: !!ticketId,
-  });
-
-  const isEmployee = user?.role === 'employee';
-  const isBusiness = user?.role === 'business';
-  const isCustomer = user?.role === 'customer';
+  }, [ticketId, directMessageUserId, user, readonly, queryClient]);
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!isConnected || !ticketId) {
+      if (!isConnected) {
         throw new Error("Not connected to message server");
       }
 
       let receiverId: number;
-      if (isCustomer && ticket) {
-        receiverId = ticket.claimedById || ticket.businessId!;
-      } else if (ticket) {
-        receiverId = ticket.customerId;
+      if (chatType === 'ticket' && ticket) {
+        if (!ticketId) throw new Error("Ticket ID is required");
+        receiverId = user?.role === 'customer' 
+          ? (ticket.claimedById || ticket.businessId!)
+          : ticket.customerId;
+      } else if (directMessageUserId) {
+        receiverId = directMessageUserId;
       } else {
         throw new Error("Invalid message target");
       }
 
-      const isBroadcast = isCustomer && ticket && !ticket.claimedById;
+      const isBroadcast = chatType === 'ticket' && user?.role === 'customer' && ticket && !ticket.claimedById;
       const tempId = Date.now();
 
       const optimisticMessage: Message = {
         message: {
           id: tempId,
           content,
-          ticketId,
+          ticketId: ticketId || null,
           senderId: user!.id,
           receiverId,
+          businessId: chatType === 'business' ? receiverId : undefined,
           status: 'sending',
           chatInitiator: messages.length === 0,
           initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
@@ -204,16 +227,26 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
         return next;
       });
 
-      sendMessage({
-        type: 'message',
-        senderId: user!.id,
-        receiverId,
-        content,
-        timestamp: new Date().toISOString(),
-        ticketId,
-        chatInitiator: messages.length === 0,
-      });
+      const messagePayload = chatType === 'ticket' 
+        ? {
+            type: 'message',
+            senderId: user!.id,
+            receiverId,
+            content,
+            timestamp: new Date().toISOString(),
+            ticketId,
+            chatInitiator: messages.length === 0,
+          }
+        : {
+            type: 'direct_message',
+            senderId: user!.id,
+            receiverId,
+            content,
+            timestamp: new Date().toISOString(),
+            businessId: chatType === 'business' ? receiverId : undefined,
+          };
 
+      sendMessage(messagePayload);
       return optimisticMessage;
     },
     onError: (error) => {
@@ -241,7 +274,7 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
 
   return (
     <div className="flex flex-col h-full relative">
-      {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
+      {!readonly && chatType === 'ticket' && ticket && messages.length === 0 && user?.role === 'customer' && (
         <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2 absolute top-0 left-0 right-0 z-10">
           <Megaphone className="h-4 w-4" />
           Your message will be sent to support staff.
@@ -274,6 +307,7 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
                     role={messageData.sender.role}
                     isBroadcast={
                       messageData.sender.id === user?.id &&
+                      chatType === 'ticket' &&
                       user?.role === 'customer' &&
                       ticket &&
                       !ticket.claimedById
@@ -320,7 +354,7 @@ export default function TicketChat({ ticketId, readonly = false }: TicketChatPro
       {!readonly && (
         <div className="border-t p-4 bg-background mt-auto">
           <form onSubmit={handleSubmit} className="flex gap-2">
-            {(isBusiness || isEmployee) && (
+            {(user?.role === 'business' || user?.role === 'employee') && (
               <QuickReplyTemplates onSelectTemplate={handleTemplateSelect} />
             )}
             <Input

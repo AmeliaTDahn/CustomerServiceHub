@@ -43,7 +43,6 @@ export const tickets = pgTable("tickets", {
   businessId: integer("business_id").references(() => users.id),
   claimedById: integer("claimed_by_id").references(() => users.id),
   claimedAt: timestamp("claimed_at"),
-  // New escalation fields
   escalationLevel: text("escalation_level", {
     enum: ["none", "low", "medium", "high"]
   }).default("none").notNull(),
@@ -111,6 +110,21 @@ export const ticketEscalations = pgTable("ticket_escalations", {
   escalatedById: integer("escalated_by_id").references(() => users.id).notNull(),
   reason: text("reason").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const directMessages = pgTable("direct_messages", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  senderId: integer("sender_id").references(() => users.id).notNull(),
+  receiverId: integer("receiver_id").references(() => users.id).notNull(),
+  status: text("status", { 
+    enum: ["sent", "delivered", "read"] 
+  }).default("sent").notNull(),
+  businessId: integer("business_id").references(() => users.id),  
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const businessEmployeesRelations = relations(businessEmployees, ({ one }) => ({
@@ -201,6 +215,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   ticketNotes: many(ticketNotes),
   sentMessages: many(messages, { relationName: "sender" }),
   receivedMessages: many(messages, { relationName: "receiver" }),
+  sentDirectMessages: many(directMessages, { relationName: "sender" }),
+  receivedDirectMessages: many(directMessages, { relationName: "receiver" }),
   employeeOf: many(businessEmployees, { relationName: "employee" }),
   employees: many(businessEmployees, { relationName: "business" }),
   sentInvitations: many(employeeInvitations, { relationName: "business" }),
@@ -237,6 +253,20 @@ export const ticketEscalationsRelations = relations(ticketEscalations, ({ one })
   })
 }));
 
+export const directMessagesRelations = relations(directMessages, ({ one }) => ({
+  sender: one(users, {
+    fields: [directMessages.senderId],
+    references: [users.id]
+  }),
+  receiver: one(users, {
+    fields: [directMessages.receiverId],
+    references: [users.id]
+  }),
+  business: one(users, {
+    fields: [directMessages.businessId],
+    references: [users.id]
+  })
+}));
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
@@ -267,3 +297,5 @@ export type TicketFeedback = typeof ticketFeedback.$inferSelect;
 export type NewTicketFeedback = typeof ticketFeedback.$inferInsert;
 export type TicketEscalation = typeof ticketEscalations.$inferSelect;
 export type NewTicketEscalation = typeof ticketEscalations.$inferInsert;
+export type DirectMessage = typeof directMessages.$inferSelect;
+export type NewDirectMessage = typeof directMessages.$inferInsert;

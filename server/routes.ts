@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { setupWebSocket } from "./websocket";
 import { db } from "@db";
-import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User } from "@db/schema";
+import { tickets, users, ticketNotes, messages, ticketFeedback, businessEmployees, employeeInvitations, type User, directMessages } from "@db/schema";
 import { eq, and, or, not, exists, desc } from "drizzle-orm";
 import { sql } from 'drizzle-orm/sql';
 
@@ -1382,6 +1382,224 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error fetching connected business:', error);
       res.status(500).json({ error: "Failed to fetch connected business" });
+    }
+  });
+
+  // Add the following routes after the existing message routes
+
+  // Get direct messages between two users
+  app.get("/api/direct-messages/:userId", async (req, res) => {
+    try {
+      if (!req.user || (req.user.role !== "employee" && req.user.role !== "business")) {
+        return res.status(403).json({ error: "Only employees and business can use direct messages" });
+      }
+
+      const { userId } = req.params;
+      const otherUserId = parseInt(userId);
+
+      if (req.user.role === "employee") {
+        // Verify the employee can message this user
+        const [employeeRelation] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!employeeRelation) {
+          return res.status(403).json({ error: "Employee not found or inactive" });
+        }
+
+        // Check if the other user is from the same business
+        const [otherUserRelation] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, otherUserId),
+            eq(businessEmployees.businessId, employeeRelation.businessId),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        const isBusinessUser = await db.select()
+          .from(users)
+          .where(and(
+            eq(users.id, otherUserId),
+            eq(users.id, employeeRelation.businessId)
+          ));
+
+        if (!otherUserRelation && !isBusinessUser.length) {
+          return res.status(403).json({ error: "Not authorized to message this user" });
+        }
+      }
+
+      // Fetch messages between the users
+      const messages = await db.select({
+        message: {
+          id: directMessages.id,
+          content: directMessages.content,
+          senderId: directMessages.senderId,
+          receiverId: directMessages.receiverId,
+          status: directMessages.status,
+          businessId: directMessages.businessId,
+          sentAt: directMessages.sentAt,
+          readAt: directMessages.readAt,
+          createdAt: directMessages.createdAt
+        },
+        sender: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        }
+      })
+      .from(directMessages)
+      .innerJoin(users, eq(users.id, directMessages.senderId))
+      .where(
+        and(
+          or(
+            and(
+              eq(directMessages.senderId, req.user.id),
+              eq(directMessages.receiverId, otherUserId)
+            ),
+            and(
+              eq(directMessages.senderId, otherUserId),
+              eq(directMessages.receiverId, req.user.id)
+            )
+          )
+        )
+      )
+      .orderBy(directMessages.createdAt);
+
+      // Mark unread messages as read
+      await db.update(directMessages)
+        .set({
+          status: 'read',
+          readAt: new Date()
+        })
+        .where(
+          and(
+            eq(directMessages.receiverId, req.user.id),
+            eq(directMessages.senderId, otherUserId),
+            not(eq(directMessages.status, 'read'))
+          )
+        );
+
+      res.json(messages);
+    } catch (error) {
+      console.error('Error fetching direct messages:', error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Get list of employees in the same business
+  app.get("/api/users/staff", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      // Get the business this employee works for
+      const [employeeRelation] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
+
+      if (!employeeRelation) {
+        return res.status(404).json({ error: "Employee relation not found" });
+      }
+
+      // Get all active employees from the same business
+      const employees = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(users)
+      .innerJoin(
+        businessEmployees,
+        and(
+          eq(businessEmployees.employeeId, users.id),
+          eq(businessEmployees.businessId, employeeRelation.businessId),
+          eq(businessEmployees.isActive, true)
+        )
+      )
+      .where(not(eq(users.id, req.user.id))); // Exclude current user
+
+      res.json(employees);
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+      res.status(500).json({ error: "Failed to fetch staff" });
+    }
+  });
+
+  // Get business user for employee
+  app.get("/api/users/business", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      // Get the business this employee works for
+      const [employeeRelation] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
+
+      if (!employeeRelation) {
+        return res.status(404).json({ error: "Employee relation not found" });
+      }
+
+      // Get the business user
+      const [business] = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role
+      })
+      .from(users)
+      .where(and(
+        eq(users.id, employeeRelation.businessId),
+        eq(users.role, "business")
+      ));
+
+      if (!business) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      res.json(business);
+    } catch (error) {
+      console.error('Error fetching business:', error);
+      res.status(500).json({ error: "Failed to fetch business" });
+    }
+  });
+
+  // Mark direct messages as read
+  app.post("/api/direct-messages/:userId/read", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { userId } = req.params;
+      const otherUserId = parseInt(userId);
+
+      // Mark messages as read
+      await db.update(directMessages)
+        .set({
+          status: 'read',
+          readAt: new Date()
+        })
+        .where(and(
+          eq(directMessages.receiverId, req.user.id),
+          eq(directMessages.senderId, otherUserId),
+          not(eq(directMessages.status, 'read'))
+        ));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+      res.status(500).json({ error: "Failed to mark messages as read" });
     }
   });
 

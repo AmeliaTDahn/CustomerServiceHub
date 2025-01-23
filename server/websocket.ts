@@ -3,7 +3,7 @@ import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
 import { messages, businessEmployees, tickets, users } from "@db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -147,10 +147,13 @@ export function setupWebSocket(server: Server, _app: Express) {
           throw new Error('Invalid ticket');
         }
 
+        // Determine receiver based on ticket context only
         let receiverId: number;
         if (message.senderId === ticket.customerId) {
+          // If sender is customer, send to claimed employee or business
           receiverId = ticket.claimedById || ticket.businessId!;
         } else {
+          // If sender is business or employee, send to customer
           receiverId = ticket.customerId;
         }
 

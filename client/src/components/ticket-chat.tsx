@@ -10,6 +10,7 @@ import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
+import { useCallback } from "react";
 
 interface Message {
   message: {
@@ -88,7 +89,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
     for (const [tempId, optMessage] of optimisticMessages) {
       // If we find a real message with the same content and timestamp (within 1 second)
-      const matchingRealMessage = messages.find(m => 
+      const matchingRealMessage = messages.find(m =>
         m.message.content === optMessage.message.content &&
         Math.abs(new Date(m.message.sentAt).getTime() - new Date(optMessage.message.sentAt).getTime()) < 1000
       );
@@ -114,8 +115,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       const messageId = messageData.message.id;
 
       if (!processedMessages.has(messageId) &&
-          messageData.sender.id !== user.id &&
-          messageData.message.status !== 'read') {
+        messageData.sender.id !== user.id &&
+        messageData.message.status !== 'read') {
 
         sendReadReceipt(messageId);
         processedMessages.add(messageId);
@@ -130,6 +131,28 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
     lastProcessedMessagesRef.current = processedMessages;
   }, [messages, user, sendReadReceipt]);
+
+  useEffect(() => {
+    if (!ticketId || !user || readonly) return;
+
+    async function markMessagesAsRead() {
+      try {
+        await fetch(`/api/tickets/${ticketId}/messages/read`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        // Invalidate the unread count query
+        queryClient.invalidateQueries({
+          queryKey: ['/api/tickets/customer']
+        });
+      } catch (error) {
+        console.error('Error marking messages as read:', error);
+      }
+    }
+
+    markMessagesAsRead();
+  }, [ticketId, user, readonly, queryClient]);
+
 
   useEffect(() => {
     if (messagesEndRef.current) {

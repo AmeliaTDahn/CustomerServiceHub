@@ -319,6 +319,51 @@ export function setupWebSocket(server: Server, app: Express) {
             })
             .returning();
 
+          async function updateUnreadCount(ticketId: number, receiverId: number) {
+            try {
+              const [existingCount] = await db
+                .select()
+                .from(unreadMessages)
+                .where(
+                  and(
+                    eq(unreadMessages.ticketId, ticketId),
+                    eq(unreadMessages.userId, receiverId)
+                  )
+                );
+
+              if (existingCount) {
+                await db
+                  .update(unreadMessages)
+                  .set({
+                    count: existingCount.count + 1,
+                    updatedAt: new Date()
+                  })
+                  .where(
+                    and(
+                      eq(unreadMessages.ticketId, ticketId),
+                      eq(unreadMessages.userId, receiverId)
+                    )
+                  );
+              } else {
+                await db
+                  .insert(unreadMessages)
+                  .values({
+                    userId: receiverId,
+                    ticketId,
+                    count: 1,
+                    updatedAt: new Date()
+                  });
+              }
+            } catch (error) {
+              console.error('Error updating unread message count:', error);
+            }
+          }
+
+          if (message.ticketId) {
+            await updateUnreadCount(message.ticketId, receiverId);
+          }
+
+
           const responseMessage = {
             type: 'message',
             id: savedMessage.id,
@@ -392,6 +437,10 @@ export function setupWebSocket(server: Server, app: Express) {
               ticketId
             })
             .returning();
+
+          if (message.ticketId) {
+            await updateUnreadCount(message.ticketId, receiverId);
+          }
 
           const responseMessage = {
             id: savedMessage.id,

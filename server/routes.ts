@@ -396,6 +396,68 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.post("/api/tickets/:id/messages/read", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { id } = req.params;
+
+      // Get the ticket to verify access
+      const [ticket] = await db.select()
+        .from(tickets)
+        .where(eq(tickets.id, parseInt(id)));
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Verify user has access to this ticket
+      if (req.user.role === "customer" && ticket.customerId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to access these messages" });
+      }
+
+      if (req.user.role === "employee") {
+        const [hasAccess] = await db.select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.businessId, ticket.businessId!),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket's messages" });
+        }
+      }
+
+      if (req.user.role === "business" && ticket.businessId !== req.user.id) {
+        return res.status(403).json({ error: "Not authorized to access these messages" });
+      }
+
+      // Mark all messages as read where the current user is the receiver
+      await db.update(messages)
+        .set({
+          status: 'read',
+          readAt: new Date()
+        })
+        .where(and(
+          eq(messages.ticketId, parseInt(id)),
+          eq(messages.receiverId, req.user.id),
+          not(eq(messages.status, 'read'))
+        ));
+
+      // Update unread count for this ticket
+      await db.update(tickets).set({ unreadCount: 0 }).where(eq(tickets.id, parseInt(id)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+      res.status(500).json({ error: "Failed to mark messages as read" });
+    }
+  });
+
   app.post("/api/tickets/:ticketId/messages", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 

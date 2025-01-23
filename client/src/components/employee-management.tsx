@@ -31,10 +31,11 @@ interface EmployeeData {
   employee: {
     id: number;
     username: string;
+    role: string;
   };
-  relation: {
-    id: number;
+  connection: {
     isActive: boolean;
+    createdAt: string;
   };
 }
 
@@ -95,14 +96,14 @@ export default function EmployeeManagement() {
 
   // Toggle employee active status mutation
   const toggleEmployeeStatus = useMutation({
-    mutationFn: async (employeeId: number) => {
-      const res = await fetch(`/api/businesses/employees/${employeeId}/toggle-active`, {
+    mutationFn: async ({ employeeId, action }: { employeeId: number; action: 'pause' | 'unpause' }) => {
+      const res = await fetch(`/api/businesses/${employeeId}/${action}`, {
         method: "POST",
         credentials: "include",
       });
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || "Failed to update employee status");
+        throw new Error(error.error || `Failed to ${action} employee`);
       }
       return res.json();
     },
@@ -136,7 +137,6 @@ export default function EmployeeManagement() {
       return res.json();
     },
     onSuccess: (_, employeeId) => {
-      // Immediately update the employees list to remove the deleted employee
       queryClient.setQueryData<EmployeeData[]>(['/api/businesses/employees'], (old) => {
         return old?.filter(emp => emp.employee.id !== employeeId) ?? [];
       });
@@ -242,12 +242,12 @@ export default function EmployeeManagement() {
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
-                      emp.relation.isActive
+                      emp.connection.isActive
                         ? "bg-green-100 text-green-800"
                         : "bg-red-100 text-red-800"
                     }`}
                   >
-                    {emp.relation.isActive ? "Active" : "Paused"}
+                    {emp.connection.isActive ? "Active" : "Paused"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right">
@@ -255,10 +255,13 @@ export default function EmployeeManagement() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toggleEmployeeStatus.mutate(emp.employee.id)}
+                      onClick={() => toggleEmployeeStatus.mutate({
+                        employeeId: emp.employee.id,
+                        action: emp.connection.isActive ? 'pause' : 'unpause'
+                      })}
                       disabled={toggleEmployeeStatus.isPending}
                     >
-                      {emp.relation.isActive ? (
+                      {emp.connection.isActive ? (
                         <Pause className="h-4 w-4" />
                       ) : (
                         <Play className="h-4 w-4" />

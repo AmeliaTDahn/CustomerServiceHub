@@ -63,7 +63,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       const historyFilter = showHistoryView ? ticket.status === "resolved" : ticket.status !== "resolved";
 
       // Then apply employee-specific filters if needed
-      if (isEmployee && !showHistoryView) {
+      if (isEmployee && !showHistory) {
         switch (view) {
           case 'active':
             return historyFilter && !ticket.claimedById;
@@ -149,6 +149,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     <div>
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
         <div className="flex items-center justify-between h-12 px-4">
+          {/* Toggle switch for all account types */}
           <div className="flex items-center gap-2">
             <Switch
               checked={showHistory}
@@ -160,6 +161,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             </label>
           </div>
 
+          {/* Employee-specific view selector */}
           {isEmployee && !showHistory && (
             <Select
               value={viewType}
@@ -198,13 +200,11 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   </div>
                   <div className="text-xs text-muted-foreground space-y-0.5">
                     <div className="flex items-center gap-2">
-                      {/* Removed unnecessary conditional rendering for customer name */}
                       <span>Created: {new Date(ticket.createdAt).toLocaleDateString()}</span>
                       <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
                         {ticket.status.replace("_", " ")}
                       </Badge>
                     </div>
-                    {/* Removed claim status display as it's handled by the history toggle */}
                   </div>
                 </div>
               </div>

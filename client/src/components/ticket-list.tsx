@@ -61,17 +61,13 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       if (isEmployee) {
         switch (view) {
           case 'active':
-            // Show unclaimed tickets
             return ticket.status !== "resolved" && !ticket.claimedById;
           case 'my-tickets':
-            // Show tickets claimed by current employee that aren't resolved
             return ticket.status !== "resolved" && ticket.claimedById === user?.id;
           case 'history':
-            // Show resolved tickets that were claimed by this employee
             return ticket.status === "resolved" && ticket.claimedById === user?.id;
         }
       } else {
-        // For non-employees, keep existing logic
         if (view === 'history') {
           return ticket.status === "resolved";
         } else {
@@ -223,81 +219,77 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <Select
-          value={viewType}
-          onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
-        >
-          <SelectTrigger className="w-[160px] h-8 text-sm">
-            <SelectValue placeholder="Select view" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Active Tickets</SelectItem>
-            {isEmployee && <SelectItem value="my-tickets">My Tickets</SelectItem>}
-            <SelectItem value="history">Ticket History</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="flex items-center justify-end h-12 px-4">
+          <Select
+            value={viewType}
+            onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Select view" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active Tickets</SelectItem>
+              {isEmployee && <SelectItem value="my-tickets">My Tickets</SelectItem>}
+              <SelectItem value="history">Ticket History</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="px-4 py-2 space-y-2">
         {filterTickets(viewType).map((ticket) => (
           <Card
             key={ticket.id}
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => setSelectedTicket(ticket)}
           >
-            <CardHeader className="py-3">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base">{ticket.title}</CardTitle>
+            <div className="p-3">
+              <div className="flex justify-between items-start gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-medium truncate">{ticket.title}</h3>
                     {ticket.unreadCount > 0 && (
                       <Badge variant="secondary" className="text-xs">
-                        {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
+                        {ticket.unreadCount} new
                       </Badge>
                     )}
                   </div>
-                  <CardDescription className="text-sm">
-                    <div className="space-y-0.5">
-                      <div>From: {ticket.customer.username}</div>
-                      <div>Created: {new Date(ticket.createdAt).toLocaleDateString()}</div>
-                      {viewType !== 'history' && ticket.claimedAt && (
-                        <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
-                      )}
-                      {viewType === 'history' && (
-                        <div>Resolved: {new Date(ticket.updatedAt).toLocaleDateString()}</div>
-                      )}
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <div className="flex items-center gap-4">
+                      <span>{ticket.customer.username}</span>
+                      <span>·</span>
+                      <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                     </div>
-                  </CardDescription>
+                    {viewType !== 'history' && ticket.claimedAt && (
+                      <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-1.5 items-center">
-                  <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
-                    {ticket.status.replace("_", " ")}
+                <div className="flex flex-col gap-1.5 items-end">
+                  <div className="flex gap-1.5">
+                    <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
+                      {ticket.status.replace("_", " ")}
+                    </Badge>
+                    <Badge className={`${getPriorityColor(ticket.priority)} text-xs`}>
+                      {ticket.priority}
+                    </Badge>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {ticket.category.replace("_", " ")}
                   </Badge>
-                  <Badge className={`${getPriorityColor(ticket.priority)} text-xs`}>
-                    {ticket.priority.toUpperCase()}
-                  </Badge>
-                  {viewType === 'history' && ticket.hasFeedback && (
-                    <Badge variant="outline" className="text-xs">Feedback</Badge>
-                  )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="py-2">
-              <Badge variant="outline" className="text-xs">{getCategoryLabel(ticket.category)}</Badge>
-            </CardContent>
+            </div>
           </Card>
         ))}
         {filterTickets(viewType).length === 0 && (
-          <Card>
-            <CardContent className="py-6 text-center text-gray-500 text-sm">
-              No {viewType === 'active' ? 'active' : viewType === 'my-tickets' ? 'claimed' : 'resolved'} tickets
-            </CardContent>
-          </Card>
+          <div className="text-center text-sm text-muted-foreground py-8">
+            No {viewType === 'active' ? 'active' : viewType === 'my-tickets' ? 'claimed' : 'resolved'} tickets
+          </div>
         )}
       </div>
 
-      {/* Ticket Detail Dialog */}
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
         <DialogContent className="max-w-2xl">
           {selectedTicket && (

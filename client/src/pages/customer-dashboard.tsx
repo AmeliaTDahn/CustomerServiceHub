@@ -22,19 +22,9 @@ interface Business {
   username: string;
 }
 
-interface TicketWithInfo extends Ticket {
-  customer: { id: number; username: string };
-  business: { id: number; username: string };
-  hasBusinessResponse?: boolean;
-  hasFeedback?: boolean;
-  unreadCount: number;
-  claimedById?: number | null;
-  claimedAt?: string | null;
-}
-
 export default function CustomerDashboard() {
   const { user, logout } = useUser();
-  const { data: tickets } = useQuery<TicketWithInfo[]>({
+  const { data: tickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets'],
   });
 

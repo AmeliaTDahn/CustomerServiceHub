@@ -196,7 +196,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                         {ticket.status.replace("_", " ")}
                       </Badge>
                     </div>
-                    {viewType !== 'history' && ticket.claimedAt && (
+                    {/* Only show claim status for employees */}
+                    {isEmployee && ticket.claimedAt && viewType !== 'history' && (
                       <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
                     )}
                   </div>

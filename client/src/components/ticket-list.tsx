@@ -40,6 +40,8 @@ interface TicketListProps {
     hasBusinessResponse?: boolean;
     hasFeedback?: boolean;
     unreadCount: number;
+    claimedById?: number | null;
+    claimedAt?: string | null;
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
@@ -53,15 +55,28 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  // Function to filter tickets for active and history tabs
-  const filterTickets = (isHistory: boolean) => {
+  // Function to filter tickets based on tab and user role
+  const filterTickets = (tab: 'active' | 'my-tickets' | 'history') => {
     return tickets.filter(ticket => {
-      if (isHistory) {
-        // History tab shows all resolved tickets
-        return ticket.status === "resolved";
+      if (isEmployee) {
+        switch (tab) {
+          case 'active':
+            // Show unclaimed tickets
+            return ticket.status !== "resolved" && !ticket.claimedById;
+          case 'my-tickets':
+            // Show tickets claimed by current employee that aren't resolved
+            return ticket.status !== "resolved" && ticket.claimedById === user?.id;
+          case 'history':
+            // Show resolved tickets that were claimed by this employee
+            return ticket.status === "resolved" && ticket.claimedById === user?.id;
+        }
       } else {
-        // Active tab shows unresolved tickets
-        return ticket.status !== "resolved";
+        // For non-employees, keep existing logic
+        if (tab === 'history') {
+          return ticket.status === "resolved";
+        } else {
+          return ticket.status !== "resolved";
+        }
       }
     });
   };
@@ -205,24 +220,20 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   return (
     <>
       <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className={`grid w-full grid-cols-${isEmployee ? '3' : '2'}`}>
           <TabsTrigger value="active">Active Tickets</TabsTrigger>
+          {isEmployee && <TabsTrigger value="my-tickets">My Tickets</TabsTrigger>}
           <TabsTrigger value="history">Ticket History</TabsTrigger>
         </TabsList>
+
+        {/* Active Tickets Tab */}
         <TabsContent value="active">
           <div className="space-y-4">
-            {filterTickets(false).map((ticket) => (
+            {filterTickets('active').map((ticket) => (
               <Card
                 key={ticket.id}
                 className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => {
-                  if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
-                    setSelectedTicket(ticket);
-                  }
-                  if (isBusiness || isEmployee) {
-                    setSelectedTicket(ticket);
-                  }
-                }}
+                onClick={() => setSelectedTicket(ticket)}
               >
                 <CardHeader>
                   <div className="flex justify-between items-start">
@@ -237,12 +248,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       </div>
                       <CardDescription>
                         <div className="space-y-1">
-                          {!isBusiness && !isEmployee && (
-                            <div>Submitted to: {ticket.business.username}</div>
-                          )}
-                          {(isBusiness || isEmployee) && (
-                            <div>From: {ticket.customer.username}</div>
-                          )}
+                          <div>From: {ticket.customer.username}</div>
                           <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
                         </div>
                       </CardDescription>
@@ -259,26 +265,78 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 </CardHeader>
                 <CardContent>
                   <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-                  {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      Waiting for support team to respond
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             ))}
-            {filterTickets(false).length === 0 && (
+            {filterTickets('active').length === 0 && (
               <Card>
                 <CardContent className="py-8 text-center text-gray-500">
-                  No active tickets
+                  No active tickets available
                 </CardContent>
               </Card>
             )}
           </div>
         </TabsContent>
+
+        {/* My Tickets Tab (Employee Only) */}
+        {isEmployee && (
+          <TabsContent value="my-tickets">
+            <div className="space-y-4">
+              {filterTickets('my-tickets').map((ticket) => (
+                <Card
+                  key={ticket.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedTicket(ticket)}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <CardTitle>{ticket.title}</CardTitle>
+                          {ticket.unreadCount > 0 && (
+                            <Badge variant="secondary">
+                              {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
+                            </Badge>
+                          )}
+                        </div>
+                        <CardDescription>
+                          <div className="space-y-1">
+                            <div>From: {ticket.customer.username}</div>
+                            <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                            {ticket.claimedAt && <div>Claimed on {new Date(ticket.claimedAt).toLocaleDateString()}</div>}
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <Badge className={getStatusColor(ticket.status)}>
+                          {ticket.status.replace("_", " ")}
+                        </Badge>
+                        <Badge className={getPriorityColor(ticket.priority)}>
+                          {ticket.priority.toUpperCase()}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+                  </CardContent>
+                </Card>
+              ))}
+              {filterTickets('my-tickets').length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-gray-500">
+                    No tickets currently assigned to you
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        )}
+
+        {/* History Tab */}
         <TabsContent value="history">
           <div className="space-y-4">
-            {filterTickets(true).map((ticket) => (
+            {filterTickets('history').map((ticket) => (
               <Card
                 key={ticket.id}
                 className="cursor-pointer hover:shadow-md transition-shadow"
@@ -290,12 +348,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       <CardTitle>{ticket.title}</CardTitle>
                       <CardDescription>
                         <div className="space-y-1">
-                          {!isBusiness && !isEmployee && (
-                            <div>Submitted to: {ticket.business.username}</div>
-                          )}
-                          {(isBusiness || isEmployee) && (
-                            <div>From: {ticket.customer.username}</div>
-                          )}
+                          <div>From: {ticket.customer.username}</div>
                           <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
                           <div>Resolved on {new Date(ticket.updatedAt).toLocaleDateString()}</div>
                         </div>
@@ -316,7 +369,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 </CardContent>
               </Card>
             ))}
-            {filterTickets(true).length === 0 && (
+            {filterTickets('history').length === 0 && (
               <Card>
                 <CardContent className="py-8 text-center text-gray-500">
                   No resolved tickets
@@ -327,6 +380,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         </TabsContent>
       </Tabs>
 
+      {/* Ticket Detail Dialog */}
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
         <DialogContent className="max-w-2xl">
           {selectedTicket && (
@@ -378,32 +432,30 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   </div>
 
-                  {(isBusiness || isEmployee) && (
+                  {isEmployee && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium">Actions</h3>
                       <div className="flex gap-2">
-                        {isEmployee && (
-                          selectedTicket.claimedById === null ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => claimTicket.mutate(selectedTicket.id)}
-                              disabled={claimTicket.isPending}
-                            >
-                              <Lock className="mr-2 h-4 w-4" />
-                              Claim Ticket
-                            </Button>
-                          ) : selectedTicket.claimedById === user?.id && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => unclaimTicket.mutate(selectedTicket.id)}
-                              disabled={unclaimTicket.isPending}
-                            >
-                              <Unlock className="mr-2 h-4 w-4" />
-                              Unclaim Ticket
-                            </Button>
-                          )
+                        {selectedTicket.claimedById === null ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => claimTicket.mutate(selectedTicket.id)}
+                            disabled={claimTicket.isPending}
+                          >
+                            <Lock className="mr-2 h-4 w-4" />
+                            Claim Ticket
+                          </Button>
+                        ) : selectedTicket.claimedById === user?.id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => unclaimTicket.mutate(selectedTicket.id)}
+                            disabled={unclaimTicket.isPending}
+                          >
+                            <Unlock className="mr-2 h-4 w-4" />
+                            Unclaim Ticket
+                          </Button>
                         )}
                         <Button
                           variant="outline"
@@ -434,20 +486,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                           isResolved={true}
                         />
                       </div>
-                    </div>
-                  )}
-
-                  {!isBusiness && !isEmployee && selectedTicket.hasBusinessResponse && (
-                    <div className="mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex items-center gap-2"
-                        onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        View Messages
-                      </Button>
                     </div>
                   )}
                 </div>

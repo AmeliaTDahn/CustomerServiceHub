@@ -1442,24 +1442,27 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ error: "Employee not found" });
       }
 
-      // Delete the employee relation
+      // Delete the employee-business relationship
       await db.delete(businessEmployees)
         .where(and(
           eq(businessEmployees.employeeId, parseInt(id)),
           eq(businessEmployees.businessId, req.user.id)
         ));
 
-      // Also delete any direct messages between business and employee
-      await db.delete(directMessages)
+      // Delete all direct messages between the business and this employee
+      await db.delete(messages)
         .where(
-          or(
-            and(
-              eq(directMessages.senderId, req.user.id),
-              eq(directMessages.receiverId, parseInt(id))
-            ),
-            and(
-              eq(directMessages.senderId, parseInt(id)),
-              eq(directMessages.receiverId, req.user.id)
+          and(
+            eq(messages.ticketId, null), // Only delete direct messages
+            or(
+              and(
+                eq(messages.senderId, req.user.id),
+                eq(messages.receiverId, parseInt(id))
+              ),
+              and(
+                eq(messages.senderId, parseInt(id)),
+                eq(messages.receiverId, req.user.id)
+              )
             )
           )
         );

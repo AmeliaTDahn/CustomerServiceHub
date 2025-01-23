@@ -188,6 +188,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       <span>{ticket.customer.username}</span>
                       <span>·</span>
                       <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                      <Badge variant={ticket.status === "resolved" ? "secondary" : "default"}>
+                        {ticket.status === "in_progress" ? "In Progress" : 
+                         ticket.status === "resolved" ? "Resolved" : "Open"}
+                      </Badge>
                     </div>
                     {viewType !== 'history' && ticket.claimedAt && (
                       <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>

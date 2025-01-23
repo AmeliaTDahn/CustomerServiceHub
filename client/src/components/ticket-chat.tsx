@@ -10,7 +10,6 @@ import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
-import { useCallback } from "react";
 import { QuickReplyTemplates } from "@/components/quick-reply-templates";
 
 interface Message {
@@ -36,8 +35,6 @@ interface Message {
 interface TicketChatProps {
   ticketId?: number;
   readonly?: boolean;
-  directMessageUserId?: number;
-  chatType?: 'ticket' | 'business' | 'employee';
 }
 
 const MessageHeader = ({ username, role, isBroadcast }: { username: string; role: string; isBroadcast?: boolean }) => (
@@ -52,7 +49,7 @@ const MessageHeader = ({ username, role, isBroadcast }: { username: string; role
   </div>
 );
 
-export default function TicketChat({ ticketId, readonly = false, directMessageUserId, chatType = 'ticket' }: TicketChatProps) {
+export default function TicketChat({ ticketId, readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Map<number, Message>>(new Map());
   const { user } = useUser();
@@ -63,23 +60,17 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const lastProcessedMessagesRef = useRef<Set<number>>(new Set());
 
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: directMessageUserId
-      ? [`/api/messages/${chatType === 'business' ? 'business' : 'direct'}`, directMessageUserId]
-      : ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
+    queryKey: ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
     queryFn: async () => {
-      if (!directMessageUserId && !ticketId) return [];
+      if (!ticketId) return [];
 
-      const endpoint = directMessageUserId
-        ? `/api/messages/${chatType === 'business' ? 'business' : 'direct'}/${directMessageUserId}`
-        : `/api/tickets/${ticketId}/messages`;
-
-      const res = await fetch(endpoint, {
+      const res = await fetch(`/api/tickets/${ticketId}/messages`, {
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: !!(directMessageUserId || ticketId)
+    enabled: !!ticketId
   });
 
   useEffect(() => {
@@ -154,7 +145,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     markMessagesAsRead();
   }, [ticketId, user, readonly, queryClient]);
 
-
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -163,7 +153,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
-    enabled: !!ticketId && !directMessageUserId,
+    enabled: !!ticketId,
   });
 
   const isEmployee = user?.role === 'employee';
@@ -172,21 +162,15 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!isConnected) {
+      if (!isConnected || !ticketId) {
         throw new Error("Not connected to message server");
       }
 
       let receiverId: number;
-      const isCustomer = user?.role === 'customer';
-
-      if (directMessageUserId) {
-        receiverId = directMessageUserId;
+      if (isCustomer && ticket) {
+        receiverId = ticket.claimedById || ticket.businessId!;
       } else if (ticket) {
-        if (isCustomer) {
-          receiverId = ticket.claimedById || ticket.businessId!;
-        } else {
-          receiverId = ticket.customerId;
-        }
+        receiverId = ticket.customerId;
       } else {
         throw new Error("Invalid message target");
       }
@@ -198,7 +182,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         message: {
           id: tempId,
           content,
-          ticketId: ticketId || null,
+          ticketId,
           senderId: user!.id,
           receiverId,
           status: 'sending',
@@ -226,8 +210,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         receiverId,
         content,
         timestamp: new Date().toISOString(),
-        ticketId: ticketId || undefined,
-        directMessageUserId,
+        ticketId,
         chatInitiator: messages.length === 0,
       });
 

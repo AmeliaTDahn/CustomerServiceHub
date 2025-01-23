@@ -73,236 +73,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get all businesses for an employee
-  app.get("/api/employees/businesses", async (req, res) => {
-    try {
-      if (!req.user?.role || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can view their business relationships" });
-      }
-
-      const businesses = await db.select({
-        id: users.id,
-        username: users.username,
-      })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
-
-      res.json(businesses);
-    } catch (error) {
-      console.error('Error fetching businesses:', error);
-      res.status(500).json({ error: "Failed to fetch businesses" });
-    }
-  });
-
-  // Get all pending invitations for an employee
-  app.get("/api/employees/invitations", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can view their invitations" });
-      }
-
-      const invitations = await db.select({
-        invitation: employeeInvitations,
-        business: {
-          id: users.id,
-          username: users.username
-        }
-      })
-      .from(employeeInvitations)
-      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
-      .where(and(
-        eq(employeeInvitations.employeeId, req.user.id),
-        eq(employeeInvitations.status, "pending")
-      ));
-
-      res.json(invitations);
-    } catch (error) {
-      console.error('Error fetching invitations:', error);
-      res.status(500).json({ error: "Failed to fetch invitations" });
-    }
-  });
-
-  // Accept/reject invitation
-  app.post("/api/employees/invitations/:id/respond", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can respond to invitations" });
-      }
-
-      const { id } = req.params;
-      const { status } = req.body;
-
-      if (!["accepted", "rejected"].includes(status)) {
-        return res.status(400).json({ error: "Invalid status" });
-      }
-
-      const [invitation] = await db.select()
-        .from(employeeInvitations)
-        .where(and(
-          eq(employeeInvitations.id, parseInt(id)),
-          eq(employeeInvitations.employeeId, req.user.id),
-          eq(employeeInvitations.status, "pending")
-        ));
-
-      if (!invitation) {
-        return res.status(404).json({ error: "Invitation not found" });
-      }
-
-      const [updatedInvitation] = await db.update(employeeInvitations)
-        .set({ 
-          status, 
-          updatedAt: new Date() 
-        })
-        .where(eq(employeeInvitations.id, parseInt(id)))
-        .returning();
-
-      if (status === "accepted") {
-        // Create business-employee relationship
-        await db.insert(businessEmployees)
-          .values({
-            businessId: invitation.businessId,
-            employeeId: req.user.id
-          });
-      }
-
-      res.json(updatedInvitation);
-    } catch (error) {
-      console.error('Error responding to invitation:', error);
-      res.status(500).json({ error: "Failed to respond to invitation" });
-    }
-  });
-
-  // Get all employees for a business
-  app.get("/api/businesses/employees", async (req, res) => {
-    try {
-      if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
-        return res.status(403).json({ error: "Unauthorized" });
-      }
-
-      const businessId = req.user.role === "business" ? req.user.id : 
-        (await db.select()
-          .from(businessEmployees)
-          .where(eq(businessEmployees.employeeId, req.user.id))
-          .limit(1))[0]?.businessId;
-
-      if (!businessId) {
-        return res.status(404).json({ error: "Business not found" });
-      }
-
-      const employees = await db.select({
-        employee: {
-          id: users.id,
-          username: users.username,
-          role: users.role
-        },
-        relation: {
-          id: businessEmployees.id,
-          isActive: businessEmployees.isActive
-        }
-      })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.employeeId))
-      .where(eq(businessEmployees.businessId, businessId));
-
-      res.json(employees);
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-      res.status(500).json({ error: "Failed to fetch employees" });
-    }
-  });
-
-  // Remove employee (business only)
-  app.delete("/api/businesses/employees/:employeeId", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "business") {
-        return res.status(403).json({ error: "Only business accounts can remove employees" });
-      }
-
-      const { employeeId } = req.params;
-
-      const [relationship] = await db.select()
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.businessId, req.user.id),
-          eq(businessEmployees.employeeId, parseInt(employeeId))
-        ));
-
-      if (!relationship) {
-        return res.status(404).json({ error: "Employee relationship not found" });
-      }
-
-      await db.update(businessEmployees)
-        .set({ isActive: false })
-        .where(eq(businessEmployees.id, relationship.id));
-
-      res.json({ message: "Employee removed successfully" });
-    } catch (error) {
-      console.error('Error removing employee:', error);
-      res.status(500).json({ error: "Failed to remove employee" });
-    }
-  });
-
-  // Get all registered businesses
-  app.get("/api/businesses", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    // If user is an employee, return only the businesses they're connected to
-    if (req.user.role === "employee") {
-      const businesses = await db.select({
-        id: users.id,
-        username: users.username
-      })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
-
-      return res.json(businesses);
-    }
-
-    // For customers or other roles, return all businesses
-    const businesses = await db.select({
-      id: users.id,
-      username: users.username
-    })
-    .from(users)
-    .where(eq(users.role, "business"));
-
-    res.json(businesses);
-  });
-
-  // Get all customers
-  app.get("/api/customers", async (req, res) => {
-    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
-      return res.status(403).send("Only business users and employees can view customers");
-    }
-
-    // For employees, get only customers who have submitted tickets
-    const customers = await db.select({
-      id: users.id,
-      username: users.username
-    })
-    .from(users)
-    .where(
-      and(
-        eq(users.role, "customer"),
-        exists(
-          db.select()
-            .from(tickets)
-            .where(eq(tickets.customerId, users.id))
-        )
-      )
-    );
-
-    res.json(customers);
-  });
-
   // Messages routes
   // Get messages for a ticket
   app.get("/api/tickets/:ticketId/messages", async (req, res) => {
@@ -396,6 +166,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Mark messages as read
   app.post("/api/tickets/:id/messages/read", async (req, res) => {
     try {
       if (!req.user) {
@@ -448,9 +219,6 @@ export function registerRoutes(app: Express): Server {
           not(eq(messages.status, 'read'))
         ));
 
-      // Update unread count for this ticket
-      await db.update(tickets).set({ unreadCount: 0 }).where(eq(tickets.id, parseInt(id)));
-
       res.json({ success: true });
     } catch (error) {
       console.error('Error marking messages as read:', error);
@@ -458,6 +226,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Send a message in a ticket
   app.post("/api/tickets/:ticketId/messages", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");
 
@@ -1360,75 +1129,234 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Direct messages routes
-  app.get("/api/messages/direct/:userId", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { userId } = req.params;
-
+  // Get all businesses for an employee
+  app.get("/api/employees/businesses", async (req, res) => {
     try {
-      // Verify access rights
-      if (req.user.role === "employee") {
-        // Verify this is a business they work for
-        const [hasAccess] = await db.select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.businessId, parseInt(userId)),
-            eq(businessEmployees.isActive, true)
-          ));
-
-        if (!hasAccess) {
-          return res.status(403).json({ error: "Not authorized to message this user" });
-        }
-      } else if (req.user.role === "business") {
-        // Verify this is their employee
-        const [hasAccess] = await db.select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.businessId, req.user.id),
-            eq(businessEmployees.employeeId, parseInt(userId)),
-            eq(businessEmployees.isActive, true)
-          ));
-
-        if (!hasAccess) {
-          return res.status(403).json({ error: "Not authorized to message this user" });
-        }
-      } else {
-        return res.status(403).json({ error: "Only businesses and employees can use direct messaging" });
+      if (!req.user?.role || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view their business relationships" });
       }
 
-      // Fetch all direct messages between these users
-      const directMessages = await db.select({
-        message: messages,
-        sender: {
+      const businesses = await db.select({
+        id: users.id,
+        username: users.username,
+      })
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.businessId))
+      .where(and(
+        eq(businessEmployees.employeeId, req.user.id),
+        eq(businessEmployees.isActive, true)
+      ));
+
+      res.json(businesses);
+    } catch (error) {
+      console.error('Error fetching businesses:', error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  // Get all pending invitations for an employee
+  app.get("/api/employees/invitations", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view their invitations" });
+      }
+
+      const invitations = await db.select({
+        invitation: employeeInvitations,
+        business: {
+          id: users.id,
+          username: users.username
+        }
+      })
+      .from(employeeInvitations)
+      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
+      .where(and(
+        eq(employeeInvitations.employeeId, req.user.id),
+        eq(employeeInvitations.status, "pending")
+      ));
+
+      res.json(invitations);
+    } catch (error) {
+      console.error('Error fetching invitations:', error);
+      res.status(500).json({ error: "Failed to fetch invitations" });
+    }
+  });
+
+  // Accept/reject invitation
+  app.post("/api/employees/invitations/:id/respond", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can respond to invitations" });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const [invitation] = await db.select()
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.id, parseInt(id)),
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found" });
+      }
+
+      const [updatedInvitation] = await db.update(employeeInvitations)
+        .set({ 
+          status, 
+          updatedAt: new Date() 
+        })
+        .where(eq(employeeInvitations.id, parseInt(id)))
+        .returning();
+
+      if (status === "accepted") {
+        // Create business-employee relationship
+        await db.insert(businessEmployees)
+          .values({
+            businessId: invitation.businessId,
+            employeeId: req.user.id
+          });
+      }
+
+      res.json(updatedInvitation);
+    } catch (error) {
+      console.error('Error responding to invitation:', error);
+      res.status(500).json({ error: "Failed to respond to invitation" });
+    }
+  });
+
+  // Get all employees for a business
+  app.get("/api/businesses/employees", async (req, res) => {
+    try {
+      if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const businessId = req.user.role === "business" ? req.user.id : 
+        (await db.select()
+          .from(businessEmployees)
+          .where(eq(businessEmployees.employeeId, req.user.id))
+          .limit(1))[0]?.businessId;
+
+      if (!businessId) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      const employees = await db.select({
+        employee: {
           id: users.id,
           username: users.username,
           role: users.role
+        },
+        relation: {
+          id: businessEmployees.id,
+          isActive: businessEmployees.isActive
         }
       })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(and(
-        eq(messages.ticketId, null),
-        or(
-          and(
-            eq(messages.senderId, req.user.id),
-            eq(messages.receiverId, parseInt(userId))
-          ),
-          and(
-            eq(messages.senderId, parseInt(userId)),
-            eq(messages.receiverId, req.user.id)
-          )
-        )
-      ))
-      .orderBy(messages.createdAt);
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+      .where(eq(businessEmployees.businessId, businessId));
 
-      res.json(directMessages);
+      res.json(employees);
     } catch (error) {
-      console.error('Error fetching direct messages:', error);
-      res.status(500).json({ error: "Failed to fetch messages" });
+      console.error('Error fetching employees:', error);
+      res.status(500).json({ error: "Failed to fetch employees" });
     }
+  });
+
+  // Remove employee (business only)
+  app.delete("/api/businesses/employees/:employeeId", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can remove employees" });
+      }
+
+      const { employeeId } = req.params;
+
+      const [relationship] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.businessId, req.user.id),
+          eq(businessEmployees.employeeId, parseInt(employeeId))
+        ));
+
+      if (!relationship) {
+        return res.status(404).json({ error: "Employee relationship not found" });
+      }
+
+      await db.update(businessEmployees)
+        .set({ isActive: false })
+        .where(eq(businessEmployees.id, relationship.id));
+
+      res.json({ message: "Employee removed successfully" });
+    } catch (error) {
+      console.error('Error removing employee:', error);
+      res.status(500).json({ error: "Failed to remove employee" });
+    }
+  });
+
+  // Get all registered businesses
+  app.get("/api/businesses", async (req, res) => {
+    if (!req.user) return res.status(401).send("Not authenticated");
+
+    // If user is an employee, return only the businesses they're connected to
+    if (req.user.role === "employee") {
+      const businesses = await db.select({
+        id: users.id,
+        username: users.username
+      })
+      .from(businessEmployees)
+      .innerJoin(users, eq(users.id, businessEmployees.businessId))
+      .where(and(
+        eq(businessEmployees.employeeId, req.user.id),
+        eq(businessEmployees.isActive, true)
+      ));
+
+      return res.json(businesses);
+    }
+
+    // For customers or other roles, return all businesses
+    const businesses = await db.select({
+      id: users.id,
+      username: users.username
+    })
+    .from(users)
+    .where(eq(users.role, "business"));
+
+    res.json(businesses);
+  });
+
+  // Get all customers
+  app.get("/api/customers", async (req, res) => {
+    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      return res.status(403).send("Only business users and employees can view customers");
+    }
+
+    // For employees, get only customers who have submitted tickets
+    const customers = await db.select({
+      id: users.id,
+      username: users.username
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, "customer"),
+        exists(
+          db.select()
+            .from(tickets)
+            .where(eq(tickets.customerId, users.id))
+        )
+      )
+    );
+
+    res.json(customers);
   });
 
   // Connected business for employee
@@ -1457,236 +1385,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get all staff members (for direct messaging)
-  app.get("/api/users/staff", async (req, res) => {
-    if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
-      return res.status(403).json({ error: "Only business and employees can view staff" });
-    }
-
-    try {
-      let query = db.select({
-        id: users.id,
-        username: users.username,
-        role: users.role
-      })
-      .from(users)
-      .where(
-        or(
-          eq(users.role, "employee"),
-          eq(users.role, "business")
-        )
-      );
-
-      // If user is an employee, only show staff from their business
-      if (req.user.role === "employee") {
-        const [business] = await db.select({ businessId: businessEmployees.businessId })
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.isActive, true)
-          ));
-
-        if (!business) {
-          return res.json([]);
-        }
-
-        query = query.where(
-          or(
-            eq(users.id, business.businessId),
-            exists(
-              db.select()
-                .from(businessEmployees)
-                .where(and(
-                  eq(businessEmployees.businessId, business.businessId),
-                  eq(businessEmployees.employeeId, users.id),
-                  eq(businessEmployees.isActive, true)
-                ))
-            )
-          )
-        );
-      }
-
-      const staff = await query;
-      res.json(staff);
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      res.status(500).json({ error: "Failed to fetch staff" });
-    }
-  });
-
-  // Add these routes after the existing message routes
-
-  // Get direct messages between users
-  app.get("/api/messages/direct/:userId", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { userId } = req.params;
-    const targetUserId = parseInt(userId);
-
-    try {
-      // Verify the relationship exists if it's business-employee communication
-      const [relationship] = await db.select()
-        .from(businessEmployees)
-        .where(
-          or(
-            and(
-              eq(businessEmployees.businessId, req.user.id),
-              eq(businessEmployees.employeeId, targetUserId),
-              eq(businessEmployees.isActive, true)
-            ),
-            and(
-              eq(businessEmployees.businessId, targetUserId),
-              eq(businessEmployees.employeeId, req.user.id),
-              eq(businessEmployees.isActive, true)
-            )
-          )
-        );
-
-      if (!relationship) {
-        return res.status(403).json({ error: "No valid relationship exists between users" });
-      }
-
-      // Fetch all messages between these users
-      const userMessages = await db.select({
-        message: messages,
-        sender: {
-          id: users.id,
-          username: users.username,
-          role: users.role
-        }
-      })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(
-        and(
-          or(
-            and(
-              eq(messages.senderId, req.user.id),
-              eq(messages.receiverId, targetUserId)
-            ),
-            and(
-              eq(messages.senderId, targetUserId),
-              eq(messages.receiverId, req.user.id)
-            )
-          ),
-          eq(messages.ticketId, null) // Only get direct messages, not ticket messages
-        )
-      )
-      .orderBy(messages.createdAt);
-
-      res.json(userMessages);
-    } catch (error) {
-      console.error('Error fetching direct messages:', error);
-      res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  });
-
-  // Send a direct message
-  app.post("/api/messages/direct/:userId", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { userId } = req.params;
-    const { content } = req.body;
-    const targetUserId = parseInt(userId);
-
-    try {
-      // Verify the relationship exists if it's business-employee communication
-      const [relationship] = await db.select()
-        .from(businessEmployees)
-        .where(
-          or(
-            and(
-              eq(businessEmployees.businessId, req.user.id),
-              eq(businessEmployees.employeeId, targetUserId),
-              eq(businessEmployees.isActive, true)
-            ),
-            and(
-              eq(businessEmployees.businessId, targetUserId),
-              eq(businessEmployees.employeeId, req.user.id),
-              eq(businessEmployees.isActive, true)
-            )
-          )
-        );
-
-      if (!relationship) {
-        return res.status(403).json({ error: "No valid relationship exists between users" });
-      }
-
-      // Create the message
-      const [message] = await db.insert(messages)
-        .values({
-          content,
-          senderId: req.user.id,
-          receiverId: targetUserId,
-          status: 'sent',
-          sentAt: new Date(),
-          createdAt: new Date()
-        })
-        .returning();
-
-      // Get the sender information
-      const [sender] = await db.select({
-        id: users.id,
-        username: users.username,
-        role: users.role
-      })
-      .from(users)
-      .where(eq(users.id, req.user.id));
-
-      res.json({
-        message,
-        sender
-      });
-    } catch (error) {
-      console.error('Error sending direct message:', error);
-      res.status(500).json({ error: "Failed to send message" });
-    }
-  });
-
-  // Update message status (delivered/read)
-  app.patch("/api/messages/:id/status", async (req, res) => {
-    if (!req.user) return res.status(401).send("Not authenticated");
-
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!['delivered', 'read'].includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-
-    try {
-      // Get the message and verify the user is the recipient
-      const [message] = await db.select()
-        .from(messages)
-        .where(eq(messages.id, parseInt(id)));
-
-      if (!message) {
-        return res.status(404).json({ error: "Message not found" });
-      }
-
-      if (message.receiverId !== req.user.id) {
-        return res.status(403).json({ error: "Not authorized to update this message's status" });
-      }
-
-      // Update the message status
-      const [updated] = await db.update(messages)
-        .set({
-          status,
-          ...(status === 'delivered' ? { deliveredAt: new Date() } : { readAt: new Date() })
-        })
-        .where(eq(messages.id, parseInt(id)))
-        .returning();
-
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating message status:', error);
-      res.status(500).json({ error: "Failed to update message status" });
-    }
-  });
-
   const httpServer = createServer(app);
-
-  // Setup WebSocket server
   setupWebSocket(httpServer, app);
 
   return httpServer;

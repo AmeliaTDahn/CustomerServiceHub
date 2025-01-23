@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { db } from "@db";
-import { messages, businessEmployees, tickets } from "@db/schema";
+import { messages, businessEmployees, tickets, users } from "@db/schema";
 import { eq, and, or } from "drizzle-orm";
 import pkg from 'pg';
 const { Pool } = pkg;
@@ -15,7 +15,6 @@ interface Message {
   timestamp: string;
   messageId?: number;
   ticketId?: number;
-  directMessageUserId?: number;
   chatInitiator?: boolean;
 }
 
@@ -33,73 +32,6 @@ interface ExtendedWebSocket extends WebSocket {
 }
 
 const connections = new Map<string, ExtendedWebSocket>();
-
-async function validateDirectMessage(senderId: number, receiverId: number) {
-  try {
-    // Get sender's business association
-    const [senderEmployee] = await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        and(
-          eq(businessEmployees.employeeId, senderId),
-          eq(businessEmployees.isActive, true)
-        )
-      );
-
-    // Get receiver's business association
-    const [receiverEmployee] = await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        and(
-          eq(businessEmployees.employeeId, receiverId),
-          eq(businessEmployees.isActive, true)
-        )
-      );
-
-    console.log('Validating direct message:', {
-      senderEmployee,
-      receiverEmployee,
-      senderId,
-      receiverId
-    });
-
-    // If both are employees, check if they work for the same business
-    if (senderEmployee && receiverEmployee) {
-      const sameBusinessId = senderEmployee.businessId === receiverEmployee.businessId;
-      console.log('Both users are employees. Same business?', sameBusinessId);
-      return sameBusinessId;
-    }
-
-    // Check business-employee relationship
-    const businessEmployeeRelation = await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        or(
-          and(
-            eq(businessEmployees.businessId, senderId),
-            eq(businessEmployees.employeeId, receiverId),
-            eq(businessEmployees.isActive, true)
-          ),
-          and(
-            eq(businessEmployees.businessId, receiverId),
-            eq(businessEmployees.employeeId, senderId),
-            eq(businessEmployees.isActive, true)
-          )
-        )
-      )
-      .limit(1);
-
-    const isValidRelation = businessEmployeeRelation.length > 0;
-    console.log('Business-employee relationship found:', isValidRelation);
-    return isValidRelation;
-  } catch (error) {
-    console.error('Error validating direct message:', error);
-    return false;
-  }
-}
 
 async function determineUserRole(userId: number): Promise<string | null> {
   try {
@@ -183,7 +115,7 @@ export function setupWebSocket(server: Server, _app: Express) {
         console.log('Received message:', {
           type: message.type,
           senderId: message.senderId,
-          receiverId: message.receiverId || message.directMessageUserId,
+          receiverId: message.receiverId,
           ticketId: message.ticketId
         });
 
@@ -201,36 +133,25 @@ export function setupWebSocket(server: Server, _app: Express) {
           throw new Error('Invalid sender ID');
         }
 
+        // Only handle ticket-related messages
+        if (!message.ticketId) {
+          throw new Error('Ticket ID is required');
+        }
+
+        const [ticket] = await db
+          .select()
+          .from(tickets)
+          .where(eq(tickets.id, message.ticketId));
+
+        if (!ticket) {
+          throw new Error('Invalid ticket');
+        }
+
         let receiverId: number;
-        const ticketId = message.ticketId;
-
-        // Handle direct messages
-        if (message.directMessageUserId) {
-          receiverId = message.directMessageUserId;
-          const isValidDirectMessage = await validateDirectMessage(userId, receiverId);
-          console.log('Direct message validation result:', isValidDirectMessage);
-          if (!isValidDirectMessage) {
-            throw new Error('Unauthorized direct message');
-          }
-        } 
-        // Handle ticket messages
-        else if (ticketId) {
-          const [ticket] = await db
-            .select()
-            .from(tickets)
-            .where(eq(tickets.id, ticketId));
-
-          if (!ticket) {
-            throw new Error('Invalid ticket');
-          }
-
-          if (message.senderId === ticket.customerId) {
-            receiverId = ticket.claimedById || ticket.businessId!;
-          } else {
-            receiverId = ticket.customerId;
-          }
+        if (message.senderId === ticket.customerId) {
+          receiverId = ticket.claimedById || ticket.businessId!;
         } else {
-          throw new Error('Either ticketId or directMessageUserId is required');
+          receiverId = ticket.customerId;
         }
 
         // Save message to database
@@ -240,7 +161,7 @@ export function setupWebSocket(server: Server, _app: Express) {
             content: message.content,
             senderId: userId,
             receiverId,
-            ticketId,
+            ticketId: message.ticketId,
             status: 'sent',
             chatInitiator: message.chatInitiator || false,
             initiatedAt: message.chatInitiator ? new Date() : null,

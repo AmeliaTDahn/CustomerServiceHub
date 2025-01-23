@@ -141,8 +141,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     },
   });
 
-  const handleMessageClick = (customerId: number) => {
-    setLocation(`/messages?customerId=${customerId}`);
+  const handleMessageClick = (ticketId: number) => {
+    setLocation(`/messages?ticketId=${ticketId}`);
   };
 
   return (
@@ -196,6 +196,17 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 </div>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMessageClick(ticket.id);
+              }}
+            >
+              <MessageCircle className="mr-2 h-4 w-4" />
+              View Messages
+            </Button>
           </Card>
         ))}
         {filterTickets(viewType).length === 0 && (

@@ -892,7 +892,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Business analytics routes
+  //// Business analytics routes
   app.get("/api/analytics/feedback", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -954,6 +954,130 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Handle invitation response
+  app.post("/api/employees/invitations/:id/respond", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || !["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      // Get the invitation
+      const [invitation] = await db.select()
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.id, parseInt(id)),
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      if (!invitation) {
+        return res.status(404).json({ error: "Invitation not found or already processed" });
+      }
+
+      // Begin transaction for all database operations
+      const [updatedInvitation] = await db.update(employeeInvitations)
+        .set({
+          status,
+          updatedAt: new Date()
+        })
+        .where(eq(employeeInvitations.id, parseInt(id)))
+        .returning();
+
+      if (status === "accepted") {
+        try {
+          // Create business employee relationship
+          await db.insert(businessEmployees)
+            .values({
+              businessId: invitation.businessId,
+              employeeId: req.user.id,
+              isActive: true,
+              createdAt: new Date()
+            });
+
+          // Get business user info for welcome message
+          const [business] = await db.select({
+            username: users.username
+          })
+          .from(users)
+          .where(eq(users.id, invitation.businessId));
+
+          // Create welcome direct message from business to new employee
+          await db.insert(directMessages)
+            .values({
+              content: `Welcome to ${business.username}'s team! Feel free to reach out if you need any assistance.`,
+              senderId: invitation.businessId,
+              receiverId: req.user.id,
+              businessId: invitation.businessId,
+              status: 'sent',
+              sentAt: new Date(),
+              createdAt: new Date()
+            });
+
+          // Get all active employees of this business (excluding the new employee)
+          const existingEmployees = await db.select({
+            id: users.id,
+            username: users.username
+          })
+          .from(businessEmployees)
+          .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+          .where(and(
+            eq(businessEmployees.businessId, invitation.businessId),
+            eq(businessEmployees.isActive, true),
+            not(eq(businessEmployees.employeeId, req.user.id))
+          ));
+
+          // Create direct messages between new employee and existing employees
+          for (const employee of existingEmployees) {
+            await db.insert(directMessages)
+              .values([
+                {
+                  content: `Hi ${employee.username}! I just joined the team.`,
+                  senderId: req.user.id,
+                  receiverId: employee.id,
+                  businessId: invitation.businessId,
+                  status: 'sent',
+                  sentAt: new Date(),
+                  createdAt: new Date()
+                },
+                {
+                  content: `Welcome to the team!`,
+                  senderId: employee.id,
+                  receiverId: req.user.id,
+                  businessId: invitation.businessId,
+                  status: 'sent',
+                  sentAt: new Date(),
+                  createdAt: new Date()
+                }
+              ]);
+          }
+        } catch (error) {
+          console.error('Error creating team relationships:', error);
+          // Rollback invitation status if team setup fails
+          await db.update(employeeInvitations)
+            .set({
+              status: 'pending',
+              updatedAt: new Date()
+            })
+            .where(eq(employeeInvitations.id, parseInt(id)));
+          throw error;
+        }
+      }
+
+      res.json(updatedInvitation);
+    } catch (error) {
+      console.error('Error processing invitation response:', error);
+      res.status(500).json({ error: "Failed to process invitation response" });
+    }
+  });
+
+  // Business analytics routes  app.get("/api/analytics/feedback", async (req, res) => {
   app.get("/api/analytics/tickets", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -1196,6 +1320,7 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Invalid status" });
       }
 
+      // Get the invitation
       const [invitation] = await db.select()
         .from(employeeInvitations)
         .where(and(
@@ -1205,30 +1330,85 @@ export function registerRoutes(app: Express): Server {
         ));
 
       if (!invitation) {
-        return res.status(404).json({ error: "Invitation not found" });
+        return res.status(404).json({ error: "Invitation not found or already processed" });
       }
 
+      // Update invitation status
       const [updatedInvitation] = await db.update(employeeInvitations)
-        .set({ 
-          status, 
-          updatedAt: new Date() 
+        .set({
+          status,
+          updatedAt: new Date()
         })
         .where(eq(employeeInvitations.id, parseInt(id)))
         .returning();
 
       if (status === "accepted") {
-        // Create business-employee relationship
+        // Create business employee relationship
         await db.insert(businessEmployees)
           .values({
             businessId: invitation.businessId,
-            employeeId: req.user.id
+            employeeId: req.user.id,
+            isActive: true,
+            createdAt: new Date()
           });
+
+        // Create welcome direct message from business to new employee
+        await db.insert(directMessages)
+          .values({
+            content: `Welcome to the team! Feel free to reach out if you need any assistance.`,
+            senderId: invitation.businessId,
+            receiverId: req.user.id,
+            businessId: invitation.businessId,
+            status: 'sent',
+            sentAt: new Date(),
+            createdAt: new Date()
+          });
+
+        // Get all active employees of this business (excluding the new employee)
+        const existingEmployees = await db.select({
+          id: users.id,
+          username: users.username
+        })
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+        .where(and(
+          eq(businessEmployees.businessId, invitation.businessId),
+          eq(businessEmployees.isActive, true),
+          not(eq(businessEmployees.employeeId, req.user.id))
+        ));
+
+        // Create direct messages between new employee and existing employees
+        for (const employee of existingEmployees) {
+          await db.insert(directMessages)
+            .values([
+              {
+                // Message from new employee to existing employee
+                content: `Hi ${employee.username}! I just joined the team.`,
+                senderId: req.user.id,
+                receiverId: employee.id,
+                businessId: invitation.businessId,
+                status: 'sent',
+                sentAt: new Date(),
+                createdAt: new Date()
+              },
+              {
+                // Welcome message from existing employee
+                content: `Welcome to the team, ${req.user.username}!`,
+                senderId: employee.id,
+                receiverId: req.user.id,
+                businessId: invitation.businessId,
+                status: 'sent',
+                sentAt: new Date(),
+                createdAt: new Date()
+              }
+            ]);
+        }
       }
 
       res.json(updatedInvitation);
     } catch (error) {
-      console.error('Error responding to invitation:', error);
-      res.status(500).json({ error: "Failed to respond to invitation" });
+      console.error('Error processing invitation response:', error);
+      res.status(500).json({ error: "Failed to process invitation response" });
     }
   });
 

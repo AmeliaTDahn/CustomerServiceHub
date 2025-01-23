@@ -207,7 +207,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || readonly || !user || !canSendMessages() || sendMessageMutation.isPending) return;
+    if (!newMessage.trim() || readonly || !user || sendMessageMutation.isPending) return;
     sendMessageMutation.mutate(newMessage.trim());
   };
 

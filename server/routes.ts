@@ -406,7 +406,7 @@ export function registerRoutes(app: Express): Server {
         // Business can see all tickets submitted to their business
         query = query.where(eq(tickets.businessId, req.user.id));
       } else if (req.user.role === "employee") {
-        // Get all businesses this employee is associated with
+        // Get all businesses this employee is actively associated with
         const businessIds = await db
           .select({ businessId: businessEmployees.businessId })
           .from(businessEmployees)
@@ -419,9 +419,20 @@ export function registerRoutes(app: Express): Server {
           return res.json([]);
         }
 
-        // Employee can see all tickets from businesses they're associated with
+        // Employee can only see tickets from businesses they're actively associated with
         query = query.where(
-          or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
+          and(
+            or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId))),
+            exists(
+              db.select()
+                .from(businessEmployees)
+                .where(and(
+                  eq(businessEmployees.employeeId, req.user.id),
+                  eq(businessEmployees.businessId, tickets.businessId),
+                  eq(businessEmployees.isActive, true)
+                ))
+            )
+          )
         );
       }
 
@@ -433,7 +444,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add this endpoint after the "/api/tickets" GET route
   app.get("/api/tickets/customer", async (req, res) => {
     if (!req.user || req.user.role !== "customer") {
       return res.status(403).json({ error: "Only customers can view their tickets" });
@@ -483,7 +493,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add this endpoint after the "/api/tickets" GET route
   app.get("/api/tickets/businesses", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "customer") {
@@ -878,7 +887,7 @@ export function registerRoutes(app: Express): Server {
         author: {
           id: users.id,
           username: users.username,
-          role: users.role
+          role: usersrole
         }
       })
         .from(ticketNotes)
@@ -1424,23 +1433,35 @@ export function registerRoutes(app: Express): Server {
   // Remove employee
   app.delete("/api/businesses/employees/:id", async (req, res) => {
     try {
+      const { id } = req.params;
+
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can remove employees" });
       }
 
-      const { id } = req.params;
-
-      // Verify the employee exists and is associated with this business
-      const [employeeRelation] = await db.select()
+      // Verify the employee exists
+      const [existingEmployee] = await db.select()
         .from(businessEmployees)
         .where(and(
           eq(businessEmployees.employeeId, parseInt(id)),
           eq(businessEmployees.businessId, req.user.id)
         ));
 
-      if (!employeeRelation) {
+      if (!existingEmployee) {
         return res.status(404).json({ error: "Employee not found" });
       }
+
+      // Unclaim any tickets claimed by this employee for this business
+      await db.update(tickets)
+        .set({
+          claimedById: null,
+          claimedAt: null,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(tickets.businessId, req.user.id),
+          eq(tickets.claimedById, parseInt(id))
+        ));
 
       // Delete the employee-business relationship
       await db.delete(businessEmployees)

@@ -563,36 +563,39 @@ export function registerRoutes(app: Express): Server {
         .from(tickets)
         .innerJoin(users, eq(users.id, tickets.customerId));
 
-      if (req.user.role === "customer") {
-        query = query.where(eq(tickets.customerId, req.user.id));
-      } else if (req.user.role === "business") {
-        query = query.where(eq(tickets.businessId, req.user.id));
-      } else if (req.user.role === "employee") {
-        // For employees, get all tickets from businesses they are actively associated with
-        const businessIds = await db
-          .select({ businessId: businessEmployees.businessId })
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.isActive, true)
-          ));
+    if (req.user.role === "customer") {
+      // Customers can only see their own tickets
+      query = query.where(eq(tickets.customerId, req.user.id));
+    } else if (req.user.role === "business") {
+      // Business can see all tickets submitted to their business
+      query = query.where(eq(tickets.businessId, req.user.id));
+    } else if (req.user.role === "employee") {
+      // Get all businesses this employee is associated with
+      const businessIds = await db
+        .select({ businessId: businessEmployees.businessId })
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
 
-        if (businessIds.length === 0) {
-          return res.json([]);
-        }
-
-        query = query.where(
-          or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
-        );
+      if (businessIds.length === 0) {
+        return res.json([]);
       }
 
-      const userTickets = await query;
-      res.json(userTickets);
-    } catch (error) {
-      console.error('Error fetching tickets:', error);
-      res.status(500).json({ error: "Failed to fetch tickets" });
+      // Employee can see all tickets from businesses they're associated with
+      query = query.where(
+        or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
+      );
     }
-  });
+
+    const userTickets = await query.orderBy(desc(tickets.updatedAt));
+    res.json(userTickets);
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    res.status(500).json({ error: "Failed to fetch tickets" });
+  }
+});
 
   // Add this endpoint after the "/api/tickets" GET route
   app.get("/api/tickets/customer", async (req, res) => {
@@ -910,7 +913,7 @@ export function registerRoutes(app: Express): Server {
   // Get feedback for a ticket
   app.get("/api/tickets/:id/feedback", async (req, res) => {
     try {
-      if (!req.user) {
+            if (!req.user) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 

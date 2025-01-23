@@ -5,8 +5,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Search, ArrowLeft, Building2, Clock } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, Building2, Clock, Plus } from "lucide-react";
 import { Link } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Tabs,
   TabsContent,
@@ -15,6 +22,7 @@ import {
 } from "@/components/ui/tabs";
 import TicketChat from "@/components/ticket-chat";
 import TicketFeedback from "@/components/ticket-feedback";
+import TicketForm from "@/components/ticket-form";
 import type { Ticket } from "@db/schema";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
@@ -37,6 +45,7 @@ export default function CustomerMessages() {
     ticketId ? parseInt(ticketId) : null
   );
   const [activeTab, setActiveTab] = useState<string>("active");
+  const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
 
   // Fetch customer's tickets
   const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
@@ -78,7 +87,14 @@ export default function CustomerMessages() {
           <MessageCircle className="h-5 w-5" />
           Support Messages
         </h1>
-        <div className="w-[88px]" /> {/* Spacer */}
+        <Button
+          size="sm"
+          onClick={() => setIsNewTicketDialogOpen(true)}
+          className="flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          New Ticket
+        </Button>
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
@@ -273,6 +289,19 @@ export default function CustomerMessages() {
           </Card>
         </div>
       </main>
+
+      {/* New Ticket Dialog */}
+      <Dialog open={isNewTicketDialogOpen} onOpenChange={setIsNewTicketDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Create New Support Ticket</DialogTitle>
+            <DialogDescription>
+              Fill out the form below to create a new support ticket. We'll connect you with the right business to help solve your issue.
+            </DialogDescription>
+          </DialogHeader>
+          <TicketForm onSuccess={() => setIsNewTicketDialogOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

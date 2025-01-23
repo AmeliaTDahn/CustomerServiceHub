@@ -36,7 +36,7 @@ interface Business {
 
 type TicketFormData = NewTicket & {
   businessId: number;
-  category: string;
+  category: "technical" | "billing" | "feature_request" | "general_inquiry" | "bug_report";
 };
 
 const CATEGORIES = [
@@ -45,9 +45,13 @@ const CATEGORIES = [
   { value: "feature_request", label: "Feature Request" },
   { value: "general_inquiry", label: "General Inquiry" },
   { value: "bug_report", label: "Bug Report" },
-];
+] as const;
 
-export default function TicketForm() {
+interface TicketFormProps {
+  onSuccess?: () => void;
+}
+
+export default function TicketForm({ onSuccess }: TicketFormProps) {
   const { register, handleSubmit, reset, setValue } = useForm<TicketFormData>();
   const [open, setOpen] = useState(false);
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
@@ -78,6 +82,7 @@ export default function TicketForm() {
       });
       reset();
       setSelectedBusinessId(null);
+      onSuccess?.();
     },
     onError: (error) => {
       toast({
@@ -141,7 +146,7 @@ export default function TicketForm() {
       <div className="space-y-2">
         <Label htmlFor="category">Category</Label>
         <Select
-          onValueChange={(value) => setValue('category', value)}
+          onValueChange={(value) => setValue('category', value as TicketFormData['category'])}
           required
           defaultValue="general_inquiry"
         >
@@ -177,7 +182,7 @@ export default function TicketForm() {
         />
       </div>
 
-      <Button type="submit" disabled={createTicket.isPending || !selectedBusinessId}>
+      <Button type="submit" disabled={createTicket.isPending || !selectedBusinessId} className="w-full">
         {createTicket.isPending ? "Creating..." : "Create Ticket"}
       </Button>
     </form>

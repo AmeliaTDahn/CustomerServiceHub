@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Ticket } from "@db/schema";
 import { useCallback } from "react";
+import { QuickReplyTemplates } from "@/components/quick-reply-templates";
 
 interface Message {
   message: {
@@ -251,6 +252,10 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const allMessages = [...messages, ...Array.from(optimisticMessages.values())];
 
+  const handleTemplateSelect = (template: string) => {
+    setNewMessage(template);
+  };
+
   return (
     <div className="flex flex-col h-full relative">
       {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
@@ -332,6 +337,9 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       {!readonly && (
         <div className="border-t p-4 bg-background mt-auto">
           <form onSubmit={handleSubmit} className="flex gap-2">
+            {(isBusiness || isEmployee) && (
+              <QuickReplyTemplates onSelectTemplate={handleTemplateSelect} />
+            )}
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}

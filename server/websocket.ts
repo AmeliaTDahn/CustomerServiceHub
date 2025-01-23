@@ -146,18 +146,25 @@ export function setupWebSocket(server: Server, _app: Express) {
             throw new Error('Only employees and businesses can send direct messages');
           }
 
-          if (sender.role === 'employee' && message.businessId) {
-            const [employeeRelation] = await db
+          // For employee-to-employee direct messages
+          if (sender.role === 'employee') {
+            const [senderBusiness] = await db
               .select()
               .from(businessEmployees)
               .where(and(
                 eq(businessEmployees.employeeId, userId),
-                eq(businessEmployees.businessId, message.businessId),
                 eq(businessEmployees.isActive, true)
               ));
 
-            if (!employeeRelation) {
-              throw new Error('Not authorized to send messages in this business context');
+            if (!senderBusiness) {
+              throw new Error('Employee not associated with any business');
+            }
+
+            // If sending to business, validate business relationship
+            if (message.businessId) {
+              if (message.businessId !== senderBusiness.businessId) {
+                throw new Error('Not authorized to send messages to this business');
+              }
             }
           }
 

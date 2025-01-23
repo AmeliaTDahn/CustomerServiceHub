@@ -14,6 +14,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import TicketChat from "@/components/ticket-chat";
+import TicketFeedback from "@/components/ticket-feedback";
 import type { Ticket } from "@db/schema";
 import { Badge } from "@/components/ui/badge";
 
@@ -204,8 +205,16 @@ export default function CustomerMessages() {
                 <div className="h-full">
                   <TicketChat
                     ticketId={selectedTicketId}
-                    readonly={false} // Always allow customers to send messages in their tickets
+                    readonly={selectedTicket?.status === "resolved"} // Read-only for resolved tickets
                   />
+                  {selectedTicket?.status === "resolved" && (
+                    <div className="p-4 border-t">
+                      <TicketFeedback
+                        ticketId={selectedTicketId}
+                        isResolved={true}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">

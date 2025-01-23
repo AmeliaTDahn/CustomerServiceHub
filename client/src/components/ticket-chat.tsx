@@ -132,7 +132,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (isCustomer && ticket?.customerId === user?.id && ticket?.status !== "resolved") {
       return true;
     }
-    return false;
+    return true;
   };
 
   const sendMessageMutation = useMutation({

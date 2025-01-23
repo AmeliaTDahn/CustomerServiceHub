@@ -41,7 +41,7 @@ export default function CustomerMessages() {
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
       const res = await fetch('/api/tickets/customer', {
-        credentials: 'include' // Important for sending auth cookies
+        credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -60,19 +60,6 @@ export default function CustomerMessages() {
 
   const handleTicketSelect = (ticketId: number) => {
     setSelectedTicketId(ticketId);
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'open':
-        return "bg-green-100 text-green-800";
-      case 'in_progress':
-        return "bg-blue-100 text-blue-800";
-      case 'resolved':
-        return "bg-gray-100 text-gray-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
   };
 
   return (
@@ -176,7 +163,7 @@ export default function CustomerMessages() {
                 <div className="h-full">
                   <TicketChat
                     ticketId={selectedTicketId}
-                    readonly={!selectedTicket?.hasBusinessResponse}
+                    readonly={false} // Always allow customers to send messages in their tickets
                   />
                 </div>
               ) : (

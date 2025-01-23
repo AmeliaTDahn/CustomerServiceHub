@@ -35,6 +35,7 @@ interface TicketChatProps {
   ticketId?: number;
   readonly?: boolean;
   directMessageUserId?: number;
+  chatType?: 'ticket' | 'business' | 'employee';
 }
 
 const MessageHeader = ({ username, role, isBroadcast }: { username: string; role: string; isBroadcast?: boolean }) => (
@@ -49,7 +50,7 @@ const MessageHeader = ({ username, role, isBroadcast }: { username: string; role
   </div>
 );
 
-export default function TicketChat({ ticketId, readonly = false, directMessageUserId }: TicketChatProps) {
+export default function TicketChat({ ticketId, readonly = false, directMessageUserId, chatType = 'ticket' }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const { user } = useUser();
@@ -61,13 +62,13 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: directMessageUserId
-      ? ['/api/messages/direct', directMessageUserId]
+      ? [`/api/messages/${chatType === 'business' ? 'business' : 'direct'}`, directMessageUserId]
       : ticketId ? ['/api/tickets', ticketId, 'messages'] : [],
     queryFn: async () => {
       if (!directMessageUserId && !ticketId) return [];
 
       const endpoint = directMessageUserId
-        ? `/api/messages/direct/${directMessageUserId}`
+        ? `/api/messages/${chatType === 'business' ? 'business' : 'direct'}/${directMessageUserId}`
         : `/api/tickets/${ticketId}/messages`;
 
       const res = await fetch(endpoint, {
@@ -89,7 +90,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     messages.forEach(messageData => {
       const messageId = messageData.message.id;
 
-      if (!processedMessages.has(messageId) && 
+      if (!processedMessages.has(messageId) &&
           messageData.sender.id !== user.id &&
           messageData.message.status !== 'read') {
 
@@ -186,6 +187,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         timestamp: new Date().toISOString(),
         ticketId: ticketId || undefined,
         directMessageUserId,
+        chatType,
         chatInitiator: messages.length === 0,
       });
 
@@ -196,7 +198,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
 
       if (directMessageUserId) {
         queryClient.invalidateQueries({
-          queryKey: ['/api/messages/direct', directMessageUserId]
+          queryKey: [`/api/messages/${chatType === 'business' ? 'business' : 'direct'}`, directMessageUserId]
         });
       } else if (ticketId) {
         queryClient.invalidateQueries({

@@ -36,6 +36,8 @@ interface BusinessUser {
   role: 'business';
 }
 
+type ChatType = 'ticket' | 'business' | 'employee';
+
 export default function EmployeeMessages() {
   const ticketId = new URLSearchParams(window.location.search).get('ticketId');
   const { user } = useUser();
@@ -46,6 +48,7 @@ export default function EmployeeMessages() {
   );
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [viewType, setViewType] = useState<'active' | 'resolved' | 'direct'>('active');
+  const [chatType, setChatType] = useState<ChatType>('ticket');
 
   // Fetch all tickets with their last message timestamps
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery<TicketWithCustomer[]>({
@@ -100,14 +103,16 @@ export default function EmployeeMessages() {
   // Sort the filtered tickets
   const sortedTickets = sortTickets(filteredTickets);
 
-  const handleUserSelect = (userId: number) => {
+  const handleUserSelect = (userId: number, type: ChatType) => {
     setSelectedUserId(userId);
     setSelectedTicketId(null);
+    setChatType(type);
   };
 
   const handleTicketSelect = (ticketId: number) => {
     setSelectedTicketId(ticketId);
     setSelectedUserId(null);
+    setChatType('ticket');
   };
 
   return (
@@ -137,7 +142,12 @@ export default function EmployeeMessages() {
               <div className="p-4 border-b">
                 <Select
                   value={viewType}
-                  onValueChange={(value: 'active' | 'resolved' | 'direct') => setViewType(value)}
+                  onValueChange={(value: 'active' | 'resolved' | 'direct') => {
+                    setViewType(value);
+                    if (value !== 'direct') {
+                      setChatType('ticket');
+                    }
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select view">
@@ -212,9 +222,9 @@ export default function EmployeeMessages() {
                               Business Account
                             </h3>
                             <button
-                              onClick={() => handleUserSelect(businessUser.id)}
+                              onClick={() => handleUserSelect(businessUser.id, 'business')}
                               className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                                selectedUserId === businessUser.id
+                                selectedUserId === businessUser.id && chatType === 'business'
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-background hover:bg-muted"
                               }`}
@@ -239,9 +249,9 @@ export default function EmployeeMessages() {
                               {filteredUsers.map((otherUser) => (
                                 <button
                                   key={otherUser.id}
-                                  onClick={() => handleUserSelect(otherUser.id)}
+                                  onClick={() => handleUserSelect(otherUser.id, 'employee')}
                                   className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                                    selectedUserId === otherUser.id
+                                    selectedUserId === otherUser.id && chatType === 'employee'
                                       ? "bg-primary text-primary-foreground"
                                       : "hover:bg-muted"
                                   }`}
@@ -284,6 +294,7 @@ export default function EmployeeMessages() {
                 <div className="flex-1 flex flex-col h-full overflow-hidden">
                   <TicketChat
                     directMessageUserId={selectedUserId}
+                    chatType={chatType}
                     readonly={false}
                   />
                 </div>

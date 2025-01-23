@@ -7,11 +7,12 @@ import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import TicketChat from "@/components/ticket-chat";
 import { type Ticket } from "@db/schema";
 
@@ -20,6 +21,7 @@ interface TicketWithCustomer extends Ticket {
     id: number;
     username: string;
   };
+  lastMessageAt?: string; // Added to track last message time
 }
 
 interface User {
@@ -43,44 +45,41 @@ export default function EmployeeMessages() {
     ticketId ? parseInt(ticketId) : null
   );
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("tickets");
+  const [viewType, setViewType] = useState<'active' | 'resolved' | 'direct'>('active');
 
-  // Fetch all tickets
+  // Fetch all tickets with their last message timestamps
   const { data: tickets = [] } = useQuery<TicketWithCustomer[]>({
     queryKey: ['/api/tickets']
   });
 
-  // Fetch all employees and business users
-  const { data: users = [] } = useQuery<User[]>({
-    queryKey: ['/api/users/staff'],
-    enabled: activeTab === "direct"
+  // Sort tickets by last message time and status
+  const sortTickets = (tickets: TicketWithCustomer[]) => {
+    return [...tickets].sort((a, b) => {
+      // Always put resolved tickets at the bottom
+      if (a.status === 'resolved' && b.status !== 'resolved') return 1;
+      if (a.status !== 'resolved' && b.status === 'resolved') return -1;
+
+      // Sort by last message time for non-resolved tickets
+      const aTime = a.lastMessageAt || a.createdAt;
+      const bTime = b.lastMessageAt || b.createdAt;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+  };
+
+  // Filter tickets based on search term and view type
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesSearch = ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
+      ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
+
+    const matchesViewType = viewType === 'active' 
+      ? ticket.status !== 'resolved'
+      : ticket.status === 'resolved';
+
+    return matchesSearch && matchesViewType;
   });
 
-  // Fetch connected business user
-  const { data: businessUser } = useQuery<BusinessUser>({
-    queryKey: ['/api/users/connected-business'],
-    enabled: activeTab === "direct"
-  });
-
-  // Auto-select business user when switching to direct messages
-  useEffect(() => {
-    if (activeTab === "direct" && businessUser && !selectedUserId) {
-      setSelectedUserId(businessUser.id);
-    }
-  }, [activeTab, businessUser]);
-
-  // Filter tickets based on search term
-  const filteredTickets = tickets.filter(ticket =>
-    ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-    ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase())
-  );
-
-  // Filter users based on search term, excluding the business user
-  const filteredUsers = users.filter(u =>
-    u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) &&
-    u.id !== user?.id && // Exclude current user
-    u.id !== businessUser?.id // Exclude business user as it's shown separately
-  );
+  // Sort the filtered tickets
+  const sortedTickets = sortTickets(filteredTickets);
 
   const handleUserSelect = (userId: number) => {
     setSelectedUserId(userId);
@@ -109,138 +108,149 @@ export default function EmployeeMessages() {
         <div className="w-[88px]" /> {/* Spacer to center heading */}
       </div>
 
-      {/* Main Content Area - Takes remaining height */}
+      {/* Main Content Area */}
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8 overflow-hidden">
         <div className="grid grid-cols-12 gap-4 h-full">
           {/* Sidebar */}
           <Card className="col-span-4 flex flex-col overflow-hidden">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-              <TabsList className="w-full">
-                <TabsTrigger value="tickets" className="flex-1">Support Tickets</TabsTrigger>
-                <TabsTrigger value="direct" className="flex-1">Direct Messages</TabsTrigger>
-              </TabsList>
+            <div className="flex flex-col h-full">
+              {/* View Type Selector */}
+              <div className="p-4 border-b">
+                <Select
+                  value={viewType}
+                  onValueChange={(value: 'active' | 'resolved' | 'direct') => setViewType(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select view">
+                      {viewType === 'active' && "Support Tickets"}
+                      {viewType === 'resolved' && "Resolved Tickets"}
+                      {viewType === 'direct' && "Direct Messages"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Support Tickets</SelectItem>
+                    <SelectItem value="resolved">Resolved Tickets</SelectItem>
+                    <SelectItem value="direct">Direct Messages</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-              {/* Search Area - Fixed at top */}
+              {/* Search Area */}
               <div className="p-4 border-b">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder={activeTab === "tickets" ? "Search tickets..." : "Search users..."}
-                    value={activeTab === "tickets" ? ticketSearchTerm : userSearchTerm}
-                    onChange={(e) => activeTab === "tickets"
-                      ? setTicketSearchTerm(e.target.value)
-                      : setUserSearchTerm(e.target.value)
+                    placeholder={viewType === "direct" ? "Search users..." : "Search tickets..."}
+                    value={viewType === "direct" ? userSearchTerm : ticketSearchTerm}
+                    onChange={(e) => viewType === "direct"
+                      ? setUserSearchTerm(e.target.value)
+                      : setTicketSearchTerm(e.target.value)
                     }
                     className="pl-9"
                   />
                 </div>
               </div>
 
-              {/* Scrollable Content Area */}
-              <TabsContent value="tickets" className="flex-1 border-0 m-0 p-0 overflow-auto">
+              {/* Ticket/User List */}
+              <div className="flex-1 overflow-auto">
                 <CardContent className="p-0">
                   <div className="divide-y">
-                    {filteredTickets.map((ticket) => (
-                      <button
-                        key={ticket.id}
-                        onClick={() => handleTicketSelect(ticket.id)}
-                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                          selectedTicketId === ticket.id ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{ticket.title}</p>
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            ticket.status === 'open' ? 'bg-green-100 text-green-800' :
-                              ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                          }`}>
-                            {ticket.status}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <p className="text-sm text-muted-foreground">
-                            {ticket.customer.username}
-                          </p>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(ticket.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                    {filteredTickets.length === 0 && ticketSearchTerm && (
-                      <div className="px-4 py-3 text-sm text-muted-foreground">
-                        No tickets found matching "{ticketSearchTerm}"
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </TabsContent>
-
-              <TabsContent value="direct" className="flex-1 border-0 m-0 p-0 overflow-auto">
-                <CardContent className="p-0">
-                  <div className="divide-y">
-                    {/* Business User Section */}
-                    {businessUser && (
-                      <div className="p-4 bg-muted/50">
-                        <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                          <Building2 className="h-4 w-4" />
-                          Business Account
-                        </h3>
+                    {viewType !== 'direct' ? (
+                      sortedTickets.map((ticket) => (
                         <button
-                          onClick={() => handleUserSelect(businessUser.id)}
-                          className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                            selectedUserId === businessUser.id
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-background hover:bg-muted"
+                          key={ticket.id}
+                          onClick={() => handleTicketSelect(ticket.id)}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                            selectedTicketId === ticket.id ? "bg-primary/5" : ""
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium">{businessUser.username}</p>
-                            <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-                              Business Owner
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{ticket.title}</p>
+                              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>{ticket.customer.username}</span>
+                                <span>•</span>
+                                <span>{new Date(ticket.lastMessageAt || ticket.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                            <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                              ticket.status === 'open' ? 'bg-green-100 text-green-800' :
+                                ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
+                            }`}>
+                              {ticket.status.replace('_', ' ')}
                             </span>
                           </div>
                         </button>
+                      ))
+                    ) : (
+                      // Direct messages UI remains unchanged
+                      <div>
+                        {/* Existing direct messages content */}
+                        <div className="divide-y">
+                          {/* Business User Section */}
+                          {businessUser && (
+                            <div className="p-4 bg-muted/50">
+                              <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                                <Building2 className="h-4 w-4" />
+                                Business Account
+                              </h3>
+                              <button
+                                onClick={() => handleUserSelect(businessUser.id)}
+                                className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                                  selectedUserId === businessUser.id
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-background hover:bg-muted"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <p className="font-medium">{businessUser.username}</p>
+                                  <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                                    Business Owner
+                                  </span>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Other Users Section */}
+                          <div className="p-4">
+                            <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                              Other Employees
+                            </h3>
+                            <div className="space-y-2">
+                              {filteredUsers.map((otherUser) => (
+                                <button
+                                  key={otherUser.id}
+                                  onClick={() => handleUserSelect(otherUser.id)}
+                                  className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                                    selectedUserId === otherUser.id
+                                      ? "bg-primary text-primary-foreground"
+                                      : "hover:bg-muted"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-medium">{otherUser.username}</p>
+                                    <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                                      {otherUser.role}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                              {filteredUsers.length === 0 && userSearchTerm && (
+                                <div className="text-sm text-muted-foreground">
+                                  No users found matching "{userSearchTerm}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
-
-                    {/* Other Users Section */}
-                    <div className="p-4">
-                      <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                        Other Employees
-                      </h3>
-                      <div className="space-y-2">
-                        {filteredUsers.map((otherUser) => (
-                          <button
-                            key={otherUser.id}
-                            onClick={() => handleUserSelect(otherUser.id)}
-                            className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                              selectedUserId === otherUser.id
-                                ? "bg-primary text-primary-foreground"
-                                : "hover:bg-muted"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <p className="font-medium">{otherUser.username}</p>
-                              <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                                {otherUser.role}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                        {filteredUsers.length === 0 && userSearchTerm && (
-                          <div className="text-sm text-muted-foreground">
-                            No users found matching "{userSearchTerm}"
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </CardContent>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </div>
           </Card>
 
           {/* Chat Area */}

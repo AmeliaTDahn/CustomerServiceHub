@@ -36,6 +36,7 @@ const connections = new Map<string, ExtendedWebSocket>();
 
 async function validateDirectMessage(senderId: number, receiverId: number) {
   try {
+    // Get sender's business association
     const [senderEmployee] = await db
       .select()
       .from(businessEmployees)
@@ -46,6 +47,7 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
         )
       );
 
+    // Get receiver's business association
     const [receiverEmployee] = await db
       .select()
       .from(businessEmployees)
@@ -56,11 +58,43 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
         )
       );
 
+    console.log('Validating direct message:', {
+      senderEmployee,
+      receiverEmployee,
+      senderId,
+      receiverId
+    });
+
+    // If both are employees, check if they work for the same business
     if (senderEmployee && receiverEmployee) {
-      return senderEmployee.businessId === receiverEmployee.businessId;
+      const sameBusinessId = senderEmployee.businessId === receiverEmployee.businessId;
+      console.log('Both users are employees. Same business?', sameBusinessId);
+      return sameBusinessId;
     }
 
-    return false;
+    // Check business-employee relationship
+    const businessEmployeeRelation = await db
+      .select()
+      .from(businessEmployees)
+      .where(
+        or(
+          and(
+            eq(businessEmployees.businessId, senderId),
+            eq(businessEmployees.employeeId, receiverId),
+            eq(businessEmployees.isActive, true)
+          ),
+          and(
+            eq(businessEmployees.businessId, receiverId),
+            eq(businessEmployees.employeeId, senderId),
+            eq(businessEmployees.isActive, true)
+          )
+        )
+      )
+      .limit(1);
+
+    const isValidRelation = businessEmployeeRelation.length > 0;
+    console.log('Business-employee relationship found:', isValidRelation);
+    return isValidRelation;
   } catch (error) {
     console.error('Error validating direct message:', error);
     return false;
@@ -81,7 +115,10 @@ async function determineUserRole(userId: number): Promise<string | null> {
       )
       .limit(1);
 
-    if (employee) return 'employee';
+    if (employee) {
+      console.log(`User ${userId} is an employee`);
+      return 'employee';
+    }
 
     // Then check if user is a business
     const [business] = await db
@@ -90,7 +127,10 @@ async function determineUserRole(userId: number): Promise<string | null> {
       .where(eq(businessEmployees.businessId, userId))
       .limit(1);
 
-    if (business) return 'business';
+    if (business) {
+      console.log(`User ${userId} is a business`);
+      return 'business';
+    }
 
     // Finally check if user is a customer
     const [customer] = await db
@@ -99,7 +139,10 @@ async function determineUserRole(userId: number): Promise<string | null> {
       .where(eq(tickets.customerId, userId))
       .limit(1);
 
-    if (customer) return 'customer';
+    if (customer) {
+      console.log(`User ${userId} is a customer`);
+      return 'customer';
+    }
 
     console.error(`No role found for user ${userId}`);
     return null;
@@ -114,6 +157,7 @@ export function setupWebSocket(server: Server, _app: Express) {
 
   const heartbeat = (ws: ExtendedWebSocket) => {
     ws.isAlive = true;
+    console.log(`Heartbeat received for user ${ws.userId}`);
   };
 
   const interval = setInterval(() => {
@@ -153,6 +197,12 @@ export function setupWebSocket(server: Server, _app: Express) {
     ws.on('message', async (data: string) => {
       try {
         const message: Message = JSON.parse(data);
+        console.log('Received message:', {
+          type: message.type,
+          senderId: message.senderId,
+          receiverId: message.receiverId || message.directMessageUserId,
+          ticketId: message.ticketId
+        });
 
         if (message.type === 'ping') {
           ws.isAlive = true;
@@ -175,6 +225,7 @@ export function setupWebSocket(server: Server, _app: Express) {
         if (message.directMessageUserId) {
           receiverId = message.directMessageUserId;
           const isValidDirectMessage = await validateDirectMessage(userId, receiverId);
+          console.log('Direct message validation result:', isValidDirectMessage);
           if (!isValidDirectMessage) {
             throw new Error('Unauthorized direct message');
           }
@@ -239,9 +290,12 @@ export function setupWebSocket(server: Server, _app: Express) {
           const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
           if (receiverWs?.readyState === WebSocket.OPEN) {
             receiverWs.send(JSON.stringify(responseMessage));
+            console.log('Message sent successfully to receiver');
           } else {
             console.log(`Receiver ${receiverId} (${receiverRole}) is not connected or WebSocket not open`);
           }
+        } else {
+          console.error(`Could not determine role for receiver ${receiverId}`);
         }
 
       } catch (error) {

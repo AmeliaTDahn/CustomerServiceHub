@@ -40,11 +40,12 @@ type TicketFormData = NewTicket & {
 };
 
 const CATEGORIES = [
-  { value: "technical", label: "Technical Issue" },
-  { value: "billing", label: "Billing Problem" },
-  { value: "feature_request", label: "Feature Request" },
-  { value: "general_inquiry", label: "General Inquiry" },
-  { value: "bug_report", label: "Bug Report" },
+  { value: "academic_support", label: "Academic Support" },
+  { value: "enrollment", label: "Enrollment Assistance" },
+  { value: "financial_aid", label: "Financial Aid" },
+  { value: "technical_support", label: "Technical Support" },
+  { value: "course_materials", label: "Course Materials" },
+  { value: "student_services", label: "Student Services" }
 ] as const;
 
 interface TicketFormProps {

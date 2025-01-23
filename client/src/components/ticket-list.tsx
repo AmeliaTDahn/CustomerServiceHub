@@ -218,6 +218,42 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium">Actions</h3>
                       <div className="flex gap-2">
+                        <Select
+                          value={selectedTicket?.status}
+                          onValueChange={async (status) => {
+                            try {
+                              const res = await fetch(`/api/tickets/${selectedTicket.id}`, {
+                                method: 'PATCH',
+                                headers: {
+                                  'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ status }),
+                                credentials: 'include'
+                              });
+                              if (!res.ok) throw new Error(await res.text());
+                              queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+                              toast({
+                                title: "Success",
+                                description: "Ticket status updated successfully",
+                              });
+                            } catch (error) {
+                              toast({
+                                variant: "destructive",
+                                title: "Error",
+                                description: (error as Error).message,
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {selectedTicket.claimedById === null ? (
                           <Button
                             variant="outline"

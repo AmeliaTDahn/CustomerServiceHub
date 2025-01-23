@@ -43,7 +43,7 @@ export default function FeedbackAnalytics({ feedbackData }: FeedbackAnalyticsPro
     const averageRating = totalRatings > 0 
       ? ratings.reduce((a, b) => a + b, 0) / totalRatings 
       : 0;
-    
+
     const ratingDistribution = Array.from({ length: 5 }, (_, i) => ({
       rating: i + 1,
       count: ratings.filter(r => r === i + 1).length
@@ -69,7 +69,7 @@ export default function FeedbackAnalytics({ feedbackData }: FeedbackAnalyticsPro
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Card className="col-span-full">
         <CardHeader>
-          <CardTitle>Customer Feedback Overview</CardTitle>
+          <CardTitle>Customer Satisfaction Overview</CardTitle>
           <CardDescription>
             Analysis of customer feedback and ratings
           </CardDescription>

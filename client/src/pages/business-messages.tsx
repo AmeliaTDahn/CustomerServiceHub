@@ -31,28 +31,35 @@ interface Message {
 export default function BusinessMessages() {
   const { user } = useUser();
   const { toast } = useToast();
-  const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<User | null>(null);
   const [newMessage, setNewMessage] = useState("");
-  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Fetch all customers
-  const { data: customers = [] } = useQuery<User[]>({
-    queryKey: ['/api/customers'],
+  // Fetch all employees for this business
+  const { data: employees = [] } = useQuery<User[]>({
+    queryKey: ['/api/businesses/employees'],
   });
 
-  // Fetch messages for selected customer
+  // Fetch messages for selected employee
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedCustomer?.id],
-    enabled: !!selectedCustomer,
+    queryKey: ['/api/messages', selectedEmployee?.id],
+    enabled: !!selectedEmployee,
   });
 
-  const filteredCustomers = customers?.filter(customer =>
-    customer.username.toLowerCase().includes(customerSearchTerm.toLowerCase())
+  const filteredEmployees = employees?.filter(employee =>
+    employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   );
+
+  // Force refresh when component mounts
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
+    //This line is likely unnecessary given the above line already invalidates the messages query if selectedEmployee changes.
+    //queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] }); 
+  }, [queryClient]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -97,9 +104,9 @@ export default function BusinessMessages() {
               return;
             }
 
-            // Handle regular message - update messages if it's from/to current selected customer
-            if (selectedCustomer && (data.senderId === selectedCustomer.id || data.receiverId === selectedCustomer.id)) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedCustomer.id] });
+            // Handle regular message - update messages if it's from/to current selected employee
+            if (selectedEmployee && (data.senderId === selectedEmployee.id || data.receiverId === selectedEmployee.id)) {
+              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedEmployee.id] });
             }
           } catch (error) {
             console.error('Error parsing message:', error);
@@ -146,12 +153,12 @@ export default function BusinessMessages() {
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedCustomer || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!newMessage.trim() || !selectedEmployee || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     const message = {
       type: "message",
       senderId: user.id,
-      receiverId: selectedCustomer.id,
+      receiverId: selectedEmployee.id,
       content: newMessage.trim(),
       timestamp: new Date().toISOString()
     };
@@ -179,34 +186,34 @@ export default function BusinessMessages() {
         </Link>
       </div>
       <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
-        {/* Customer List */}
+        {/* Employee List */}
         <Card className="col-span-4 flex flex-col">
           <div className="p-4">
             <Input
-              placeholder="Search customers..."
-              value={customerSearchTerm}
-              onChange={(e) => setCustomerSearchTerm(e.target.value)}
+              placeholder="Search employees..."
+              value={employeeSearchTerm}
+              onChange={(e) => setEmployeeSearchTerm(e.target.value)}
             />
           </div>
 
           <ScrollArea className="flex-1">
             <div className="space-y-2 p-2">
-              {filteredCustomers?.map((customer) => (
+              {filteredEmployees?.map((employee) => (
                 <div
-                  key={customer.id}
+                  key={employee.id}
                   className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                    selectedCustomer?.id === customer.id
+                    selectedEmployee?.id === employee.id
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
-                  onClick={() => setSelectedCustomer(customer)}
+                  onClick={() => setSelectedEmployee(employee)}
                 >
-                  <div className="font-medium">{customer.username}</div>
+                  <div className="font-medium">{employee.username}</div>
                 </div>
               ))}
-              {filteredCustomers?.length === 0 && (
+              {filteredEmployees?.length === 0 && (
                 <div className="p-3 text-sm text-muted-foreground">
-                  No customers found
+                  No employees found
                 </div>
               )}
             </div>
@@ -215,67 +222,15 @@ export default function BusinessMessages() {
 
         {/* Chat Area */}
         <Card className="col-span-8 flex flex-col">
-          {selectedCustomer ? (
-            <>
-              <div className="p-4 border-b">
-                <h2 className="font-semibold">{selectedCustomer.username}</h2>
-              </div>
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                  {messages?.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.senderId === user?.id ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[80%] rounded-lg p-3 ${
-                          message.senderId === user?.id
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted"
-                        }`}
-                      >
-                        <p className="text-sm">{message.content}</p>
-                        <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                          <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
-                          {message.senderId === user?.id && (
-                            <span className="flex items-center gap-1 ml-2">
-                              {message.status === 'sent' && (
-                                <Check className="h-3 w-3" />
-                              )}
-                              {message.status === 'delivered' && (
-                                <CheckCheck className="h-3 w-3" />
-                              )}
-                              {message.status === 'read' && (
-                                <CheckCheck className="h-3 w-3 text-blue-500" />
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
-              <form onSubmit={sendMessage} className="p-4 border-t">
-                <div className="flex gap-2">
-                  <Input
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Type your message..."
-                    className="flex-1"
-                  />
-                  <Button type="submit" disabled={!newMessage.trim() || !ws || ws.readyState !== WebSocket.OPEN}>
-                    Send
-                  </Button>
-                </div>
-              </form>
-            </>
+          {selectedEmployee ? (
+            <TicketChat
+              directMessageUserId={selectedEmployee.id}
+              chatType="business"
+              readonly={false}
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a customer to start messaging
+              Select an employee to start messaging
             </div>
           )}
         </Card>

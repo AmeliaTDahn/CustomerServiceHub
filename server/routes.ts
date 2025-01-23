@@ -134,10 +134,10 @@ export function registerRoutes(app: Express): Server {
           role: users.role
         }
       })
-      .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
-      .where(eq(messages.ticketId, parseInt(ticketId)))
-      .orderBy(messages.createdAt);
+        .from(messages)
+        .innerJoin(users, eq(users.id, messages.senderId))
+        .where(eq(messages.ticketId, parseInt(ticketId)))
+        .orderBy(messages.createdAt);
 
       // Mark messages as read if the user is the receiver
       const unreadMessages = ticketMessages.filter(
@@ -304,8 +304,8 @@ export function registerRoutes(app: Express): Server {
         username: users.username,
         role: users.role
       })
-      .from(users)
-      .where(eq(users.id, req.user.id));
+        .from(users)
+        .where(eq(users.id, req.user.id));
 
       res.json({
         message,
@@ -471,10 +471,10 @@ export function registerRoutes(app: Express): Server {
           AND ${messages.status} != 'read'
         )`
       })
-      .from(tickets)
-      .innerJoin(users, eq(users.id, tickets.businessId))
-      .where(eq(tickets.customerId, req.user.id))
-      .orderBy(desc(tickets.updatedAt));
+        .from(tickets)
+        .innerJoin(users, eq(users.id, tickets.businessId))
+        .where(eq(tickets.customerId, req.user.id))
+        .orderBy(desc(tickets.updatedAt));
 
       res.json(customerTickets);
     } catch (error) {
@@ -495,9 +495,9 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username
       })
-      .from(tickets)
-      .innerJoin(users, eq(users.id, tickets.businessId))
-      .where(eq(tickets.customerId, req.user.id));
+        .from(tickets)
+        .innerJoin(users, eq(users.id, tickets.businessId))
+        .where(eq(tickets.customerId, req.user.id));
 
       res.json(businesses);
     } catch (error) {
@@ -749,7 +749,7 @@ export function registerRoutes(app: Express): Server {
   // Get feedback for a ticket
   app.get("/api/tickets/:id/feedback", async (req, res) => {
     try {
-            if (!req.user) {
+      if (!req.user) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
@@ -784,11 +784,11 @@ export function registerRoutes(app: Express): Server {
   // Ticket notes routes
   app.post("/api/tickets/:id/notes", async (req, res) => {
     try {
-            if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
+      if (!req.user || (req.user.role !== "business" && req.user.role !== "employee")) {
         return res.status(403).json({ error: "Only business users and employees can add notes" });
       }
 
-      const { id } =req.params;
+      const { id } = req.params;
       const { content } = req.body;
 
       // Get the ticket to verify access
@@ -829,10 +829,11 @@ export function registerRoutes(app: Express): Server {
         })
         .returning();
 
-      res.json(note);    } catch (error) {
+      res.json(note);
+    } catch (error) {
       console.error('Error adding note:', error);
       res.status(500).json({ error: "Failed to add note" });
-        }
+    }
   });
 
   app.get("/api/tickets/:id/notes", async (req, res) => {
@@ -880,15 +881,16 @@ export function registerRoutes(app: Express): Server {
           role: users.role
         }
       })
-      .from(ticketNotes)
-      .innerJoin(users, eq(users.id, ticketNotes.businessId))
-      .where(eq(ticketNotes.ticketId, parseInt(id)))
-      .orderBy(ticketNotes.createdAt);
+        .from(ticketNotes)
+        .innerJoin(users, eq(users.id, ticketNotes.businessId))
+        .where(eq(ticketNotes.ticketId, parseInt(id)))
+        .orderBy(ticketNotes.createdAt);
 
       res.json(notes);
     } catch (error) {
       console.error('Error fetching notes:', error);
-      res.status(500).json({ error: "Failed to fetch notes" });    }
+      res.status(500).json({ error: "Failed to fetch notes" });
+    }
   });
 
   //// Business analytics routes
@@ -1105,22 +1107,22 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username
       })
-      .from(users)
-      .where(
-        and(
-          eq(users.role, "employee"),
-          // Exclude employees that already have a relationship with this business
-          not(exists(
-            db.select()
-              .from(businessEmployees)
-              .where(and(
-                eq(businessEmployees.businessId, req.user.id),
-                eq(businessEmployees.employeeId, users.id),
-                eq(businessEmployees.isActive, true)
-              ))
-          ))
-        )
-      );
+        .from(users)
+        .where(
+          and(
+            eq(users.role, "employee"),
+            // Exclude employees that already have a relationship with this business
+            not(exists(
+              db.select()
+                .from(businessEmployees)
+                .where(and(
+                  eq(businessEmployees.businessId, req.user.id),
+                  eq(businessEmployees.employeeId, users.id),
+                  eq(businessEmployees.isActive, true)
+                ))
+            ))
+          )
+        );
 
       res.json(employees);
     } catch (error) {
@@ -1140,12 +1142,12 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username,
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.businessId))
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
 
       res.json(businesses);
     } catch (error) {
@@ -1168,12 +1170,12 @@ export function registerRoutes(app: Express): Server {
           username: users.username
         }
       })
-      .from(employeeInvitations)
-      .innerJoin(users, eq(users.id, employeeInvitations.businessId))
-      .where(and(
-        eq(employeeInvitations.employeeId, req.user.id),
-        eq(employeeInvitations.status, "pending")
-      ));
+        .from(employeeInvitations)
+        .innerJoin(users, eq(users.id, employeeInvitations.businessId))
+        .where(and(
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
 
       res.json(invitations);
     } catch (error) {
@@ -1233,8 +1235,8 @@ export function registerRoutes(app: Express): Server {
           const [business] = await db.select({
             username: users.username
           })
-          .from(users)
-          .where(eq(users.id, invitation.businessId));
+            .from(users)
+            .where(eq(users.id, invitation.businessId));
 
           // Create welcome direct message from business to new employee
           await db.insert(directMessages)
@@ -1253,13 +1255,13 @@ export function registerRoutes(app: Express): Server {
             id: users.id,
             username: users.username
           })
-          .from(businessEmployees)
-          .innerJoin(users, eq(users.id, businessEmployees.employeeId))
-          .where(and(
-            eq(businessEmployees.businessId, invitation.businessId),
-            eq(businessEmployees.isActive, true),
-            not(eq(businessEmployees.employeeId, req.user.id))
-          ));
+            .from(businessEmployees)
+            .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+            .where(and(
+              eq(businessEmployees.businessId, invitation.businessId),
+              eq(businessEmployees.isActive, true),
+              not(eq(businessEmployees.employeeId, req.user.id))
+            ));
 
           // Create initial direct messages between new employee and existing employees
           for (const employee of existingEmployees) {
@@ -1314,7 +1316,7 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Unauthorized" });
       }
 
-      const businessId = req.user.role === "business" ? req.user.id : 
+      const businessId = req.user.role === "business" ? req.user.id :
         (await db.select()
           .from(businessEmployees)
           .where(eq(businessEmployees.employeeId, req.user.id))
@@ -1335,9 +1337,9 @@ export function registerRoutes(app: Express): Server {
           isActive: businessEmployees.isActive
         }
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.employeeId))
-      .where(eq(businessEmployees.businessId, businessId));
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+        .where(eq(businessEmployees.businessId, businessId));
 
       res.json(employees);
     } catch (error) {
@@ -1387,12 +1389,12 @@ export function registerRoutes(app: Express): Server {
         id: users.id,
         username: users.username
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.businessId))
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
 
       return res.json(businesses);
     }
@@ -1402,8 +1404,8 @@ export function registerRoutes(app: Express): Server {
       id: users.id,
       username: users.username
     })
-    .from(users)
-    .where(eq(users.role, "business"));
+      .from(users)
+      .where(eq(users.role, "business"));
 
     res.json(businesses);
   });
@@ -1419,17 +1421,17 @@ export function registerRoutes(app: Express): Server {
       id: users.id,
       username: users.username
     })
-    .from(users)
-    .where(
-      and(
-        eq(users.role, "customer"),
-        exists(
-          db.select()
-            .from(tickets)
-            .where(eq(tickets.customerId, users.id))
+      .from(users)
+      .where(
+        and(
+          eq(users.role, "customer"),
+          exists(
+            db.select()
+              .from(tickets)
+              .where(eq(tickets.customerId, users.id))
+          )
         )
-      )
-    );
+      );
 
     res.json(customers);
   });
@@ -1446,12 +1448,12 @@ export function registerRoutes(app: Express): Server {
         username: users.username,
         role: users.role
       })
-      .from(businessEmployees)
-      .innerJoin(users, eq(users.id, businessEmployees.businessId))
-      .where(and(
-        eq(businessEmployees.employeeId, req.user.id),
-        eq(businessEmployees.isActive, true)
-      ));
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.businessId))
+        .where(and(
+          eq(businessEmployees.employeeId, req.user.id),
+          eq(businessEmployees.isActive, true)
+        ));
 
       res.json(business || null);
     } catch (error) {
@@ -1525,23 +1527,23 @@ export function registerRoutes(app: Express): Server {
           role: users.role
         }
       })
-      .from(directMessages)
-      .innerJoin(users, eq(users.id, directMessages.senderId))
-      .where(
-        and(
-          or(
-            and(
-              eq(directMessages.senderId, req.user.id),
-              eq(directMessages.receiverId, otherUserId)
-            ),
-            and(
-              eq(directMessages.senderId, otherUserId),
-              eq(directMessages.receiverId, req.user.id)
+        .from(directMessages)
+        .innerJoin(users, eq(users.id, directMessages.senderId))
+        .where(
+          and(
+            or(
+              and(
+                eq(directMessages.senderId, req.user.id),
+                eq(directMessages.receiverId, otherUserId)
+              ),
+              and(
+                eq(directMessages.senderId, otherUserId),
+                eq(directMessages.receiverId, req.user.id)
+              )
             )
           )
         )
-      )
-      .orderBy(directMessages.createdAt);
+        .orderBy(directMessages.createdAt);
 
       // Mark unread messages as read
       await db.update(directMessages)
@@ -1589,16 +1591,16 @@ export function registerRoutes(app: Express): Server {
         username: users.username,
         role: users.role
       })
-      .from(users)
-      .innerJoin(
-        businessEmployees,
-        and(
-          eq(businessEmployees.employeeId, users.id),
-          eq(businessEmployees.businessId, employeeRelation.businessId),
-          eq(businessEmployees.isActive, true)
+        .from(users)
+        .innerJoin(
+          businessEmployees,
+          and(
+            eq(businessEmployees.employeeId, users.id),
+            eq(businessEmployees.businessId, employeeRelation.businessId),
+            eq(businessEmployees.isActive, true)
+          )
         )
-      )
-      .where(not(eq(users.id, req.user.id))); // Exclude current user
+        .where(not(eq(users.id, req.user.id))); // Exclude current user
 
       res.json(employees);
     } catch (error) {
@@ -1632,11 +1634,11 @@ export function registerRoutes(app: Express): Server {
         username: users.username,
         role: users.role
       })
-      .from(users)
-      .where(and(
-        eq(users.id, employeeRelation.businessId),
-        eq(users.role, "business")
-      ));
+        .from(users)
+        .where(and(
+          eq(users.id, employeeRelation.businessId),
+          eq(users.role, "business")
+        ));
 
       if (!business) {
         return res.status(404).json({ error: "Business not found" });

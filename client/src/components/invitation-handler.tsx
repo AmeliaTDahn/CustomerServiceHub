@@ -40,11 +40,18 @@ export default function InvitationHandler() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // If invitation was accepted, invalidate relevant queries
+      if (variables.status === 'accepted') {
+        // Invalidate both direct messages and employee lists
+        queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/employees/invitations'] });
+
       toast({
         title: "Success",
-        description: "Invitation response sent successfully",
+        description: `Invitation ${variables.status} successfully`,
       });
     },
     onError: (error) => {

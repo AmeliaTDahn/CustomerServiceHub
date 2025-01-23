@@ -39,6 +39,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const { toast } = useToast();
   const hasShownErrorRef = useRef(false);
   const isReconnectingRef = useRef(false);
+  const lastMessageTimeRef = useRef<number>(Date.now());
+  const connectionHealthyRef = useRef(true);
 
   useEffect(() => {
     async function requestPermission() {
@@ -67,13 +69,16 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   }, [hasNotificationPermission]);
 
   const handleHeartbeat = useCallback(() => {
-    if (!userId || !wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (!userId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     wsRef.current.send(JSON.stringify({
       type: 'pong',
       senderId: userId,
       timestamp: new Date().toISOString()
     }));
+
+    lastMessageTimeRef.current = Date.now();
+    connectionHealthyRef.current = true;
   }, [userId]);
 
   const connect = useCallback(() => {
@@ -91,7 +96,9 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       const heartbeat = () => {
         clearTimeout(pingTimeout);
         pingTimeout = setTimeout(() => {
-          if (!isReconnectingRef.current) {
+          const timeSinceLastMessage = Date.now() - lastMessageTimeRef.current;
+          if (timeSinceLastMessage > 45000 && !isReconnectingRef.current) {
+            connectionHealthyRef.current = false;
             ws.close();
           }
         }, 45000);
@@ -117,6 +124,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       reconnectAttempts.current = 0;
       hasShownErrorRef.current = false;
       isReconnectingRef.current = false;
+      connectionHealthyRef.current = true;
+      lastMessageTimeRef.current = Date.now();
       setupPing();
 
       // Send initial connection message with user ID
@@ -140,20 +149,20 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         clearInterval(pingInterval.current);
       }
 
-      if (reconnectAttempts.current < maxReconnectAttempts) {
+      if (reconnectAttempts.current < maxReconnectAttempts && !connectionHealthyRef.current) {
         isReconnectingRef.current = true;
         const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
         reconnectAttempts.current++;
         setTimeout(connect, timeout);
 
-        // Only show reconnection toast after multiple attempts
+        // Only show reconnection toast after multiple attempts and if connection wasn't healthy
         if (reconnectAttempts.current > 2) {
           toast({
             title: "Reconnecting...",
             description: `Attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`,
           });
         }
-      } else if (!hasShownErrorRef.current) {
+      } else if (!hasShownErrorRef.current && !connectionHealthyRef.current) {
         isReconnectingRef.current = false;
         hasShownErrorRef.current = true;
         toast({
@@ -167,6 +176,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        lastMessageTimeRef.current = Date.now();
+        connectionHealthyRef.current = true;
 
         // Reset error flags on successful message
         hasShownErrorRef.current = false;
@@ -260,9 +271,11 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       // 1. We're not already reconnecting
       // 2. We haven't shown an error yet
       // 3. This is our first connection attempt
+      // 4. The connection is not healthy
       if (!isReconnectingRef.current && 
           !hasShownErrorRef.current && 
-          reconnectAttempts.current === 0) {
+          reconnectAttempts.current === 0 &&
+          !connectionHealthyRef.current) {
         hasShownErrorRef.current = true;
         toast({
           variant: "destructive",
@@ -302,7 +315,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     } else {
       console.error('WebSocket is not connected');
-      if (!hasShownErrorRef.current && !isReconnectingRef.current) {
+      if (!hasShownErrorRef.current && !isReconnectingRef.current && !connectionHealthyRef.current) {
         hasShownErrorRef.current = true;
         toast({
           variant: "destructive",
@@ -314,7 +327,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   }, [userId, queryClient, toast]);
 
   const sendReadReceipt = useCallback((messageId: number) => {
-    if (!userId || !wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (!userId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const readReceipt: StatusUpdate & { senderId: number } = {
       type: 'status_update',

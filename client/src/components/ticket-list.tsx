@@ -101,6 +101,36 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     }
   };
 
+  // Add mutation for updating ticket status
+  const updateTicketStatus = useMutation({
+    mutationFn: async ({ ticketId, status }: { ticketId: number; status: string }) => {
+      const res = await fetch(`/api/tickets/${ticketId}/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      toast({
+        title: "Success",
+        description: "Ticket status updated successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message,
+      });
+    },
+  });
+
   const claimTicket = useMutation({
     mutationFn: async (ticketId: number) => {
       const res = await fetch(`/api/tickets/${ticketId}/claim`, {
@@ -263,7 +293,27 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   {isEmployee && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium">Actions</h3>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {/* Status selector for employees */}
+                        <Select
+                          value={selectedTicket.status}
+                          onValueChange={(value) =>
+                            updateTicketStatus.mutate({
+                              ticketId: selectedTicket.id,
+                              status: value
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-[140px] h-8 text-xs">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                          </SelectContent>
+                        </Select>
+
                         {selectedTicket.claimedById === null ? (
                           <Button
                             variant="outline"

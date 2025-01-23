@@ -558,44 +558,67 @@ export function registerRoutes(app: Express): Server {
           customer: {
             id: users.id,
             username: users.username
-          }
+          },
+          business: {
+            id: sql<number>`${tickets.businessId}`,
+            username: sql<string>`(
+              SELECT username FROM ${users} 
+              WHERE id = ${tickets.businessId}
+            )`
+          },
+          hasBusinessResponse: sql<boolean>`EXISTS (
+            SELECT 1 FROM ${messages} 
+            WHERE ${messages.ticketId} = ${tickets.id} 
+            AND ${messages.senderId} = ${tickets.businessId}
+          )`,
+          hasFeedback: sql<boolean>`EXISTS (
+            SELECT 1 FROM ${ticketFeedback}
+            WHERE ${ticketFeedback.ticketId} = ${tickets.id}
+          )`,
+          unreadCount: sql<number>`(
+            SELECT COUNT(*) 
+            FROM ${messages} 
+            WHERE ${messages.ticketId} = ${tickets.id} 
+            AND ${messages.receiverId} = ${req.user.id}
+            AND ${messages.status} != 'read'
+          )`
         })
         .from(tickets)
         .innerJoin(users, eq(users.id, tickets.customerId));
 
-    if (req.user.role === "customer") {
-      // Customers can only see their own tickets
-      query = query.where(eq(tickets.customerId, req.user.id));
-    } else if (req.user.role === "business") {
-      // Business can see all tickets submitted to their business
-      query = query.where(eq(tickets.businessId, req.user.id));
-    } else if (req.user.role === "employee") {
-      // Get all businesses this employee is associated with
-      const businessIds = await db
-        .select({ businessId: businessEmployees.businessId })
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.isActive, true)
-        ));
+      if (req.user.role === "customer") {
+        // Customers can see their own tickets
+        query = query.where(eq(tickets.customerId, req.user.id));
+      } else if (req.user.role === "business") {
+        // Business can see all tickets submitted to their business
+        query = query.where(eq(tickets.businessId, req.user.id));
+      } else if (req.user.role === "employee") {
+        // Get all businesses this employee is associated with
+        const businessIds = await db
+          .select({ businessId: businessEmployees.businessId })
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ));
 
-      if (businessIds.length === 0) {
-        return res.json([]);
+        if (businessIds.length === 0) {
+          return res.json([]);
+        }
+
+        // Employee can see all tickets from businesses they're associated with
+        query = query.where(
+          or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
+        );
       }
 
-      // Employee can see all tickets from businesses they're associated with
-      query = query.where(
-        or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
-      );
+      const userTickets = await query.orderBy(desc(tickets.updatedAt));
+      res.json(userTickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
     }
-
-    const userTickets = await query.orderBy(desc(tickets.updatedAt));
-    res.json(userTickets);
-  } catch (error) {
-    console.error('Error fetching tickets:', error);
-    res.status(500).json({ error: "Failed to fetch tickets" });
-  }
-});
+  });
 
   // Add this endpoint after the "/api/tickets" GET route
   app.get("/api/tickets/customer", async (req, res) => {

@@ -36,8 +36,10 @@ import TicketFeedback from "./ticket-feedback";
 interface TicketListProps {
   tickets: (Ticket & {
     customer: { id: number; username: string };
+    business: { id: number; username: string };
     hasBusinessResponse?: boolean;
     hasFeedback?: boolean;
+    unreadCount: number;
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
@@ -202,111 +204,128 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   return (
     <>
-      {!isBusiness && !isEmployee && (
-        <Tabs defaultValue="active" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="active">Active Tickets</TabsTrigger>
-            <TabsTrigger value="history">Ticket History</TabsTrigger>
-          </TabsList>
-          <TabsContent value="active">
-            <div className="space-y-4">
-              {filterTickets(false).map((ticket) => (
-                <Card
-                  key={ticket.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => {
-                    if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
-                      setSelectedTicket(ticket);
-                    }
-                  }}
-                >
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <CardTitle>{ticket.title}</CardTitle>
-                        </div>
-                        <CardDescription>
-                          <div className="space-y-1">
-                            <div>From: {ticket.customer.username}</div>
-                            <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
-                          </div>
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <Badge className={getStatusColor(ticket.status)}>
-                          {ticket.status.replace("_", " ")}
-                        </Badge>
-                        <Badge className={getPriorityColor(ticket.priority)}>
-                          {ticket.priority.toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-                    {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        Waiting for support team to respond
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-              {filterTickets(false).length === 0 && (
-                <Card>
-                  <CardContent className="py-8 text-center text-gray-500">
-                    No active tickets
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </TabsContent>
-          <TabsContent value="history">
-            <div className="space-y-4">
-              {filterTickets(true).map((ticket) => (
-                <Card
-                  key={ticket.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setSelectedTicket(ticket)}
-                >
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1">
+      <Tabs defaultValue="active" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="active">Active Tickets</TabsTrigger>
+          <TabsTrigger value="history">Ticket History</TabsTrigger>
+        </TabsList>
+        <TabsContent value="active">
+          <div className="space-y-4">
+            {filterTickets(false).map((ticket) => (
+              <Card
+                key={ticket.id}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => {
+                  if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
+                    setSelectedTicket(ticket);
+                  }
+                  if (isBusiness || isEmployee) {
+                    setSelectedTicket(ticket);
+                  }
+                }}
+              >
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
                         <CardTitle>{ticket.title}</CardTitle>
-                        <CardDescription>
-                          <div className="space-y-1">
-                            <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
-                            <div>Resolved on {new Date(ticket.updatedAt).toLocaleDateString()}</div>
-                          </div>
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Badge className={getStatusColor(ticket.status)}>
-                          {ticket.status.replace("_", " ")}
-                        </Badge>
-                        {ticket.hasFeedback && (
-                          <Badge variant="outline">Feedback Provided</Badge>
+                        {ticket.unreadCount > 0 && (
+                          <Badge variant="secondary">
+                            {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
+                          </Badge>
                         )}
                       </div>
+                      <CardDescription>
+                        <div className="space-y-1">
+                          {!isBusiness && !isEmployee && (
+                            <div>Submitted to: {ticket.business.username}</div>
+                          )}
+                          {(isBusiness || isEmployee) && (
+                            <div>From: {ticket.customer.username}</div>
+                          )}
+                          <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                        </div>
+                      </CardDescription>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-                  </CardContent>
-                </Card>
-              ))}
-              {filterTickets(true).length === 0 && (
-                <Card>
-                  <CardContent className="py-8 text-center text-gray-500">
-                    No resolved tickets
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
-      )}
+                    <div className="flex gap-2 items-center">
+                      <Badge className={getStatusColor(ticket.status)}>
+                        {ticket.status.replace("_", " ")}
+                      </Badge>
+                      <Badge className={getPriorityColor(ticket.priority)}>
+                        {ticket.priority.toUpperCase()}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+                  {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Waiting for support team to respond
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+            {filterTickets(false).length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-gray-500">
+                  No active tickets
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="history">
+          <div className="space-y-4">
+            {filterTickets(true).map((ticket) => (
+              <Card
+                key={ticket.id}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => setSelectedTicket(ticket)}
+              >
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <CardTitle>{ticket.title}</CardTitle>
+                      <CardDescription>
+                        <div className="space-y-1">
+                          {!isBusiness && !isEmployee && (
+                            <div>Submitted to: {ticket.business.username}</div>
+                          )}
+                          {(isBusiness || isEmployee) && (
+                            <div>From: {ticket.customer.username}</div>
+                          )}
+                          <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                          <div>Resolved on {new Date(ticket.updatedAt).toLocaleDateString()}</div>
+                        </div>
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Badge className={getStatusColor(ticket.status)}>
+                        {ticket.status.replace("_", " ")}
+                      </Badge>
+                      {ticket.hasFeedback && (
+                        <Badge variant="outline">Feedback Provided</Badge>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+                </CardContent>
+              </Card>
+            ))}
+            {filterTickets(true).length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-gray-500">
+                  No resolved tickets
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
         <DialogContent className="max-w-2xl">

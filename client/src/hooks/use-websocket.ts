@@ -39,7 +39,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const { toast } = useToast();
   const hasShownErrorRef = useRef(false);
 
-  // Request notification permission
   useEffect(() => {
     async function requestPermission() {
       if ('Notification' in window) {
@@ -67,10 +66,14 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   }, [hasNotificationPermission]);
 
   const handleHeartbeat = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'pong' }));
-    }
-  }, []);
+    if (!userId || !wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    wsRef.current.send(JSON.stringify({
+      type: 'pong',
+      senderId: userId,
+      timestamp: new Date().toISOString()
+    }));
+  }, [userId]);
 
   const connect = useCallback(() => {
     if (!userId || !role) return;
@@ -94,7 +97,11 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       pingInterval.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           heartbeat();
-          ws.send(JSON.stringify({ type: 'ping' }));
+          ws.send(JSON.stringify({
+            type: 'ping',
+            senderId: userId,
+            timestamp: new Date().toISOString()
+          }));
         }
       }, 15000);
 
@@ -107,6 +114,14 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       reconnectAttempts.current = 0;
       hasShownErrorRef.current = false;
       setupPing();
+
+      // Send initial connection message with user ID
+      ws.send(JSON.stringify({
+        type: 'connection',
+        senderId: userId,
+        role: role,
+        timestamp: new Date().toISOString()
+      }));
 
       // Initial message queries invalidation
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
@@ -126,7 +141,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         reconnectAttempts.current++;
         setTimeout(connect, timeout);
 
-        // Only show reconnection toast if we've been disconnected for a while
         if (reconnectAttempts.current > 2) {
           toast({
             title: "Reconnecting...",
@@ -149,22 +163,16 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
         if (data.type === 'connection') {
           console.log('Connection status:', data.status);
-          // Invalidate message queries on successful connection
           queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
           return;
         }
 
         if (data.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong' }));
-          return;
-        }
-        if (data.type === 'pong') {
           handleHeartbeat();
           return;
         }
 
         if (data.error) {
-          // Only show error toast for non-connection related errors
           if (!data.error.includes('connection')) {
             toast({
               variant: "destructive",
@@ -218,11 +226,14 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
             const deliveryConfirmation: StatusUpdate = {
               type: 'status_update',
-              messageId: data.id,
+              messageId: data.id!,
               status: 'delivered',
               timestamp: new Date().toISOString()
             };
-            ws.send(JSON.stringify(deliveryConfirmation));
+            ws.send(JSON.stringify({
+              ...deliveryConfirmation,
+              senderId: userId
+            }));
           }
         }
       } catch (error) {
@@ -232,7 +243,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      // Only show the error toast if we're not already reconnecting
       if (reconnectAttempts.current === 0 && !hasShownErrorRef.current) {
         hasShownErrorRef.current = true;
         toast({
@@ -259,9 +269,17 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   }, [connect]);
 
   const sendMessage = useCallback((message: Message) => {
+    if (!userId) return;
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
-      // Immediately invalidate queries to ensure fresh data
+      // Ensure message has senderId
+      const messageWithSenderId = {
+        ...message,
+        senderId: userId,
+        timestamp: new Date().toISOString()
+      };
+
+      wsRef.current.send(JSON.stringify(messageWithSenderId));
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     } else {
       console.error('WebSocket is not connected');
@@ -274,21 +292,22 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         });
       }
     }
-  }, [queryClient, toast]);
+  }, [userId, queryClient, toast]);
 
   const sendReadReceipt = useCallback((messageId: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const readReceipt: StatusUpdate = {
-        type: 'status_update',
-        messageId,
-        status: 'read',
-        timestamp: new Date().toISOString()
-      };
-      wsRef.current.send(JSON.stringify(readReceipt));
-      // Immediately invalidate queries after sending read receipt
-      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
-    }
-  }, [queryClient]);
+    if (!userId || !wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    const readReceipt: StatusUpdate & { senderId: number } = {
+      type: 'status_update',
+      messageId,
+      senderId: userId,
+      status: 'read',
+      timestamp: new Date().toISOString()
+    };
+
+    wsRef.current.send(JSON.stringify(readReceipt));
+    queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+  }, [userId, queryClient]);
 
   return {
     isConnected,

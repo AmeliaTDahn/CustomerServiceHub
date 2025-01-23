@@ -1386,31 +1386,23 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Remove employee (business only)
+  // Business employee management routes
   app.delete("/api/businesses/employees/:employeeId", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
-        return res.status(403).json({ error: "Only business accounts can remove employees" });
+        return res.status(403).json({ error: "Only business users can manage employees" });
       }
 
       const { employeeId } = req.params;
 
-      const [relationship] = await db.select()
-        .from(businessEmployees)
+      // Delete the business-employee relationship
+      await db.delete(businessEmployees)
         .where(and(
           eq(businessEmployees.businessId, req.user.id),
           eq(businessEmployees.employeeId, parseInt(employeeId))
         ));
 
-      if (!relationship) {
-        return res.status(404).json({ error: "Employee relationship not found" });
-      }
-
-      await db.update(businessEmployees)
-        .set({ isActive: false })
-        .where(eq(businessEmployees.id, relationship.id));
-
-      res.json({ message: "Employee removed successfully" });
+      res.json({ success: true });
     } catch (error) {
       console.error('Error removing employee:', error);
       res.status(500).json({ error: "Failed to remove employee" });

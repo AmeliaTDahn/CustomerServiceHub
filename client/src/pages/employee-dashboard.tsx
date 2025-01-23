@@ -108,13 +108,6 @@ export default function EmployeeDashboard() {
                 <li>Accept the invitation when it arrives</li>
                 <li>Once accepted, you'll see customer tickets here</li>
               </ol>
-              <div className="pt-4">
-                <Link href="/employee-onboarding">
-                  <Button variant="outline" className="w-full">
-                    View Available Businesses
-                  </Button>
-                </Link>
-              </div>
             </CardContent>
           </Card>
         ) : (

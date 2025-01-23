@@ -43,24 +43,56 @@ interface ExtendedWebSocket extends WebSocket {
 const connections = new Map<string, ExtendedWebSocket>();
 
 async function validateDirectMessage(senderId: number, receiverId: number) {
-  const [relationship] = await db.select()
-    .from(businessEmployees)
-    .where(
-      or(
+  try {
+    // Check if both users are employees under the same business
+    const [senderEmployee] = await db
+      .select()
+      .from(businessEmployees)
+      .where(
         and(
-          eq(businessEmployees.businessId, senderId),
-          eq(businessEmployees.employeeId, receiverId),
-          eq(businessEmployees.isActive, true)
-        ),
-        and(
-          eq(businessEmployees.businessId, receiverId),
           eq(businessEmployees.employeeId, senderId),
           eq(businessEmployees.isActive, true)
         )
-      )
-    );
+      );
 
-  return !!relationship;
+    const [receiverEmployee] = await db
+      .select()
+      .from(businessEmployees)
+      .where(
+        and(
+          eq(businessEmployees.employeeId, receiverId),
+          eq(businessEmployees.isActive, true)
+        )
+      );
+
+    // If both are employees, check if they work for the same business
+    if (senderEmployee && receiverEmployee) {
+      return senderEmployee.businessId === receiverEmployee.businessId;
+    }
+
+    // Check if one is a business and one is their employee
+    return !!(await db
+      .select()
+      .from(businessEmployees)
+      .where(
+        or(
+          and(
+            eq(businessEmployees.businessId, senderId),
+            eq(businessEmployees.employeeId, receiverId),
+            eq(businessEmployees.isActive, true)
+          ),
+          and(
+            eq(businessEmployees.businessId, receiverId),
+            eq(businessEmployees.employeeId, senderId),
+            eq(businessEmployees.isActive, true)
+          )
+        )
+      )
+      .limit(1));
+  } catch (error) {
+    console.error('Error validating direct message:', error);
+    return false;
+  }
 }
 
 async function broadcastToEmployees(message: any, businessId: number) {
@@ -409,7 +441,7 @@ export function setupWebSocket(server: Server, app: Express) {
             }
 
             if (message.senderId === ticket.customerId) {
-              receiverId = ticket.businessId!;
+              receiverId = ticket.claimedById || ticket.businessId!;
             } else {
               receiverId = ticket.customerId;
             }
@@ -438,10 +470,6 @@ export function setupWebSocket(server: Server, app: Express) {
             })
             .returning();
 
-          if (message.ticketId) {
-            await updateUnreadCount(message.ticketId, receiverId);
-          }
-
           const responseMessage = {
             id: savedMessage.id,
             type: 'message',
@@ -456,13 +484,34 @@ export function setupWebSocket(server: Server, app: Express) {
             ticketId: savedMessage.ticketId
           };
 
+          // Send message to sender
           ws.send(JSON.stringify(responseMessage));
 
-          const receiverRole = await determineUserRole(receiverId);
-          if (receiverRole) {
-            const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
-            if (receiverWs?.readyState === WebSocket.OPEN) {
-              receiverWs.send(JSON.stringify(responseMessage));
+          // For direct messages, only send to the intended recipient
+          if (!ticketId) {
+            const receiverRole = await determineUserRole(receiverId);
+            if (receiverRole) {
+              const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
+              if (receiverWs?.readyState === WebSocket.OPEN) {
+                receiverWs.send(JSON.stringify(responseMessage));
+              }
+            }
+          } else {
+            // For ticket messages, handle broadcasting to relevant parties
+            const [ticket] = await db
+              .select()
+              .from(tickets)
+              .where(eq(tickets.id, ticketId));
+
+            if (ticket) {
+              if (message.senderId === ticket.customerId && !ticket.claimedById) {
+                await broadcastToEmployees(responseMessage, ticket.businessId!);
+              } else {
+                const receiverWs = connections.get(`${receiverId}-${await determineUserRole(receiverId)}`);
+                if (receiverWs?.readyState === WebSocket.OPEN) {
+                  receiverWs.send(JSON.stringify(responseMessage));
+                }
+              }
             }
           }
         }

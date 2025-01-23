@@ -1379,6 +1379,83 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add these routes after the business employee routes
+
+  // Pause/unpause employee
+  app.post("/api/businesses/employees/:id/toggle-active", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can manage employees" });
+      }
+
+      const { id } = req.params;
+
+      // Verify the employee exists and is associated with this business
+      const [employeeRelation] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, parseInt(id)),
+          eq(businessEmployees.businessId, req.user.id)
+        ));
+
+      if (!employeeRelation) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      // Toggle the active status
+      const [updated] = await db.update(businessEmployees)
+        .set({
+          isActive: !employeeRelation.isActive,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(businessEmployees.employeeId, parseInt(id)),
+          eq(businessEmployees.businessId, req.user.id)
+        ))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error toggling employee status:', error);
+      res.status(500).json({ error: "Failed to update employee status" });
+    }
+  });
+
+  // Remove employee
+  app.delete("/api/businesses/employees/:id", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can remove employees" });
+      }
+
+      const { id } = req.params;
+
+      // Verify the employee exists and is associated with this business
+      const [employeeRelation] = await db.select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, parseInt(id)),
+          eq(businessEmployees.businessId, req.user.id)
+        ));
+
+      if (!employeeRelation) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      // Delete the employee relation
+      await db.delete(businessEmployees)
+        .where(and(
+          eq(businessEmployees.employeeId, parseInt(id)),
+          eq(businessEmployees.businessId, req.user.id)
+        ));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing employee:', error);
+      res.status(500).json({ error: "Failed to remove employee" });
+    }
+  });
+
   // Get all registered businesses
   app.get("/api/businesses", async (req, res) => {
     if (!req.user) return res.status(401).send("Not authenticated");

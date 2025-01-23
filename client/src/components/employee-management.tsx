@@ -25,7 +25,7 @@ import {
   CommandItem,
 } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, X, Search, Check } from "lucide-react";
+import { UserPlus, X, Search, Pause, Play, UserMinus } from "lucide-react";
 
 interface Employee {
   employee: {
@@ -82,6 +82,35 @@ export default function EmployeeManagement() {
       toast({
         title: "Success",
         description: "Invitation sent successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: (error as Error).message,
+      });
+    },
+  });
+
+  // Toggle employee active status mutation
+  const toggleEmployeeStatus = useMutation({
+    mutationFn: async (employeeId: number) => {
+      const res = await fetch(`/api/businesses/employees/${employeeId}/toggle-active`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update employee status");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
+      toast({
+        title: "Success",
+        description: "Employee status updated successfully",
       });
     },
     onError: (error) => {
@@ -214,18 +243,33 @@ export default function EmployeeManagement() {
                         : "bg-red-100 text-red-800"
                     }`}
                   >
-                    {relation.isActive ? "Active" : "Inactive"}
+                    {relation.isActive ? "Active" : "Paused"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeEmployee.mutate(employee.id)}
-                    disabled={removeEmployee.isPending}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleEmployeeStatus.mutate(employee.id)}
+                      disabled={toggleEmployeeStatus.isPending}
+                    >
+                      {relation.isActive ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeEmployee.mutate(employee.id)}
+                      disabled={removeEmployee.isPending}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <UserMinus className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

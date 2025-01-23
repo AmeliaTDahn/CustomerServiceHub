@@ -129,7 +129,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (isEmployee || isBusiness) return true;
 
     // Allow customers to send messages in their own tickets that aren't resolved
-    if (isCustomer && ticket && ticket.customerId === user?.id && ticket.status !== "resolved") {
+    if (isCustomer && ticket?.customerId === user?.id && ticket?.status !== "resolved") {
       return true;
     }
     return false;

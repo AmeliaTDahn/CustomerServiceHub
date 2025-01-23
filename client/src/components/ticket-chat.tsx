@@ -60,7 +60,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const { user } = useUser();
   const { toast } = useToast();
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
 
@@ -85,17 +85,17 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     refetchInterval: 5000
   });
 
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, optimisticMessages]);
+
   const { data: ticket } = useQuery<Ticket>({
     queryKey: ['/api/tickets', ticketId],
     enabled: !!ticketId && !directMessageUserId,
   });
-
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollArea = scrollAreaRef.current;
-      scrollArea.scrollTop = scrollArea.scrollHeight;
-    }
-  }, [messages, optimisticMessages]);
 
   const isEmployee = user?.role === 'employee';
   const isBusiness = user?.role === 'business';
@@ -203,7 +203,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const allMessages = [...messages, ...optimisticMessages];
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-full">
       {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
         <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2">
           <Megaphone className="h-4 w-4" />
@@ -211,76 +211,79 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         </div>
       )}
 
-      <ScrollArea className="flex-1 relative" ref={scrollAreaRef}>
-        <div className="space-y-4 p-4">
-          <AnimatePresence initial={false}>
-            {allMessages?.map((messageData) => (
-              <motion.div
-                key={messageData.message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className={`flex ${
-                  messageData.sender.id === user?.id ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={cn(
-                    "max-w-[80%] rounded-lg p-3",
-                    messageData.sender.id === user?.id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  )}
+      <div className="flex-1 min-h-0"> {/* This ensures proper scrolling */}
+        <ScrollArea className="h-full">
+          <div className="space-y-4 p-4">
+            <AnimatePresence initial={false}>
+              {allMessages?.map((messageData) => (
+                <motion.div
+                  key={messageData.message.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`flex ${
+                    messageData.sender.id === user?.id ? "justify-end" : "justify-start"
+                  }`}
                 >
-                  <MessageHeader
-                    username={messageData.sender.username}
-                    role={messageData.sender.role}
-                    isBroadcast={
-                      messageData.sender.id === user?.id &&
-                      user?.role === 'customer' &&
-                      ticket &&
-                      !ticket.claimedById
-                    }
-                  />
-                  <p className="text-sm whitespace-pre-wrap break-words">
-                    {messageData.message.content}
-                  </p>
-                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                    {messageData.sender.id === user?.id && (
-                      <span className="ml-2 flex items-center gap-1">
-                        {messageData.message.status === 'sending' ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : messageData.message.status === 'sent' ? (
-                          <Check className="h-3 w-3" />
-                        ) : messageData.message.status === 'delivered' ? (
-                          <CheckCheck className="h-3 w-3" />
-                        ) : messageData.message.status === 'read' ? (
-                          <motion.span
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            className="text-blue-500"
-                          >
-                            <CheckCheck className="h-3 w-3" />
-                          </motion.span>
-                        ) : null}
-                      </span>
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-lg p-3",
+                      messageData.sender.id === user?.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
                     )}
+                  >
+                    <MessageHeader
+                      username={messageData.sender.username}
+                      role={messageData.sender.role}
+                      isBroadcast={
+                        messageData.sender.id === user?.id &&
+                        user?.role === 'customer' &&
+                        ticket &&
+                        !ticket.claimedById
+                      }
+                    />
+                    <p className="text-sm whitespace-pre-wrap break-words">
+                      {messageData.message.content}
+                    </p>
+                    <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                      <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                      {messageData.sender.id === user?.id && (
+                        <span className="ml-2 flex items-center gap-1">
+                          {messageData.message.status === 'sending' ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : messageData.message.status === 'sent' ? (
+                            <Check className="h-3 w-3" />
+                          ) : messageData.message.status === 'delivered' ? (
+                            <CheckCheck className="h-3 w-3" />
+                          ) : messageData.message.status === 'read' ? (
+                            <motion.span
+                              initial={{ scale: 0.8 }}
+                              animate={{ scale: 1 }}
+                              className="text-blue-500"
+                            >
+                              <CheckCheck className="h-3 w-3" />
+                            </motion.span>
+                          ) : null}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {allMessages.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No messages yet
-            </p>
-          )}
-        </div>
-      </ScrollArea>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {allMessages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No messages yet
+              </p>
+            )}
+            <div ref={messagesEndRef} /> {/* Scroll anchor */}
+          </div>
+        </ScrollArea>
+      </div>
 
       {canSendMessages() && (
-        <div className="border-t p-4 bg-background">
+        <div className="border-t p-4 bg-background mt-auto">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               value={newMessage}

@@ -1185,14 +1185,14 @@ export function registerRoutes(app: Express): Server {
   // Accept/reject invitation
   app.post("/api/employees/invitations/:id/respond", async (req, res) => {
     try {
-      if (!req.user || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can respond to invitations" });
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
       }
 
       const { id } = req.params;
       const { status } = req.body;
 
-      if (!["accepted", "rejected"].includes(status)) {
+      if (!status || !["accepted", "rejected"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
 
@@ -1219,26 +1219,72 @@ export function registerRoutes(app: Express): Server {
         .returning();
 
       if (status === "accepted") {
-        // Create business employee relationship
-        await db.insert(businessEmployees)
-          .values({
-            businessId: invitation.businessId,
-            employeeId: req.user.id,
-            isActive: true,
-            createdAt: new Date()
-          });
+        try {
+          // Create business employee relationship
+          await db.insert(businessEmployees)
+            .values({
+              businessId: invitation.businessId,
+              employeeId: req.user.id,
+              isActive: true,
+              createdAt: new Date()
+            });
 
-        // Create welcome direct message from business to new employee
-        await db.insert(directMessages)
-          .values({
-            content: `Welcome to the team! Feel free to reach out if you need any assistance.`,
-            senderId: invitation.businessId,
-            receiverId: req.user.id,
-            businessId: invitation.businessId,
-            status: 'sent',
-            sentAt: new Date(),
-            createdAt: new Date()
-          });
+          // Get business user info for welcome message
+          const [business] = await db.select({
+            username: users.username
+          })
+          .from(users)
+          .where(eq(users.id, invitation.businessId));
+
+          // Create welcome direct message from business to new employee
+          await db.insert(directMessages)
+            .values({
+              content: `Welcome to ${business.username}'s team! Feel free to reach out if you need any assistance.`,
+              senderId: invitation.businessId,
+              receiverId: req.user.id,
+              businessId: invitation.businessId,
+              status: 'sent',
+              sentAt: new Date(),
+              createdAt: new Date()
+            });
+
+          // Get all active employees of this business (excluding the new employee)
+          const existingEmployees = await db.select({
+            id: users.id,
+            username: users.username
+          })
+          .from(businessEmployees)
+          .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+          .where(and(
+            eq(businessEmployees.businessId, invitation.businessId),
+            eq(businessEmployees.isActive, true),
+            not(eq(businessEmployees.employeeId, req.user.id))
+          ));
+
+          // Create initial direct messages between new employee and existing employees
+          for (const employee of existingEmployees) {
+            await db.insert(directMessages)
+              .values({
+                content: `Hi ${employee.username}, I just joined the team!`,
+                senderId: req.user.id,
+                receiverId: employee.id,
+                businessId: invitation.businessId,
+                status: 'sent',
+                sentAt: new Date(),
+                createdAt: new Date()
+              });
+          }
+        } catch (error) {
+          console.error('Error creating team relationships:', error);
+          // Rollback invitation status if team setup fails
+          await db.update(employeeInvitations)
+            .set({
+              status: 'pending',
+              updatedAt: new Date()
+            })
+            .where(eq(employeeInvitations.id, parseInt(id)));
+          throw error;
+        }
       }
 
       res.json(updatedInvitation);

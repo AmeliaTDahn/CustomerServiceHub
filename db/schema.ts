@@ -121,7 +121,6 @@ export const directMessages = pgTable("direct_messages", {
     enum: ["sent", "delivered", "read"] 
   }).default("sent").notNull(),
   businessId: integer("business_id").references(() => users.id),
-  visibleTo: integer("visible_to").references(() => users.id), 
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),

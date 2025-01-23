@@ -37,13 +37,7 @@ interface TicketChatProps {
   directMessageUserId?: number;
 }
 
-interface MessageHeader {
-  username: string;
-  role: string;
-  isBroadcast?: boolean;
-}
-
-const MessageHeader = ({ username, role, isBroadcast }: MessageHeader) => (
+const MessageHeader = ({ username, role, isBroadcast }: { username: string; role: string; isBroadcast?: boolean }) => (
   <div className="flex items-center gap-2 mb-1">
     <p className="text-sm font-medium">{username}</p>
     {isBroadcast && (
@@ -62,7 +56,8 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { isConnected, sendMessage } = useWebSocket(user?.id, user?.role);
+  const { isConnected, sendMessage, sendReadReceipt } = useWebSocket(user?.id, user?.role);
+  const lastProcessedMessagesRef = useRef<Set<number>>(new Set());
 
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: directMessageUserId
@@ -84,6 +79,40 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     enabled: !!(directMessageUserId || ticketId),
     refetchInterval: 5000
   });
+
+  // Process new messages and send read receipts
+  useEffect(() => {
+    if (!user) return;
+
+    const currentMessages = new Set(messages.map(m => m.message.id));
+    const processedMessages = lastProcessedMessagesRef.current;
+
+    messages.forEach(messageData => {
+      const messageId = messageData.message.id;
+
+      // Only process messages that:
+      // 1. Haven't been processed before
+      // 2. Are from other users
+      // 3. Haven't been marked as read
+      if (!processedMessages.has(messageId) && 
+          messageData.sender.id !== user.id &&
+          messageData.message.status !== 'read') {
+
+        // Send read receipt
+        sendReadReceipt(messageId);
+        processedMessages.add(messageId);
+      }
+    });
+
+    // Clean up processed messages that are no longer in the current set
+    Array.from(processedMessages).forEach(id => {
+      if (!currentMessages.has(id)) {
+        processedMessages.delete(id);
+      }
+    });
+
+    lastProcessedMessagesRef.current = processedMessages;
+  }, [messages, user, sendReadReceipt]);
 
   // Scroll to bottom whenever messages change
   useEffect(() => {

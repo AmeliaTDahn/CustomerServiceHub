@@ -34,10 +34,10 @@ import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
 
 interface TicketListProps {
-  tickets: (Ticket & { 
-    customer: { id: number; username: string },
-    hasBusinessResponse?: boolean,
-    hasFeedback?: boolean
+  tickets: (Ticket & {
+    customer: { id: number; username: string };
+    hasBusinessResponse?: boolean;
+    hasFeedback?: boolean;
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
@@ -55,11 +55,11 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const filterTickets = (isHistory: boolean) => {
     return tickets.filter(ticket => {
       if (isHistory) {
-        // History tab shows resolved tickets with feedback
-        return ticket.status === "resolved" && ticket.hasFeedback;
+        // History tab shows all resolved tickets
+        return ticket.status === "resolved";
       } else {
-        // Active tab shows unresolved tickets or resolved tickets without feedback
-        return ticket.status !== "resolved" || !ticket.hasFeedback;
+        // Active tab shows unresolved tickets
+        return ticket.status !== "resolved";
       }
     });
   };
@@ -213,18 +213,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
               {filterTickets(false).map((ticket) => (
                 <Card
                   key={ticket.id}
-                  className={`${
-                    (!isBusiness && readonly) || (!isBusiness && !isEmployee && ticket.status === "resolved")
-                      ? ''
-                      : 'cursor-pointer hover:shadow-md'
-                  } transition-shadow`}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
                   onClick={() => {
-                    if (isBusiness || isEmployee) {
-                      setSelectedTicket(ticket);
-                      return;
-                    }
-
-                    if (!isBusiness && !isEmployee && (ticket.hasBusinessResponse || ticket.status === "resolved")) {
+                    if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
                       setSelectedTicket(ticket);
                     }
                   }}
@@ -234,14 +225,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <CardTitle>{ticket.title}</CardTitle>
-                          {(isBusiness || isEmployee) && ticket.claimedById && (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Lock className="h-4 w-4" />
-                              <span className="text-xs">
-                                {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
-                              </span>
-                            </div>
-                          )}
                         </div>
                         <CardDescription>
                           <div className="space-y-1">
@@ -262,7 +245,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   </CardHeader>
                   <CardContent>
                     <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-                    {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && ticket.status !== "resolved" && (
+                    {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
                       <div className="mt-2 text-sm text-muted-foreground">
                         Waiting for support team to respond
                       </div>
@@ -302,7 +285,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                         <Badge className={getStatusColor(ticket.status)}>
                           {ticket.status.replace("_", " ")}
                         </Badge>
-                        <Badge variant="outline">Feedback Provided</Badge>
+                        {ticket.hasFeedback && (
+                          <Badge variant="outline">Feedback Provided</Badge>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
@@ -314,7 +299,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
               {filterTickets(true).length === 0 && (
                 <Card>
                   <CardContent className="py-8 text-center text-gray-500">
-                    No resolved tickets with feedback
+                    No resolved tickets
                   </CardContent>
                 </Card>
               )}

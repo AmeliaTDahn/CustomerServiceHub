@@ -123,18 +123,6 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
   const isBusiness = user?.role === 'business';
   const isCustomer = user?.role === 'customer';
 
-  const canSendMessages = () => {
-    if (readonly) return false;
-    if (directMessageUserId) return true;
-    if (isEmployee || isBusiness) return true;
-
-    // Allow customers to send messages in their own tickets that aren't resolved
-    if (isCustomer && ticket?.customerId === user?.id && ticket?.status !== "resolved") {
-      return true;
-    }
-    return true;
-  };
-
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!isConnected) {
@@ -303,7 +291,7 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         </div>
       </ScrollArea>
 
-      {canSendMessages() && (
+      {!readonly && (
         <div className="border-t p-4 bg-background mt-auto">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input

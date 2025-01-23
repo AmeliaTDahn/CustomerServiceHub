@@ -23,6 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { MessageCircle, Lock, Unlock } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -49,6 +50,19 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { user } = useUser();
+
+  // Function to filter tickets for active and history tabs
+  const filterTickets = (isHistory: boolean) => {
+    return tickets.filter(ticket => {
+      if (isHistory) {
+        // History tab shows resolved tickets with feedback
+        return ticket.status === "resolved" && ticket.hasFeedback;
+      } else {
+        // Active tab shows unresolved tickets or resolved tickets without feedback
+        return ticket.status !== "resolved" || !ticket.hasFeedback;
+      }
+    });
+  };
 
   const claimTicket = useMutation({
     mutationFn: async (ticketId: number) => {
@@ -188,77 +202,126 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   return (
     <>
-      <div className="space-y-4">
-        {tickets.map((ticket) => (
-          <Card
-            key={ticket.id}
-            className={`${
-              (!isBusiness && readonly) || (!isBusiness && !isEmployee && ticket.status === "resolved")
-                ? ''
-                : 'cursor-pointer hover:shadow-md'
-            } transition-shadow`}
-            onClick={() => {
-              // Allow business and employee users to click
-              if (isBusiness || isEmployee) {
-                setSelectedTicket(ticket);
-                return;
-              }
+      {!isBusiness && !isEmployee && (
+        <Tabs defaultValue="active" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="active">Active Tickets</TabsTrigger>
+            <TabsTrigger value="history">Ticket History</TabsTrigger>
+          </TabsList>
+          <TabsContent value="active">
+            <div className="space-y-4">
+              {filterTickets(false).map((ticket) => (
+                <Card
+                  key={ticket.id}
+                  className={`${
+                    (!isBusiness && readonly) || (!isBusiness && !isEmployee && ticket.status === "resolved")
+                      ? ''
+                      : 'cursor-pointer hover:shadow-md'
+                  } transition-shadow`}
+                  onClick={() => {
+                    if (isBusiness || isEmployee) {
+                      setSelectedTicket(ticket);
+                      return;
+                    }
 
-              // For customers, only allow click if they've received a response or if the ticket is resolved.
-              if (!isBusiness && !isEmployee && (ticket.hasBusinessResponse || ticket.status === "resolved")) {
-                setSelectedTicket(ticket);
-              }
-            }}
-          >
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle>{ticket.title}</CardTitle>
-                    {(isBusiness || isEmployee) && ticket.claimedById && (
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Lock className="h-4 w-4" />
-                        <span className="text-xs">
-                          {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
-                        </span>
+                    if (!isBusiness && !isEmployee && (ticket.hasBusinessResponse || ticket.status === "resolved")) {
+                      setSelectedTicket(ticket);
+                    }
+                  }}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <CardTitle>{ticket.title}</CardTitle>
+                          {(isBusiness || isEmployee) && ticket.claimedById && (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Lock className="h-4 w-4" />
+                              <span className="text-xs">
+                                {ticket.claimedById === user?.id ? "Claimed by you" : "Claimed"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <CardDescription>
+                          <div className="space-y-1">
+                            <div>From: {ticket.customer.username}</div>
+                            <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <Badge className={getStatusColor(ticket.status)}>
+                          {ticket.status.replace("_", " ")}
+                        </Badge>
+                        <Badge className={getPriorityColor(ticket.priority)}>
+                          {ticket.priority.toUpperCase()}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+                    {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && ticket.status !== "resolved" && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        Waiting for support team to respond
                       </div>
                     )}
-                  </div>
-                  <CardDescription>
-                    <div className="space-y-1">
-                      <div>From: {ticket.customer.username}</div>
-                      <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
-                    </div>
-                  </CardDescription>
-                </div>
-                <div className="flex gap-2 items-center">
-                  <Badge className={getStatusColor(ticket.status)}>
-                    {ticket.status.replace("_", " ")}
-                  </Badge>
-                  <Badge className={getPriorityColor(ticket.priority)}>
-                    {ticket.priority.toUpperCase()}
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-              {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && ticket.status !== "resolved" && (
-                <div className="mt-2 text-sm text-muted-foreground">
-                  Waiting for support team to respond
-                </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {filterTickets(false).length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-gray-500">
+                    No active tickets
+                  </CardContent>
+                </Card>
               )}
-            </CardContent>
-          </Card>
-        ))}
-        {tickets.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-gray-500">
-              No tickets found
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="history">
+            <div className="space-y-4">
+              {filterTickets(true).map((ticket) => (
+                <Card
+                  key={ticket.id}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedTicket(ticket)}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <CardTitle>{ticket.title}</CardTitle>
+                        <CardDescription>
+                          <div className="space-y-1">
+                            <div>Created on {new Date(ticket.createdAt).toLocaleDateString()}</div>
+                            <div>Resolved on {new Date(ticket.updatedAt).toLocaleDateString()}</div>
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge className={getStatusColor(ticket.status)}>
+                          {ticket.status.replace("_", " ")}
+                        </Badge>
+                        <Badge variant="outline">Feedback Provided</Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
+                  </CardContent>
+                </Card>
+              ))}
+              {filterTickets(true).length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-gray-500">
+                    No resolved tickets with feedback
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
 
       <Dialog open={selectedTicket !== null} onOpenChange={() => setSelectedTicket(null)}>
         <DialogContent className="max-w-2xl">

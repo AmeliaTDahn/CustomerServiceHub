@@ -26,6 +26,14 @@ interface StatusUpdate {
   timestamp: string;
 }
 
+interface TicketResolution {
+  type: 'ticket_resolved';
+  ticketId: number;
+  customerId: number;
+  resolvedBy: number;
+  timestamp: string;
+}
+
 interface ExtendedWebSocket extends WebSocket {
   userId?: number;
   role?: string;
@@ -222,6 +230,31 @@ export function setupWebSocket(server: Server, app: Express) {
         if (message.type === 'ping') {
           ws.isAlive = true;
           ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+
+        if (message.type === 'ticket_resolved') {
+          const resolution = message as TicketResolution;
+          const [ticket] = await db
+            .select()
+            .from(tickets)
+            .where(eq(tickets.id, resolution.ticketId));
+
+          if (!ticket) {
+            throw new Error('Invalid ticket');
+          }
+
+          // Notify the customer about ticket resolution
+          const customerWs = connections.get(`${ticket.customerId}-customer`);
+          if (customerWs?.readyState === WebSocket.OPEN) {
+            customerWs.send(JSON.stringify({
+              type: 'ticket_resolved',
+              ticketId: ticket.id,
+              resolvedBy: resolution.resolvedBy,
+              timestamp: new Date().toISOString()
+            }));
+          }
+
           return;
         }
 

@@ -20,6 +20,13 @@ interface StatusUpdate {
   timestamp: string;
 }
 
+interface TicketResolution {
+  type: 'ticket_resolved';
+  ticketId: number;
+  resolvedBy: number;
+  timestamp: string;
+}
+
 export function useWebSocket(userId: number | undefined, role: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
   const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
@@ -120,6 +127,23 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
             title: "Error",
             description: data.error,
           });
+          return;
+        }
+
+        if (data.type === 'ticket_resolved') {
+          // Invalidate tickets query to refresh the list
+          queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+          queryClient.invalidateQueries({ 
+            queryKey: ['/api/tickets', data.ticketId] 
+          });
+
+          // Show notification for ticket resolution
+          if (role === 'customer') {
+            showNotification(
+              'Ticket Resolved',
+              `Your ticket #${data.ticketId} has been resolved.`
+            );
+          }
           return;
         }
 

@@ -52,7 +52,7 @@ const MessageHeader = ({ username, role, isBroadcast }: { username: string; role
 
 export default function TicketChat({ ticketId, readonly = false, directMessageUserId, chatType = 'ticket' }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
-  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<Map<number, Message>>(new Map());
   const { user } = useUser();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,9 +77,32 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: !!(directMessageUserId || ticketId),
-    refetchInterval: 5000
+    enabled: !!(directMessageUserId || ticketId)
   });
+
+  useEffect(() => {
+    // Clean up stale optimistic messages when real messages arrive
+    const currentMessageIds = new Set(messages.map(m => m.message.id));
+    const newOptimisticMessages = new Map(optimisticMessages);
+    let hasChanges = false;
+
+    for (const [tempId, optMessage] of optimisticMessages) {
+      // If we find a real message with the same content and timestamp (within 1 second)
+      const matchingRealMessage = messages.find(m => 
+        m.message.content === optMessage.message.content &&
+        Math.abs(new Date(m.message.sentAt).getTime() - new Date(optMessage.message.sentAt).getTime()) < 1000
+      );
+
+      if (matchingRealMessage) {
+        newOptimisticMessages.delete(tempId);
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      setOptimisticMessages(newOptimisticMessages);
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!user) return;
@@ -145,10 +168,11 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       }
 
       const isBroadcast = isCustomer && ticket && !ticket.claimedById;
+      const tempId = Date.now();
 
       const optimisticMessage: Message = {
         message: {
-          id: Date.now(),
+          id: tempId,
           content,
           ticketId: ticketId || null,
           senderId: user!.id,
@@ -166,7 +190,11 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         },
       };
 
-      setOptimisticMessages(prev => [...prev, optimisticMessage]);
+      setOptimisticMessages(prev => {
+        const next = new Map(prev);
+        next.set(tempId, optimisticMessage);
+        return next;
+      });
 
       sendMessage({
         type: 'message',
@@ -176,27 +204,13 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
         timestamp: new Date().toISOString(),
         ticketId: ticketId || undefined,
         directMessageUserId,
-        chatType,
         chatInitiator: messages.length === 0,
       });
 
       return optimisticMessage;
     },
-    onSuccess: () => {
-      setNewMessage("");
-
-      if (directMessageUserId) {
-        queryClient.invalidateQueries({
-          queryKey: [`/api/messages/${chatType === 'business' ? 'business' : 'direct'}`, directMessageUserId]
-        });
-      } else if (ticketId) {
-        queryClient.invalidateQueries({
-          queryKey: ['/api/tickets', ticketId, 'messages']
-        });
-      }
-    },
     onError: (error) => {
-      setOptimisticMessages([]);
+      setOptimisticMessages(new Map());
       toast({
         variant: "destructive",
         title: "Error sending message",
@@ -209,9 +223,10 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     e.preventDefault();
     if (!newMessage.trim() || readonly || !user || sendMessageMutation.isPending) return;
     sendMessageMutation.mutate(newMessage.trim());
+    setNewMessage("");
   };
 
-  const allMessages = [...messages, ...optimisticMessages];
+  const allMessages = [...messages, ...Array.from(optimisticMessages.values())];
 
   return (
     <div className="flex flex-col h-full relative">

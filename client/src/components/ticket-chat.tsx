@@ -106,12 +106,9 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
     if (directMessageUserId) return true;
     if (isEmployee || isBusiness) return true;
 
-    // For customers, check if there are any messages from employees or business
-    if (isCustomer && ticketId) {
-      // If there are messages and at least one is from an employee/business
-      return messages.some(msg => 
-        msg.sender.role === 'employee' || msg.sender.role === 'business'
-      );
+    // For customers, always show the input box if they have the ticket
+    if (isCustomer && ticketId && ticket?.customerId === user?.id) {
+      return true;
     }
     return false;
   };
@@ -210,113 +207,103 @@ export default function TicketChat({ ticketId, readonly = false, directMessageUs
       {!readonly && ticket && messages.length === 0 && user?.role === 'customer' && (
         <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2">
           <Megaphone className="h-4 w-4" />
-          Waiting for an employee to respond. You'll be able to send messages once they do.
+          Your message will be sent to support staff.
         </div>
       )}
-      <div className={cn(
-        "absolute inset-0",
-        !readonly && "bottom-[4.5rem]",
-        !readonly && ticket && messages.length === 0 && user?.role === 'customer' && "top-[2.5rem]"
-      )}>
-        <ScrollArea
-          ref={scrollAreaRef}
-          className="h-full relative scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
-        >
-          <div className="space-y-4 p-4 pb-6">
-            <AnimatePresence initial={false}>
-              {allMessages?.map((messageData) => (
-                <motion.div
-                  key={messageData.message.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className={`flex ${
-                    messageData.sender.id === user?.id ? "justify-end" : "justify-start"
-                  }`}
+
+      <ScrollArea className="flex-1 relative" ref={scrollAreaRef}>
+        <div className="space-y-4 p-4">
+          <AnimatePresence initial={false}>
+            {allMessages?.map((messageData) => (
+              <motion.div
+                key={messageData.message.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`flex ${
+                  messageData.sender.id === user?.id ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg p-3",
+                    messageData.sender.id === user?.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  )}
                 >
-                  <div
-                    className={cn(
-                      "max-w-[80%] rounded-lg p-3",
-                      messageData.sender.id === user?.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    )}
-                  >
-                    <MessageHeader
-                      username={messageData.sender.username}
-                      role={messageData.sender.role}
-                      isBroadcast={
-                        messageData.sender.id === user?.id &&
-                        user?.role === 'customer' &&
-                        ticket &&
-                        !ticket.claimedById
-                      }
-                    />
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {messageData.message.content}
-                    </p>
-                    <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                      <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
-                      {messageData.sender.id === user?.id && (
-                        <span className="ml-2 flex items-center gap-1">
-                          {messageData.message.status === 'sending' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : messageData.message.status === 'sent' ? (
-                            <Check className="h-3 w-3" />
-                          ) : messageData.message.status === 'delivered' ? (
+                  <MessageHeader
+                    username={messageData.sender.username}
+                    role={messageData.sender.role}
+                    isBroadcast={
+                      messageData.sender.id === user?.id &&
+                      user?.role === 'customer' &&
+                      ticket &&
+                      !ticket.claimedById
+                    }
+                  />
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {messageData.message.content}
+                  </p>
+                  <div className="flex items-center justify-between mt-1 text-xs opacity-70">
+                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                    {messageData.sender.id === user?.id && (
+                      <span className="ml-2 flex items-center gap-1">
+                        {messageData.message.status === 'sending' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : messageData.message.status === 'sent' ? (
+                          <Check className="h-3 w-3" />
+                        ) : messageData.message.status === 'delivered' ? (
+                          <CheckCheck className="h-3 w-3" />
+                        ) : messageData.message.status === 'read' ? (
+                          <motion.span
+                            initial={{ scale: 0.8 }}
+                            animate={{ scale: 1 }}
+                            className="text-blue-500"
+                          >
                             <CheckCheck className="h-3 w-3" />
-                          ) : messageData.message.status === 'read' ? (
-                            <motion.span
-                              initial={{ scale: 0.8 }}
-                              animate={{ scale: 1 }}
-                              className="text-blue-500"
-                            >
-                              <CheckCheck className="h-3 w-3" />
-                            </motion.span>
-                          ) : null}
-                        </span>
-                      )}
-                    </div>
+                          </motion.span>
+                        ) : null}
+                      </span>
+                    )}
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            {allMessages.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No messages yet
-              </p>
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {allMessages.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No messages yet
+            </p>
+          )}
+        </div>
+      </ScrollArea>
 
       {canSendMessages() && (
-        <div className="absolute bottom-0 left-0 right-0 bg-background border-t">
-          <form onSubmit={handleSubmit} className="p-4">
-            <div className="flex gap-2">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={
-                  isConnected
-                    ? `Type your message${!ticket?.claimedById && user?.role === 'customer' ? ' (will be broadcast to all employees)' : ''}...`
-                    : "Connecting..."
-                }
-                className="flex-1"
-                disabled={!isConnected || sendMessageMutation.isPending}
-              />
-              <Button
-                type="submit"
-                disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
-                className="relative"
-              >
-                {sendMessageMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Send"
-                )}
-              </Button>
-            </div>
+        <div className="border-t p-4 bg-background">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={
+                isConnected
+                  ? "Type your message..."
+                  : "Connecting..."
+              }
+              className="flex-1"
+              disabled={!isConnected || sendMessageMutation.isPending}
+            />
+            <Button
+              type="submit"
+              disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
+              className="relative"
+            >
+              {sendMessageMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Send"
+              )}
+            </Button>
           </form>
         </div>
       )}

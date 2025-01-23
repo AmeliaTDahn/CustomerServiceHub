@@ -24,21 +24,25 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only employees can view their business connections" });
       }
 
-      // Get all active business connections for the employee
-      const activeBusinesses = await db
+      // Get all business connections for the employee with business details
+      const businessConnections = await db
         .select({
-          businessId: businessEmployees.businessId
+          business: {
+            id: users.id,
+            username: users.username,
+          },
+          connection: {
+            isActive: businessEmployees.isActive,
+          }
         })
         .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.employeeId, req.user.id),
-          eq(businessEmployees.isActive, true)
-        ));
+        .innerJoin(users, eq(users.id, businessEmployees.businessId))
+        .where(eq(businessEmployees.employeeId, req.user.id));
 
-      res.json(activeBusinesses);
+      res.json(businessConnections);
     } catch (error) {
-      console.error('Error fetching active businesses:', error);
-      res.status(500).json({ error: "Failed to fetch active businesses" });
+      console.error('Error fetching business connections:', error);
+      res.status(500).json({ error: "Failed to fetch business connections" });
     }
   });
 
@@ -912,7 +916,7 @@ export function registerRoutes(app: Express): Server {
         author: {
           id: users.id,
           username: users.username,
-          role: usersrole
+          role: users.role
         }
       })
         .from(ticketNotes)

@@ -6,9 +6,19 @@ import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import InvitationHandler from "@/components/invitation-handler";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Building2 } from "lucide-react";
+import { MessageCircle, Building2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
+
+interface BusinessConnection {
+  business: {
+    id: number;
+    username: string;
+  };
+  connection: {
+    isActive: boolean;
+  };
+}
 
 export default function EmployeeDashboard() {
   const { user, logout } = useUser();
@@ -17,8 +27,8 @@ export default function EmployeeDashboard() {
     queryKey: ['/api/tickets'],
   });
 
-  // Query to check if employee has any active business connections
-  const { data: businessConnections = [] } = useQuery<{ businessId: number }[]>({
+  // Query to check business connections
+  const { data: businessConnections = [] } = useQuery<BusinessConnection[]>({
     queryKey: ['/api/employees/active-businesses'],
   });
 
@@ -55,6 +65,9 @@ export default function EmployeeDashboard() {
         return 0;
     }
   });
+
+  // Check if there are any active connections
+  const hasActiveConnections = businessConnections.some(conn => conn.connection.isActive);
 
   return (
     <div className="min-h-screen bg-background">
@@ -111,21 +124,67 @@ export default function EmployeeDashboard() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Customer Tickets</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <TicketFilters 
-                onSearchChange={setSearchTerm}
-                onStatusChange={setStatusFilter}
-                onCategoryChange={setCategoryFilter}
-                onPriorityChange={setPriorityFilter}
-                onSortChange={setSortBy}
-              />
-              <TicketList tickets={filteredTickets} isEmployee />
-            </CardContent>
-          </Card>
+          <>
+            {/* Business Connection Status */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {businessConnections.map((connection) => (
+                <Card key={connection.business.id}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Building2 className="h-4 w-4" />
+                      {connection.business.username}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className={`flex items-center gap-2 ${
+                      connection.connection.isActive ? 'text-green-600' : 'text-amber-600'
+                    }`}>
+                      {connection.connection.isActive ? (
+                        'Active'
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>Access Paused</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {hasActiveConnections ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Active Customer Tickets</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <TicketFilters 
+                    onSearchChange={setSearchTerm}
+                    onStatusChange={setStatusFilter}
+                    onCategoryChange={setCategoryFilter}
+                    onPriorityChange={setPriorityFilter}
+                    onSortChange={setSortBy}
+                  />
+                  <TicketList tickets={filteredTickets} isEmployee />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-amber-500" />
+                    Access Currently Paused
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">
+                    Your access to all connected businesses is currently paused. Please contact the respective business administrators for more information.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
       </main>
     </div>

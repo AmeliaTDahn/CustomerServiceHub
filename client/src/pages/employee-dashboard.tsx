@@ -112,7 +112,7 @@ export default function EmployeeDashboard() {
                 You're not currently connected to any business
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               <p className="text-muted-foreground">
                 To start handling customer support tickets, you need to:
               </p>

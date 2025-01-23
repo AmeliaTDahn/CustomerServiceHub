@@ -35,7 +35,8 @@ import TicketFeedback from "./ticket-feedback";
 interface TicketListProps {
   tickets: (Ticket & { 
     customer: { id: number; username: string },
-    hasBusinessResponse?: boolean 
+    hasBusinessResponse?: boolean,
+    hasFeedback?: boolean
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
@@ -203,8 +204,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 return;
               }
 
-              // For customers, only allow click if they've received a response
-              if (!isBusiness && !isEmployee && ticket.hasBusinessResponse) {
+              // For customers, only allow click if they've received a response or if the ticket is resolved.
+              if (!isBusiness && !isEmployee && (ticket.hasBusinessResponse || ticket.status === "resolved")) {
                 setSelectedTicket(ticket);
               }
             }}
@@ -214,7 +215,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <CardTitle>{ticket.title}</CardTitle>
-                    {/* Only show claim status to business and employee users */}
                     {(isBusiness || isEmployee) && ticket.claimedById && (
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Lock className="h-4 w-4" />
@@ -243,8 +243,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             </CardHeader>
             <CardContent>
               <Badge variant="outline">{getCategoryLabel(ticket.category)}</Badge>
-              {/* Show message availability status for customers */}
-              {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && (
+              {!isBusiness && !isEmployee && !ticket.hasBusinessResponse && ticket.status !== "resolved" && (
                 <div className="mt-2 text-sm text-muted-foreground">
                   Waiting for support team to respond
                 </div>
@@ -312,22 +311,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   </div>
 
-                  {/* Show message button for customers only if they've received a response */}
-                  {!isBusiness && !isEmployee && selectedTicket.hasBusinessResponse && (
-                    <div className="mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex items-center gap-2"
-                        onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        View Messages
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Only show actions for business/employee users */}
                   {(isBusiness || isEmployee) && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium">Actions</h3>
@@ -367,7 +350,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   )}
 
-                  {/* Only show private notes for business/employee users */}
                   {(isBusiness || isEmployee) && (
                     <div className="mt-6">
                       <ScrollArea className="h-[200px] rounded-md border p-4">
@@ -376,15 +358,29 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     </div>
                   )}
 
-                  {/* Show feedback for customers */}
-                  {!isBusiness && !isEmployee && (
-                    <div className="space-y-4">
-                      <ScrollArea className="h-[200px] rounded-md border p-4">
+                  {!isBusiness && !isEmployee && selectedTicket.status === "resolved" && (
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium">Feedback</h3>
+                      <div className="bg-muted rounded-lg p-4">
                         <TicketFeedback
                           ticketId={selectedTicket.id}
-                          isResolved={selectedTicket.status === "resolved"}
+                          isResolved={true}
                         />
-                      </ScrollArea>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isBusiness && !isEmployee && selectedTicket.hasBusinessResponse && (
+                    <div className="mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex items-center gap-2"
+                        onClick={() => setLocation(`/messages?ticketId=${selectedTicket.id}`)}
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        View Messages
+                      </Button>
                     </div>
                   )}
                 </div>

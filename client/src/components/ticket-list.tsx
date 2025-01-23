@@ -32,6 +32,7 @@ import { useState } from "react";
 import { useUser } from "@/hooks/use-user";
 import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
+import { cn } from "@/lib/utils";
 
 interface TicketListProps {
   tickets: (Ticket & {
@@ -57,12 +58,11 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  const filterTickets = (view: 'active' | 'my-tickets' | 'history', showHistoryView: boolean) => {
-    return tickets.filter(ticket => {
-      // First filter by history toggle
+  const filterAndSortTickets = (view: 'active' | 'my-tickets' | 'history', showHistoryView: boolean) => {
+    // First, filter the tickets
+    const filteredTickets = tickets.filter(ticket => {
       const historyFilter = showHistoryView ? ticket.status === "resolved" : ticket.status !== "resolved";
 
-      // Then apply employee-specific filters if needed
       if (isEmployee && !showHistory) {
         switch (view) {
           case 'active':
@@ -75,6 +75,16 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       }
 
       return historyFilter;
+    });
+
+    // Then, sort the tickets
+    return filteredTickets.sort((a, b) => {
+      // First, separate resolved and unresolved tickets
+      if (a.status === "resolved" && b.status !== "resolved") return 1;
+      if (a.status !== "resolved" && b.status === "resolved") return -1;
+
+      // Within each group (resolved/unresolved), sort by creation date (newest first)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   };
 
@@ -181,10 +191,13 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       </div>
 
       <div className="px-4 py-2 space-y-2">
-        {filterTickets(viewType, showHistory).map((ticket) => (
+        {filterAndSortTickets(viewType, showHistory).map((ticket) => (
           <Card
             key={ticket.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className={cn(
+              "cursor-pointer hover:shadow-md transition-shadow",
+              ticket.status === "resolved" && "opacity-75"
+            )}
             onClick={() => setSelectedTicket(ticket)}
           >
             <div className="p-3">
@@ -211,7 +224,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             </div>
           </Card>
         ))}
-        {filterTickets(viewType, showHistory).length === 0 && (
+        {filterAndSortTickets(viewType, showHistory).length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-8">
             No {showHistory ? 'resolved' : 'active'} tickets
           </div>

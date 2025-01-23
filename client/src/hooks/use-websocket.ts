@@ -38,6 +38,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const hasShownErrorRef = useRef(false);
+  const isReconnectingRef = useRef(false);
 
   useEffect(() => {
     async function requestPermission() {
@@ -90,7 +91,9 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       const heartbeat = () => {
         clearTimeout(pingTimeout);
         pingTimeout = setTimeout(() => {
-          ws.close();
+          if (!isReconnectingRef.current) {
+            ws.close();
+          }
         }, 45000);
       };
 
@@ -113,6 +116,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       setIsConnected(true);
       reconnectAttempts.current = 0;
       hasShownErrorRef.current = false;
+      isReconnectingRef.current = false;
       setupPing();
 
       // Send initial connection message with user ID
@@ -137,10 +141,12 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       }
 
       if (reconnectAttempts.current < maxReconnectAttempts) {
+        isReconnectingRef.current = true;
         const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
         reconnectAttempts.current++;
         setTimeout(connect, timeout);
 
+        // Only show reconnection toast after multiple attempts
         if (reconnectAttempts.current > 2) {
           toast({
             title: "Reconnecting...",
@@ -148,6 +154,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
           });
         }
       } else if (!hasShownErrorRef.current) {
+        isReconnectingRef.current = false;
         hasShownErrorRef.current = true;
         toast({
           variant: "destructive",
@@ -161,6 +168,10 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       try {
         const data = JSON.parse(event.data);
 
+        // Reset error flags on successful message
+        hasShownErrorRef.current = false;
+        isReconnectingRef.current = false;
+
         if (data.type === 'connection') {
           console.log('Connection status:', data.status);
           queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
@@ -173,7 +184,9 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
         }
 
         if (data.error) {
-          if (!data.error.includes('connection')) {
+          // Only show error toast for non-connection related errors
+          // and when we're not in a reconnecting state
+          if (!data.error.includes('connection') && !isReconnectingRef.current) {
             toast({
               variant: "destructive",
               title: "Error",
@@ -243,7 +256,13 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      if (reconnectAttempts.current === 0 && !hasShownErrorRef.current) {
+      // Only show the error toast if:
+      // 1. We're not already reconnecting
+      // 2. We haven't shown an error yet
+      // 3. This is our first connection attempt
+      if (!isReconnectingRef.current && 
+          !hasShownErrorRef.current && 
+          reconnectAttempts.current === 0) {
         hasShownErrorRef.current = true;
         toast({
           variant: "destructive",
@@ -283,7 +302,7 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     } else {
       console.error('WebSocket is not connected');
-      if (!hasShownErrorRef.current) {
+      if (!hasShownErrorRef.current && !isReconnectingRef.current) {
         hasShownErrorRef.current = true;
         toast({
           variant: "destructive",

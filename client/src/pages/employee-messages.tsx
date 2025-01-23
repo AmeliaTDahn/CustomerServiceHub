@@ -22,6 +22,7 @@ interface TicketWithCustomer extends Ticket {
     username: string;
   };
   lastMessageAt?: string;
+  unreadCount?: number; // Added unreadCount
 }
 
 interface User {
@@ -195,7 +196,12 @@ export default function EmployeeMessages() {
                         >
                           <div className="flex items-start justify-between">
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium truncate">{ticket.title}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate">{ticket.title}</p>
+                                {ticket.unreadCount > 0 && (
+                                  <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                )}
+                              </div>
                               <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                                 <span>{ticket.customer.username}</span>
                                 <span>•</span>

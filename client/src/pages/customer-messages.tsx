@@ -142,7 +142,12 @@ export default function CustomerMessages() {
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1">
-                                <p className="font-medium">{ticket.title}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{ticket.title}</p>
+                                  {ticket.unreadCount > 0 && (
+                                    <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                  )}
+                                </div>
                                 <div className="mt-1.5 flex flex-col gap-1">
                                   {ticket.business && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">

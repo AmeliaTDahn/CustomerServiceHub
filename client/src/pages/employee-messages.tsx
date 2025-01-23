@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,7 @@ export default function EmployeeMessages() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [viewType, setViewType] = useState<'active' | 'resolved' | 'direct'>('active');
   const [chatType, setChatType] = useState<ChatType>('ticket');
+  const queryClient = useQueryClient();
 
   // Fetch all tickets with their last message timestamps
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery<TicketWithCustomer[]>({
@@ -57,16 +58,26 @@ export default function EmployeeMessages() {
   });
 
   // Fetch users for direct messaging
-  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<User[]>({
     queryKey: ['/api/users/staff'],
     enabled: viewType === 'direct'
   });
 
   // Fetch business user for direct messaging
-  const { data: businessUser, isLoading: businessUserLoading } = useQuery<BusinessUser>({
+  const { data: businessUser, isLoading: businessUserLoading, refetch: refetchBusinessUser } = useQuery<BusinessUser>({
     queryKey: ['/api/users/business'],
     enabled: viewType === 'direct'
   });
+
+  // Force refresh when entering direct messages view
+  useEffect(() => {
+    if (viewType === 'direct') {
+      // Invalidate and refetch all direct message related queries
+      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+      refetchUsers();
+      refetchBusinessUser();
+    }
+  }, [viewType, queryClient, refetchUsers, refetchBusinessUser]);
 
   // Filter users based on search term, excluding current user and business user
   const filteredUsers = users.filter(u =>

@@ -27,12 +27,20 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, Search, Pause, Play, UserMinus } from "lucide-react";
 
-interface Employee {
+interface EmployeeData {
+  employee: {
+    id: number;
+    username: string;
+  };
+  relation: {
+    id: number;
+    isActive: boolean;
+  };
+}
+
+interface AvailableEmployee {
   id: number;
   username: string;
-  role: string;
-  isActive: boolean;
-  relationId: number;
 }
 
 export default function EmployeeManagement() {
@@ -43,12 +51,12 @@ export default function EmployeeManagement() {
   const queryClient = useQueryClient();
 
   // Fetch employees
-  const { data: employees = [] } = useQuery<Employee[]>({
+  const { data: employees = [] } = useQuery<EmployeeData[]>({
     queryKey: ['/api/businesses/employees'],
   });
 
   // Fetch available employees to invite
-  const { data: availableEmployees = [] } = useQuery<Employee[]>({
+  const { data: availableEmployees = [] } = useQuery<AvailableEmployee[]>({
     queryKey: ['/api/employees'],
     enabled: isInviteDialogOpen,
   });
@@ -145,7 +153,12 @@ export default function EmployeeManagement() {
 
   // Filter current employees based on search term
   const filteredEmployees = employees.filter(emp =>
-    emp.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
+    emp.employee.username.toLowerCase().includes(existingEmployeeSearch.toLowerCase())
+  );
+
+  // Filter available employees based on search term
+  const filteredAvailableEmployees = availableEmployees.filter(emp =>
+    emp.username.toLowerCase().includes(currentEmployeeSearch.toLowerCase())
   );
 
   return (
@@ -180,7 +193,7 @@ export default function EmployeeManagement() {
                 />
                 <CommandEmpty>No employees found</CommandEmpty>
                 <CommandGroup>
-                  {availableEmployees.map((employee) => (
+                  {filteredAvailableEmployees.map((employee) => (
                     <CommandItem
                       key={employee.id}
                       onSelect={() => {
@@ -219,18 +232,18 @@ export default function EmployeeManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredEmployees.map((employee) => (
-              <TableRow key={employee.id}>
-                <TableCell>{employee.username}</TableCell>
+            {filteredEmployees.map((emp) => (
+              <TableRow key={emp.employee.id}>
+                <TableCell>{emp.employee.username}</TableCell>
                 <TableCell>
                   <span
                     className={`px-2 py-1 rounded-full text-xs ${
-                      employee.isActive
+                      emp.relation.isActive
                         ? "bg-green-100 text-green-800"
                         : "bg-red-100 text-red-800"
                     }`}
                   >
-                    {employee.isActive ? "Active" : "Paused"}
+                    {emp.relation.isActive ? "Active" : "Paused"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right">
@@ -238,10 +251,10 @@ export default function EmployeeManagement() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toggleEmployeeStatus.mutate(employee.id)}
+                      onClick={() => toggleEmployeeStatus.mutate(emp.employee.id)}
                       disabled={toggleEmployeeStatus.isPending}
                     >
-                      {employee.isActive ? (
+                      {emp.relation.isActive ? (
                         <Pause className="h-4 w-4" />
                       ) : (
                         <Play className="h-4 w-4" />
@@ -252,7 +265,7 @@ export default function EmployeeManagement() {
                       size="sm"
                       onClick={() => {
                         if (confirm('Are you sure you want to remove this employee? This action cannot be undone.')) {
-                          removeEmployee.mutate(employee.id);
+                          removeEmployee.mutate(emp.employee.id);
                         }
                       }}
                       disabled={removeEmployee.isPending}

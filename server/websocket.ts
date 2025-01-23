@@ -92,29 +92,6 @@ async function validateDirectMessage(senderId: number, receiverId: number) {
   }
 }
 
-async function broadcastToEmployees(message: any, businessId: number) {
-  try {
-    const employees = await db
-      .select()
-      .from(businessEmployees)
-      .where(
-        and(
-          eq(businessEmployees.businessId, businessId),
-          eq(businessEmployees.isActive, true)
-        )
-      );
-
-    for (const employee of employees) {
-      const employeeWs = connections.get(`${employee.employeeId}-employee`);
-      if (employeeWs?.readyState === WebSocket.OPEN) {
-        employeeWs.send(JSON.stringify(message));
-      }
-    }
-  } catch (error) {
-    console.error('Error broadcasting message:', error);
-  }
-}
-
 async function determineUserRole(userId: number): Promise<string | null> {
   try {
     const [employee] = await db
@@ -154,28 +131,51 @@ async function determineUserRole(userId: number): Promise<string | null> {
   }
 }
 
-async function handleDirectMessage(ws: ExtendedWebSocket, message: Message) {
+async function handleMessage(ws: ExtendedWebSocket, message: Message) {
   try {
-    if (!message.directMessageUserId) {
-      throw new Error('directMessageUserId is required for direct messages');
+    if (!message.senderId || message.senderId !== ws.userId) {
+      throw new Error('Invalid sender ID');
     }
 
-    const isValidDirectMessage = await validateDirectMessage(message.senderId, message.directMessageUserId);
-    if (!isValidDirectMessage) {
-      throw new Error('Unauthorized direct message');
+    let receiverId: number;
+    let ticketId: number | undefined = message.ticketId;
+
+    if (message.ticketId) {
+      const [ticket] = await db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.id, message.ticketId));
+
+      if (!ticket) {
+        throw new Error('Invalid ticket');
+      }
+
+      if (message.senderId === ticket.customerId) {
+        receiverId = ticket.claimedById || ticket.businessId!;
+      } else {
+        receiverId = ticket.customerId;
+      }
+    } else if (message.directMessageUserId) {
+      receiverId = message.directMessageUserId;
+      const isValidDirectMessage = await validateDirectMessage(message.senderId, receiverId);
+      if (!isValidDirectMessage) {
+        throw new Error('Unauthorized direct message');
+      }
+    } else {
+      throw new Error('Either ticketId or directMessageUserId is required');
     }
 
     const [savedMessage] = await db.insert(messages)
       .values({
         content: message.content,
         senderId: message.senderId,
-        receiverId: message.directMessageUserId,
+        receiverId,
         status: 'sent',
         chatInitiator: message.chatInitiator || false,
         initiatedAt: message.chatInitiator ? new Date() : null,
         sentAt: new Date(),
         createdAt: new Date(),
-        ticketId: null
+        ticketId
       })
       .returning();
 
@@ -189,30 +189,64 @@ async function handleDirectMessage(ws: ExtendedWebSocket, message: Message) {
       chatInitiator: savedMessage.chatInitiator,
       initiatedAt: savedMessage.initiatedAt?.toISOString(),
       sentAt: savedMessage.sentAt.toISOString(),
-      createdAt: savedMessage.createdAt.toISOString()
+      createdAt: savedMessage.createdAt.toISOString(),
+      ticketId: savedMessage.ticketId
     };
 
+    // Send confirmation to sender
     ws.send(JSON.stringify(responseMessage));
 
-    const receiverRole = await determineUserRole(message.directMessageUserId);
-    console.log(`Sending direct message to user ${message.directMessageUserId} with role ${receiverRole}`);
-
+    // Determine receiver's role and send message
+    const receiverRole = await determineUserRole(receiverId);
     if (receiverRole) {
-      const receiverWs = connections.get(`${message.directMessageUserId}-${receiverRole}`);
+      const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
       if (receiverWs?.readyState === WebSocket.OPEN) {
         receiverWs.send(JSON.stringify(responseMessage));
       } else {
-        console.error(`Receiver WebSocket not found or not open for user ${message.directMessageUserId}`);
+        console.log(`Receiver ${receiverId} (${receiverRole}) is not connected or WebSocket not open`);
       }
-    } else {
-      console.error(`Could not determine role for receiver ${message.directMessageUserId}`);
+    }
+
+    // For ticket messages, handle broadcasting if needed
+    if (ticketId) {
+      const [ticket] = await db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.id, ticketId));
+
+      if (ticket && message.senderId === ticket.customerId && !ticket.claimedById) {
+        await broadcastToEmployees(responseMessage, ticket.businessId!);
+      }
     }
   } catch (error) {
-    console.error('Error handling direct message:', error);
+    console.error('Error handling message:', error);
     ws.send(JSON.stringify({
       type: 'error',
       error: (error as Error).message
     }));
+  }
+}
+
+async function broadcastToEmployees(message: any, businessId: number) {
+  try {
+    const employees = await db
+      .select()
+      .from(businessEmployees)
+      .where(
+        and(
+          eq(businessEmployees.businessId, businessId),
+          eq(businessEmployees.isActive, true)
+        )
+      );
+
+    for (const employee of employees) {
+      const employeeWs = connections.get(`${employee.employeeId}-employee`);
+      if (employeeWs?.readyState === WebSocket.OPEN) {
+        employeeWs.send(JSON.stringify(message));
+      }
+    }
+  } catch (error) {
+    console.error('Error broadcasting message:', error);
   }
 }
 
@@ -293,48 +327,6 @@ export function setupWebSocket(server: Server, app: Express) {
       ws.isAlive = true;
     });
 
-    (async () => {
-      try {
-        const undeliveredMessages = await db
-          .select()
-          .from(messages)
-          .where(
-            and(
-              eq(messages.receiverId, userId),
-              eq(messages.status, 'sent')
-            )
-          );
-
-        for (const message of undeliveredMessages) {
-          await db
-            .update(messages)
-            .set({
-              status: 'delivered',
-              deliveredAt: new Date()
-            })
-            .where(eq(messages.id, message.id));
-
-          const statusUpdate: StatusUpdate = {
-            type: 'status_update',
-            messageId: message.id,
-            status: 'delivered',
-            timestamp: new Date().toISOString()
-          };
-
-          const senderWs = connections.get(`${message.senderId}-${role}`);
-          if (senderWs?.readyState === WebSocket.OPEN) {
-            senderWs.send(JSON.stringify(statusUpdate));
-          }
-        }
-      } catch (error) {
-        console.error('Error updating message status:', error);
-        ws.send(JSON.stringify({
-          type: 'error',
-          error: 'Failed to update message status'
-        }));
-      }
-    })();
-
     ws.on('message', async (data: string) => {
       try {
         const message = JSON.parse(data);
@@ -345,31 +337,9 @@ export function setupWebSocket(server: Server, app: Express) {
           return;
         }
 
-        if (message.type === 'ticket_resolved') {
-          const resolution = message as TicketResolution;
-          const [ticket] = await db
-            .select()
-            .from(tickets)
-            .where(eq(tickets.id, resolution.ticketId));
-
-          if (!ticket) {
-            throw new Error('Invalid ticket');
-          }
-
-          const customerWs = connections.get(`${ticket.customerId}-customer`);
-          if (customerWs?.readyState === WebSocket.OPEN) {
-            customerWs.send(JSON.stringify({
-              type: 'ticket_resolved',
-              ticketId: ticket.id,
-              resolvedBy: resolution.resolvedBy,
-              timestamp: new Date().toISOString()
-            }));
-          }
-
-          return;
-        }
-
-        if (message.type === 'status_update') {
+        if (message.type === 'message') {
+          await handleMessage(ws, message);
+        } else if (message.type === 'status_update') {
           const update = message as StatusUpdate;
           await db
             .update(messages)
@@ -390,132 +360,32 @@ export function setupWebSocket(server: Server, app: Express) {
               senderWs.send(JSON.stringify(update));
             }
           }
-          return;
-        }
-
-        if (message.type === 'message' && message.ticketId) {
+        } else if (message.type === 'ticket_resolved') {
+          const resolution = message as TicketResolution;
           const [ticket] = await db
             .select()
             .from(tickets)
-            .where(eq(tickets.id, message.ticketId));
+            .where(eq(tickets.id, resolution.ticketId));
 
           if (!ticket) {
             throw new Error('Invalid ticket');
           }
 
-          let receiverId: number;
-          let shouldBroadcast = false;
-
-          if (message.senderId === ticket.customerId) {
-            if (ticket.claimedById) {
-              receiverId = ticket.claimedById;
-            } else {
-              receiverId = ticket.businessId!;
-              shouldBroadcast = true;
-            }
-          } else {
-            receiverId = ticket.customerId;
-          }
-
-          const [savedMessage] = await db.insert(messages)
-            .values({
-              content: message.content,
-              ticketId: message.ticketId,
-              senderId: message.senderId,
-              receiverId,
-              status: 'sent',
-              chatInitiator: false,
-              sentAt: new Date(),
-              createdAt: new Date()
-            })
-            .returning();
-
-          async function updateUnreadCount(ticketId: number, receiverId: number) {
-            try {
-              const [existingCount] = await db
-                .select()
-                .from(unreadMessages)
-                .where(
-                  and(
-                    eq(unreadMessages.ticketId, ticketId),
-                    eq(unreadMessages.userId, receiverId)
-                  )
-                );
-
-              if (existingCount) {
-                await db
-                  .update(unreadMessages)
-                  .set({
-                    count: existingCount.count + 1,
-                    updatedAt: new Date()
-                  })
-                  .where(
-                    and(
-                      eq(unreadMessages.ticketId, ticketId),
-                      eq(unreadMessages.userId, receiverId)
-                    )
-                  );
-              } else {
-                await db
-                  .insert(unreadMessages)
-                  .values({
-                    userId: receiverId,
-                    ticketId,
-                    count: 1,
-                    updatedAt: new Date()
-                  });
-              }
-            } catch (error) {
-              console.error('Error updating unread message count:', error);
-            }
-          }
-
-          if (message.ticketId) {
-            await updateUnreadCount(message.ticketId, receiverId);
-          }
-
-
-          const responseMessage = {
-            type: 'message',
-            id: savedMessage.id,
-            content: savedMessage.content,
-            senderId: savedMessage.senderId,
-            receiverId,
-            status: savedMessage.status,
-            ticketId: savedMessage.ticketId,
-            sentAt: savedMessage.sentAt.toISOString(),
-            createdAt: savedMessage.createdAt.toISOString()
-          };
-
-          ws.send(JSON.stringify(responseMessage));
-
-          if (shouldBroadcast) {
-            await broadcastToEmployees(responseMessage, ticket.businessId!);
-          } else {
-            const receiverRole = await determineUserRole(receiverId);
-            if (receiverRole) {
-              const receiverWs = connections.get(`${receiverId}-${receiverRole}`);
-              if (receiverWs?.readyState === WebSocket.OPEN) {
-                receiverWs.send(JSON.stringify(responseMessage));
-              }
-            }
-          }
-        } else if (message.type === 'message') {
-          if (message.senderId !== userId) {
-            throw new Error('Invalid sender ID');
-          }
-
-          if (message.directMessageUserId) {
-            await handleDirectMessage(ws, message);
-          } else {
-            throw new Error('Either ticketId or directMessageUserId is required');
+          const customerWs = connections.get(`${ticket.customerId}-customer`);
+          if (customerWs?.readyState === WebSocket.OPEN) {
+            customerWs.send(JSON.stringify({
+              type: 'ticket_resolved',
+              ticketId: ticket.id,
+              resolvedBy: resolution.resolvedBy,
+              timestamp: new Date().toISOString()
+            }));
           }
         }
       } catch (error) {
-        console.error('Error handling message:', error);
+        console.error('Error handling WebSocket message:', error);
         ws.send(JSON.stringify({
           type: 'error',
-          error: (error as Error).message || 'Failed to process message'
+          error: (error as Error).message
         }));
       }
     });

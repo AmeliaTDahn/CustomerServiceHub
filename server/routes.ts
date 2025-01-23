@@ -19,6 +19,161 @@ declare global {
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Add these routes at the beginning of registerRoutes
+  app.get("/api/businesses/employees", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can view their employees" });
+      }
+
+      // Get the current business profile
+      const [businessProfile] = await db
+        .select()
+        .from(businessProfiles)
+        .where(eq(businessProfiles.userId, req.user.id));
+
+      if (!businessProfile) {
+        return res.status(404).json({ error: "Business profile not found" });
+      }
+
+      // Get only employees connected to this specific business
+      const employees = await db
+        .select({
+          employee: {
+            id: users.id,
+            username: users.username,
+            role: users.role
+          },
+          connection: {
+            isActive: businessEmployees.isActive,
+            createdAt: businessEmployees.createdAt
+          }
+        })
+        .from(businessEmployees)
+        .innerJoin(users, eq(users.id, businessEmployees.employeeId))
+        .where(eq(businessEmployees.businessProfileId, businessProfile.id))
+        .orderBy(businessEmployees.createdAt);
+
+      res.json(employees);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
+
+  // Update the employee invitation endpoint
+  app.post("/api/businesses/employees/invite", async (req, res) => {
+    try {
+      if (!req.user?.role || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can invite employees" });
+      }
+
+      const { employeeId } = req.body;
+
+      if (!employeeId) {
+        return res.status(400).json({ error: "Invalid employee ID" });
+      }
+
+      // Get the business profile
+      const [businessProfile] = await db
+        .select()
+        .from(businessProfiles)
+        .where(eq(businessProfiles.userId, req.user.id));
+
+      if (!businessProfile) {
+        return res.status(404).json({ error: "Business profile not found" });
+      }
+
+      // Verify the employee exists and is of role 'employee'
+      const [employee] = await db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.id, employeeId),
+          eq(users.role, "employee")
+        ));
+
+      if (!employee) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      // Check if employee is already connected to this business
+      const [existingConnection] = await db
+        .select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.businessProfileId, businessProfile.id),
+          eq(businessEmployees.employeeId, employeeId)
+        ));
+
+      if (existingConnection) {
+        return res.status(400).json({ error: "Employee is already connected to this business" });
+      }
+
+      // Check if invitation already exists for this specific business
+      const [existingInvitation] = await db
+        .select()
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.businessProfileId, businessProfile.id),
+          eq(employeeInvitations.employeeId, employeeId),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      if (existingInvitation) {
+        return res.status(400).json({ error: "Invitation already sent" });
+      }
+
+      // Create invitation specifically for this business
+      const [invitation] = await db
+        .insert(employeeInvitations)
+        .values({
+          businessProfileId: businessProfile.id,
+          employeeId,
+          status: "pending",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+
+      res.json(invitation);
+    } catch (error) {
+      console.error('Error inviting employee:', error);
+      res.status(500).json({ error: "Failed to send invitation" });
+    }
+  });
+
+  // Update the invitation list endpoint for employees
+  app.get("/api/employees/invitations", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view their invitations" });
+      }
+
+      // Get pending invitations with business details
+      const invitations = await db
+        .select({
+          invitation: employeeInvitations,
+          business: {
+            id: businessProfiles.id,
+            name: businessProfiles.businessName,
+            userId: businessProfiles.userId
+          }
+        })
+        .from(employeeInvitations)
+        .innerJoin(businessProfiles, eq(businessProfiles.id, employeeInvitations.businessProfileId))
+        .where(and(
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, "pending")
+        ));
+
+      res.json(invitations);
+    } catch (error) {
+      console.error('Error fetching invitations:', error);
+      res.status(500).json({ error: "Failed to fetch invitations" });
+    }
+  });
+
   // Add this endpoint before the employee management routes
   app.get("/api/employees/active-businesses", async (req, res) => {
     try {
@@ -48,7 +203,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ error: "Failed to fetch business connections" });
     }
   });
-
   // Employee management routes
   app.post("/api/businesses/employees/invite", async (req, res) => {
     try {
@@ -85,7 +239,20 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ error: "Employee not found" });
       }
 
-      // Check if invitation already exists
+      // Check if employee is already connected to this business
+      const [existingConnection] = await db
+        .select()
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.businessProfileId, businessProfile.id),
+          eq(businessEmployees.employeeId, employeeId)
+        ));
+
+      if (existingConnection) {
+        return res.status(400).json({ error: "Employee is already connected to this business" });
+      }
+
+      // Check if invitation already exists for this specific business
       const [existingInvitation] = await db
         .select()
         .from(employeeInvitations)
@@ -99,7 +266,7 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Invitation already sent" });
       }
 
-      // Create invitation
+      // Create invitation specifically for this business
       const [invitation] = await db
         .insert(employeeInvitations)
         .values({

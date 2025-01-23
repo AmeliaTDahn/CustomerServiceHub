@@ -55,7 +55,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  // Function to filter tickets based on view type and user role
   const filterTickets = (view: 'active' | 'my-tickets' | 'history') => {
     return tickets.filter(ticket => {
       if (isEmployee) {
@@ -167,28 +166,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "urgent":
-        return "bg-red-100 text-red-800";
-      case "high":
-        return "bg-orange-100 text-orange-800";
-      case "medium":
-        return "bg-blue-100 text-blue-800";
-      case "low":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getCategoryLabel = (category: string) => {
-    return category
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
-
   const handleMessageClick = (customerId: number) => {
     setLocation(`/messages?customerId=${customerId}`);
   };
@@ -204,17 +181,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   const handleStatusChange = (ticketId: number, newStatus: string) => {
     updateTicket.mutate({ id: ticketId, status: newStatus });
-  };
-
-  const getViewTypeLabel = (view: 'active' | 'my-tickets' | 'history') => {
-    switch (view) {
-      case 'active':
-        return 'Active Tickets';
-      case 'my-tickets':
-        return 'My Tickets';
-      case 'history':
-        return 'Ticket History';
-    }
   };
 
   return (
@@ -266,17 +232,9 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5 items-end">
-                  <div className="flex gap-1.5">
-                    <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
-                      {ticket.status.replace("_", " ")}
-                    </Badge>
-                    <Badge className={`${getPriorityColor(ticket.priority)} text-xs`}>
-                      {ticket.priority}
-                    </Badge>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {ticket.category.replace("_", " ")}
+                <div>
+                  <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
+                    {ticket.status.replace("_", " ")}
                   </Badge>
                 </div>
               </div>
@@ -322,12 +280,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                         {selectedTicket.status.replace("_", " ")}
                       </Badge>
                     )}
-                    <Badge className={getPriorityColor(selectedTicket.priority)}>
-                      {selectedTicket.priority.toUpperCase()}
-                    </Badge>
-                    <Badge variant="outline">
-                      {getCategoryLabel(selectedTicket.category)}
-                    </Badge>
                   </div>
                 </div>
               </DialogHeader>

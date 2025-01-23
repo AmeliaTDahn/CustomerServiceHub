@@ -104,8 +104,8 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
   // Add mutation for updating ticket status
   const updateTicketStatus = useMutation({
     mutationFn: async ({ ticketId, status }: { ticketId: number; status: string }) => {
-      const res = await fetch(`/api/tickets/${ticketId}/status`, {
-        method: "POST",
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },

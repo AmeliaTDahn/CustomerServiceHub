@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -50,29 +51,30 @@ interface TicketListProps {
 export default function TicketList({ tickets, isBusiness = false, isEmployee = false, readonly = false }: TicketListProps) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [viewType, setViewType] = useState<'active' | 'my-tickets' | 'history'>('active');
+  const [showHistory, setShowHistory] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  const filterTickets = (view: 'active' | 'my-tickets' | 'history') => {
+  const filterTickets = (view: 'active' | 'my-tickets' | 'history', showHistoryView: boolean) => {
     return tickets.filter(ticket => {
-      if (isEmployee) {
+      // First filter by history toggle
+      const historyFilter = showHistoryView ? ticket.status === "resolved" : ticket.status !== "resolved";
+
+      // Then apply employee-specific filters if needed
+      if (isEmployee && !showHistoryView) {
         switch (view) {
           case 'active':
-            return ticket.status !== "resolved" && !ticket.claimedById;
+            return historyFilter && !ticket.claimedById;
           case 'my-tickets':
-            return ticket.status !== "resolved" && ticket.claimedById === user?.id;
+            return historyFilter && ticket.claimedById === user?.id;
           case 'history':
-            return ticket.status === "resolved" && ticket.claimedById === user?.id;
-        }
-      } else {
-        if (view === 'history') {
-          return ticket.status === "resolved";
-        } else {
-          return ticket.status !== "resolved";
+            return historyFilter;
         }
       }
+
+      return historyFilter;
     });
   };
 
@@ -145,9 +147,20 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   return (
     <div>
-      {isEmployee && (
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-          <div className="flex items-center justify-end h-12 px-4">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="flex items-center justify-between h-12 px-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={showHistory}
+              onCheckedChange={setShowHistory}
+              id="history-mode"
+            />
+            <label htmlFor="history-mode" className="text-sm font-medium">
+              {showHistory ? "History" : "Active Chats"}
+            </label>
+          </div>
+
+          {isEmployee && !showHistory && (
             <Select
               value={viewType}
               onValueChange={(value: 'active' | 'my-tickets' | 'history') => setViewType(value)}
@@ -158,15 +171,15 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
               <SelectContent>
                 <SelectItem value="active">Active Tickets</SelectItem>
                 <SelectItem value="my-tickets">My Tickets</SelectItem>
-                <SelectItem value="history">History</SelectItem>
+                <SelectItem value="history">All Tickets</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="px-4 py-2 space-y-2">
-        {filterTickets(viewType).map((ticket) => (
+        {filterTickets(viewType, showHistory).map((ticket) => (
           <Card
             key={ticket.id}
             className="cursor-pointer hover:shadow-md transition-shadow"
@@ -185,30 +198,22 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                   </div>
                   <div className="text-xs text-muted-foreground space-y-0.5">
                     <div className="flex items-center gap-2">
-                      {!isEmployee && (
-                        <>
-                          <span>By: {ticket.customer.username}</span>
-                          <span>·</span>
-                        </>
-                      )}
+                      {/* Removed unnecessary conditional rendering for customer name */}
                       <span>Created: {new Date(ticket.createdAt).toLocaleDateString()}</span>
                       <Badge className={`${getStatusColor(ticket.status)} text-xs`}>
                         {ticket.status.replace("_", " ")}
                       </Badge>
                     </div>
-                    {/* Only show claim status for employees */}
-                    {isEmployee && ticket.claimedAt && viewType !== 'history' && (
-                      <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
-                    )}
+                    {/* Removed claim status display as it's handled by the history toggle */}
                   </div>
                 </div>
               </div>
             </div>
           </Card>
         ))}
-        {filterTickets(viewType).length === 0 && (
+        {filterTickets(viewType, showHistory).length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-8">
-            No {viewType === 'active' ? 'active' : viewType === 'my-tickets' ? 'claimed' : 'resolved'} tickets
+            No {showHistory ? 'resolved' : 'active'} tickets
           </div>
         )}
       </div>

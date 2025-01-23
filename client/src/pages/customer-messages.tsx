@@ -204,7 +204,7 @@ export default function CustomerMessages() {
                                     <Clock className="h-3 w-3" />
                                     Resolved {format(new Date(ticket.updatedAt), 'MMM d, yyyy')}
                                   </p>
-                                  {ticket.status === "resolved" && !ticket.hasFeedback && (
+                                  {ticket.status === "resolved" && ticket.hasFeedback === false && (
                                     <Badge variant="outline" className="w-fit text-orange-600 border-orange-600">
                                       Feedback needed
                                     </Badge>

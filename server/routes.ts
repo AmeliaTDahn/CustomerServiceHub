@@ -1263,29 +1263,29 @@ export function registerRoutes(app: Express): Server {
 
           // Create initial direct messages between new employee and existing employees
           for (const employee of existingEmployees) {
-            // New employee's message to existing employee
+            const timestamp = new Date();
+            // Batch insert both messages to ensure they have the same timestamp
             await db.insert(directMessages)
-              .values({
-                content: `Hi ${employee.username}, I just joined the team!`,
-                senderId: req.user.id,
-                receiverId: employee.id,
-                businessId: invitation.businessId,
-                status: 'sent',
-                sentAt: new Date(),
-                createdAt: new Date()
-              });
-
-            // Existing employee's welcome message to new employee
-            await db.insert(directMessages)
-              .values({
-                content: `Welcome to the team, ${req.user.username}!`,
-                senderId: employee.id,
-                receiverId: req.user.id,
-                businessId: invitation.businessId,
-                status: 'sent',
-                sentAt: new Date(),
-                createdAt: new Date()
-              });
+              .values([
+                {
+                  content: `Hi ${employee.username}, I just joined the team!`,
+                  senderId: req.user.id,
+                  receiverId: employee.id,
+                  businessId: invitation.businessId,
+                  status: 'sent',
+                  sentAt: timestamp,
+                  createdAt: timestamp
+                },
+                {
+                  content: `Welcome to the team, ${req.user.username}!`,
+                  senderId: employee.id,
+                  receiverId: req.user.id,
+                  businessId: invitation.businessId,
+                  status: 'sent',
+                  sentAt: timestamp,
+                  createdAt: timestamp
+                }
+              ]);
           }
         } catch (error) {
           console.error('Error creating team relationships:', error);

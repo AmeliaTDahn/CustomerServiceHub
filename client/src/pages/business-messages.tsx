@@ -1,20 +1,25 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ArrowLeft, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "@db/schema";
+import TicketChat from "@/components/ticket-chat";
+
+interface Employee {
+  employee: {
+    id: number;
+    username: string;
+  };
+  relation: {
+    id: number;
+    isActive: boolean;
+  };
+}
 
 interface Message {
   id: number;
@@ -31,7 +36,7 @@ interface Message {
 export default function BusinessMessages() {
   const { user } = useUser();
   const { toast } = useToast();
-  const [selectedEmployee, setSelectedEmployee] = useState<User | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -40,25 +45,23 @@ export default function BusinessMessages() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch all employees for this business
-  const { data: employees = [] } = useQuery<User[]>({
+  const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['/api/businesses/employees'],
   });
 
   // Fetch messages for selected employee
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedEmployee?.id],
+    queryKey: ['/api/messages', selectedEmployee?.employee.id],
     enabled: !!selectedEmployee,
   });
 
-  const filteredEmployees = employees?.filter(employee =>
-    employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
+  const filteredEmployees = employees.filter(emp =>
+    emp.employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   );
 
   // Force refresh when component mounts
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
-    //This line is likely unnecessary given the above line already invalidates the messages query if selectedEmployee changes.
-    //queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] }); 
   }, [queryClient]);
 
   // Scroll to bottom when new messages arrive
@@ -105,8 +108,10 @@ export default function BusinessMessages() {
             }
 
             // Handle regular message - update messages if it's from/to current selected employee
-            if (selectedEmployee && (data.senderId === selectedEmployee.id || data.receiverId === selectedEmployee.id)) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedEmployee.id] });
+            if (selectedEmployee && 
+                (data.senderId === selectedEmployee.employee.id || 
+                 data.receiverId === selectedEmployee.employee.id)) {
+              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedEmployee.employee.id] });
             }
           } catch (error) {
             console.error('Error parsing message:', error);
@@ -158,7 +163,7 @@ export default function BusinessMessages() {
     const message = {
       type: "message",
       senderId: user.id,
-      receiverId: selectedEmployee.id,
+      receiverId: selectedEmployee.employee.id,
       content: newMessage.trim(),
       timestamp: new Date().toISOString()
     };
@@ -198,20 +203,23 @@ export default function BusinessMessages() {
 
           <ScrollArea className="flex-1">
             <div className="space-y-2 p-2">
-              {filteredEmployees?.map((employee) => (
+              {filteredEmployees.map((emp) => (
                 <div
-                  key={employee.id}
+                  key={emp.employee.id}
                   className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                    selectedEmployee?.id === employee.id
+                    selectedEmployee?.employee.id === emp.employee.id
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
-                  onClick={() => setSelectedEmployee(employee)}
+                  onClick={() => setSelectedEmployee(emp)}
                 >
-                  <div className="font-medium">{employee.username}</div>
+                  <div className="font-medium">{emp.employee.username}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {emp.relation.isActive ? "Active" : "Inactive"}
+                  </div>
                 </div>
               ))}
-              {filteredEmployees?.length === 0 && (
+              {filteredEmployees.length === 0 && (
                 <div className="p-3 text-sm text-muted-foreground">
                   No employees found
                 </div>
@@ -224,7 +232,7 @@ export default function BusinessMessages() {
         <Card className="col-span-8 flex flex-col">
           {selectedEmployee ? (
             <TicketChat
-              directMessageUserId={selectedEmployee.id}
+              directMessageUserId={selectedEmployee.employee.id}
               chatType="business"
               readonly={false}
             />

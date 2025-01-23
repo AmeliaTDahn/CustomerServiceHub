@@ -28,22 +28,25 @@ export const employeeInvitations = pgTable("employee_invitations", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+export const ticketCategories = pgTable("ticket_categories", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull(),
   status: text("status", { enum: ["open", "in_progress", "resolved"] }).default("open").notNull(),
-  category: text("category", {
-    enum: ["technical", "billing", "feature_request", "general_inquiry", "bug_report"]
-  }).default("general_inquiry").notNull(),
-  priority: text("priority", {
-    enum: ["low", "medium", "high", "urgent"]
-  }).default("medium").notNull(),
+  categoryId: integer("category_id").references(() => ticketCategories.id),
   customerId: integer("customer_id").references(() => users.id).notNull(),
   businessId: integer("business_id").references(() => users.id),
   claimedById: integer("claimed_by_id").references(() => users.id),
   claimedAt: timestamp("claimed_at"),
-  // New escalation fields
   escalationLevel: text("escalation_level", {
     enum: ["none", "low", "medium", "high"]
   }).default("none").notNull(),
@@ -144,6 +147,10 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
     fields: [tickets.businessId],
     references: [users.id]
   }),
+  category: one(ticketCategories, {
+    fields: [tickets.categoryId],
+    references: [ticketCategories.id]
+  }),
   claimedBy: one(users, {
     fields: [tickets.claimedById],
     references: [users.id]
@@ -237,6 +244,13 @@ export const ticketEscalationsRelations = relations(ticketEscalations, ({ one })
   })
 }));
 
+export const ticketCategoriesRelations = relations(ticketCategories, ({ one }) => ({
+  business: one(users, {
+    fields: [ticketCategories.businessId],
+    references: [users.id]
+  })
+}));
+
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
@@ -250,6 +264,8 @@ export const insertBusinessEmployeeSchema = createInsertSchema(businessEmployees
 export const selectBusinessEmployeeSchema = createSelectSchema(businessEmployees);
 export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations);
 export const selectEmployeeInvitationSchema = createSelectSchema(employeeInvitations);
+export const insertTicketCategorySchema = createInsertSchema(ticketCategories);
+export const selectTicketCategorySchema = createSelectSchema(ticketCategories);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -267,3 +283,5 @@ export type TicketFeedback = typeof ticketFeedback.$inferSelect;
 export type NewTicketFeedback = typeof ticketFeedback.$inferInsert;
 export type TicketEscalation = typeof ticketEscalations.$inferSelect;
 export type NewTicketEscalation = typeof ticketEscalations.$inferInsert;
+export type TicketCategory = typeof ticketCategories.$inferSelect;
+export type NewTicketCategory = typeof ticketCategories.$inferInsert;

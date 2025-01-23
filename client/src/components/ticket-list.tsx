@@ -103,7 +103,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
 
   // Add mutation for updating ticket status
   const updateTicketStatus = useMutation({
-    mutationFn: async ({ ticketId, status }: { ticketId: number; status: string }) => {
+    mutationFn: async ({ ticketId, status }: { ticketId: number; status: "open" | "in_progress" | "resolved" }) => {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
         headers: {
@@ -112,7 +112,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
         body: JSON.stringify({ status }),
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error);
+      }
       return res.json();
     },
     onSuccess: () => {

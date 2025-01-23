@@ -91,6 +91,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     return sortTickets(filtered);
   };
 
+  const handleMessageClick = (ticketId: number) => {
+    setLocation(`/messages?ticketId=${ticketId}`);
+  };
+
   const claimTicket = useMutation({
     mutationFn: async (ticketId: number) => {
       const res = await fetch(`/api/tickets/${ticketId}/claim`, {
@@ -140,10 +144,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       });
     },
   });
-
-  const handleMessageClick = (ticketId: number) => {
-    setLocation(`/messages?ticketId=${ticketId}`);
-  };
 
   return (
     <div>
@@ -196,17 +196,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                 </div>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMessageClick(ticket.id);
-              }}
-            >
-              <MessageCircle className="mr-2 h-4 w-4" />
-              View Messages
-            </Button>
           </Card>
         ))}
         {filterTickets(viewType).length === 0 && (
@@ -228,6 +217,15 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                       Created on {new Date(selectedTicket.createdAt).toLocaleDateString()}
                     </DialogDescription>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleMessageClick(selectedTicket.id)}
+                    className="flex items-center gap-2"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    View Messages
+                  </Button>
                 </div>
               </DialogHeader>
 
@@ -301,14 +299,6 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                             Unclaim Ticket
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMessageClick(selectedTicket.customer.id)}
-                        >
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          View Messages
-                        </Button>
                       </div>
                     </div>
                   )}

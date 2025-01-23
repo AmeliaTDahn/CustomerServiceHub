@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/tabs";
 import TicketChat from "@/components/ticket-chat";
 import type { Ticket } from "@db/schema";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 
 interface TicketWithInfo extends Ticket {
@@ -34,7 +33,7 @@ export default function CustomerMessages() {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
     ticketId ? parseInt(ticketId) : null
   );
-  const [activeTab, setActiveTab] = useState<string>("tickets");
+  const [activeTab, setActiveTab] = useState<string>("active");
 
   // Fetch customer's tickets
   const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
@@ -52,10 +51,11 @@ export default function CustomerMessages() {
   // Get the business user for the selected ticket
   const selectedTicket = tickets.find(t => t.id === selectedTicketId);
 
-  // Filter tickets based on search term
+  // Filter tickets based on search term and status
   const filteredTickets = tickets.filter(ticket =>
-    ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-    (ticket.business?.username || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())
+    (ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
+    (ticket.business?.username || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())) &&
+    (activeTab === "active" ? ticket.status !== "resolved" : ticket.status === "resolved")
   );
 
   const handleTicketSelect = (ticketId: number) => {
@@ -84,7 +84,8 @@ export default function CustomerMessages() {
           <Card className="col-span-4 flex flex-col">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
               <TabsList className="w-full">
-                <TabsTrigger value="tickets" className="flex-1">My Tickets</TabsTrigger>
+                <TabsTrigger value="active" className="flex-1">Active Tickets</TabsTrigger>
+                <TabsTrigger value="resolved" className="flex-1">Resolved</TabsTrigger>
               </TabsList>
 
               <div className="p-4">
@@ -99,7 +100,7 @@ export default function CustomerMessages() {
                 </div>
               </div>
 
-              <TabsContent value="tickets" className="flex-1 border-0 m-0 p-0">
+              <TabsContent value="active" className="flex-1 border-0 m-0 p-0">
                 <CardContent className="p-0 flex-1">
                   <ScrollArea className="h-[calc(100vh-15rem)]">
                     <div className="divide-y">
@@ -109,7 +110,7 @@ export default function CustomerMessages() {
                         </div>
                       ) : filteredTickets.length === 0 ? (
                         <div className="p-4 text-sm text-muted-foreground text-center">
-                          No tickets found
+                          No active tickets found
                         </div>
                       ) : (
                         filteredTickets.map((ticket) => (
@@ -144,10 +145,50 @@ export default function CustomerMessages() {
                           </button>
                         ))
                       )}
-                      {filteredTickets.length === 0 && ticketSearchTerm && (
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </TabsContent>
+
+              <TabsContent value="resolved" className="flex-1 border-0 m-0 p-0">
+                <CardContent className="p-0 flex-1">
+                  <ScrollArea className="h-[calc(100vh-15rem)]">
+                    <div className="divide-y">
+                      {isLoading ? (
                         <div className="p-4 text-sm text-muted-foreground">
-                          No tickets found matching "{ticketSearchTerm}"
+                          Loading tickets...
                         </div>
+                      ) : filteredTickets.length === 0 ? (
+                        <div className="p-4 text-sm text-muted-foreground text-center">
+                          No resolved tickets found
+                        </div>
+                      ) : (
+                        filteredTickets.map((ticket) => (
+                          <button
+                            key={ticket.id}
+                            onClick={() => handleTicketSelect(ticket.id)}
+                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                              selectedTicketId === ticket.id ? "bg-primary/5" : ""
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="font-medium">{ticket.title}</p>
+                                <div className="mt-1.5 flex flex-col gap-1">
+                                  {ticket.business && (
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Building2 className="h-3 w-3" />
+                                      {ticket.business.username}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge variant="secondary">
+                                Resolved
+                              </Badge>
+                            </div>
+                          </button>
+                        ))
                       )}
                     </div>
                   </ScrollArea>

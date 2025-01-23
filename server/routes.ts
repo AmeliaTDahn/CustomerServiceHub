@@ -383,6 +383,21 @@ export function registerRoutes(app: Express): Server {
     if (!req.user) return res.status(401).send("Not authenticated");
 
     try {
+      // For employees, first check if they have any active connections
+      if (req.user.role === "employee") {
+        const activeConnections = await db
+          .select()
+          .from(businessEmployees)
+          .where(and(
+            eq(businessEmployees.employeeId, req.user.id),
+            eq(businessEmployees.isActive, true)
+          ));
+
+        if (activeConnections.length === 0) {
+          return res.json([]); // Return empty array if no active connections
+        }
+      }
+
       let query = db
         .select({
           id: tickets.id,
@@ -429,13 +444,10 @@ export function registerRoutes(app: Express): Server {
         .innerJoin(users, eq(users.id, tickets.customerId));
 
       if (req.user.role === "customer") {
-        // Customers can see their own tickets
         query = query.where(eq(tickets.customerId, req.user.id));
       } else if (req.user.role === "business") {
-        // Business can see all tickets submitted to their business
         query = query.where(eq(tickets.businessId, req.user.id));
       } else if (req.user.role === "employee") {
-        // Get all businesses this employee is actively associated with
         const businessIds = await db
           .select({ businessId: businessEmployees.businessId })
           .from(businessEmployees)
@@ -448,19 +460,9 @@ export function registerRoutes(app: Express): Server {
           return res.json([]);
         }
 
-        // Employee can only see tickets from businesses they're actively associated with
         query = query.where(
           and(
-            or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId))),
-            exists(
-              db.select()
-                .from(businessEmployees)
-                .where(and(
-                  eq(businessEmployees.employeeId, req.user.id),
-                  eq(businessEmployees.businessId, tickets.businessId),
-                  eq(businessEmployees.isActive, true)
-                ))
-            )
+            or(...businessIds.map(({ businessId }) => eq(tickets.businessId, businessId)))
           )
         );
       }

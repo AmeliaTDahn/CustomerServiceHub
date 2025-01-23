@@ -66,7 +66,8 @@ export default function EmployeeDashboard() {
     }
   });
 
-  // Check if there are any active connections
+  // Check connection states
+  const hasConnections = businessConnections.length > 0;
   const hasActiveConnections = businessConnections.some(conn => conn.connection.isActive);
 
   return (
@@ -101,7 +102,8 @@ export default function EmployeeDashboard() {
       <main className="container py-8 space-y-8">
         <InvitationHandler />
 
-        {businessConnections.length === 0 ? (
+        {!hasConnections ? (
+          // No connections at all
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -116,75 +118,67 @@ export default function EmployeeDashboard() {
               <p className="text-muted-foreground">
                 To start handling customer support tickets, you need to:
               </p>
-              <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <ol className="list-decimal list-inside space-y-2 mt-4 text-muted-foreground">
                 <li>Wait for a business to invite you to their support team</li>
                 <li>Accept the invitation when it arrives</li>
                 <li>Once accepted, you'll see customer tickets here</li>
               </ol>
             </CardContent>
           </Card>
-        ) : (
-          <>
-            {/* Business Connection Status */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {businessConnections.map((connection) => (
-                <Card key={connection.business.id}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Building2 className="h-4 w-4" />
-                      {connection.business.username}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`flex items-center gap-2 ${
-                      connection.connection.isActive ? 'text-green-600' : 'text-amber-600'
-                    }`}>
-                      {connection.connection.isActive ? (
-                        'Active'
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4" />
-                          <span>Access Paused</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+        ) : !hasActiveConnections ? (
+          // Has connections but all are paused
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                Access Currently Paused
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Your access to the support platform is currently paused. Here are your business connections:
+              </p>
 
-            {hasActiveConnections ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Active Customer Tickets</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <TicketFilters 
-                    onSearchChange={setSearchTerm}
-                    onStatusChange={setStatusFilter}
-                    onCategoryChange={setCategoryFilter}
-                    onPriorityChange={setPriorityFilter}
-                    onSortChange={setSortBy}
-                  />
-                  <TicketList tickets={filteredTickets} isEmployee />
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-amber-500" />
-                    Access Currently Paused
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">
-                    Your access to all connected businesses is currently paused. Please contact the respective business administrators for more information.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {businessConnections.map((connection) => (
+                  <Card key={connection.business.id}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Building2 className="h-4 w-4" />
+                        {connection.business.username}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2 text-amber-600">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>Access Paused</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <p className="text-sm text-muted-foreground mt-4">
+                Please contact the respective business administrators to restore your access. You won't be able to view or manage any tickets until your access is restored.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Customer Tickets</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <TicketFilters 
+                onSearchChange={setSearchTerm}
+                onStatusChange={setStatusFilter}
+                onCategoryChange={setCategoryFilter}
+                onPriorityChange={setPriorityFilter}
+                onSortChange={setSortBy}
+              />
+              <TicketList tickets={filteredTickets} isEmployee />
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

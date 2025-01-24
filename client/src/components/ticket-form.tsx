@@ -1,3 +1,4 @@
+
 import { useForm } from "react-hook-form";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,11 +32,11 @@ import type { NewTicket } from "@db/schema";
 
 interface Business {
   id: number;
-  username: string;
+  name: string;
 }
 
 type TicketFormData = NewTicket & {
-  businessId: number;
+  businessProfileId: number;
   category: "technical" | "billing" | "feature_request" | "general_inquiry" | "bug_report";
 };
 
@@ -58,9 +59,14 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch available businesses
+  // Fetch registered businesses
   const { data: businesses = [] } = useQuery<Business[]>({
     queryKey: ['/api/businesses'],
+    queryFn: async () => {
+      const res = await fetch('/api/businesses', { credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
   });
 
   const createTicket = useMutation({
@@ -109,7 +115,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
               className="w-full justify-between"
             >
               {selectedBusinessId
-                ? businesses.find((business) => business.id === selectedBusinessId)?.username
+                ? businesses.find((business) => business.id === selectedBusinessId)?.name
                 : "Search for a business..."}
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
@@ -124,7 +130,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
                     key={business.id}
                     onSelect={() => {
                       setSelectedBusinessId(business.id);
-                      setValue('businessId', business.id);
+                      setValue('businessProfileId', business.id);
                       setOpen(false);
                     }}
                   >
@@ -134,7 +140,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
                         selectedBusinessId === business.id ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    {business.username}
+                    {business.name}
                   </CommandItem>
                 ))}
               </CommandGroup>

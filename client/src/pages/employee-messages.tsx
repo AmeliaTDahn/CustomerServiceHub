@@ -78,10 +78,17 @@ export default function EmployeeMessages() {
     }
   });
 
-  // Filter tickets by selected business
-  const filteredTickets = tickets.filter(ticket => 
-    selectedBusinessId === "all" || ticket.business_profile_id.toString() === selectedBusinessId
-  );
+  // Filter tickets by selected business and search/status
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesBusiness = selectedBusinessId === "all" || ticket.business_profile_id.toString() === selectedBusinessId;
+    const matchesSearch = ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
+                         ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
+    const matchesViewType = viewType === 'active' 
+      ? ticket.status !== 'resolved'
+      : ticket.status === 'resolved';
+
+    return matchesBusiness && matchesSearch && matchesViewType;
+  });
 
   // Fetch users for direct messaging
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
@@ -101,9 +108,6 @@ export default function EmployeeMessages() {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     }
   }, [viewType, queryClient]);
-
-  // Filter tickets based on search term and status
-  const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = 
       ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
       ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());

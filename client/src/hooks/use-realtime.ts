@@ -78,6 +78,9 @@ export function useRealtime(userId: string | undefined, role: string | undefined
     receiverId?: string;
     ticketId?: number;
   }) => {
+    if (!message.ticketId && !message.receiverId) {
+      throw new Error('Invalid message target: Must specify either ticketId or receiverId');
+    }
     try {
       const { error } = await supabase
         .from('messages')

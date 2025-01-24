@@ -2,44 +2,30 @@ import { useEffect, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
-import type { Tables } from '@/lib/supabase';
 
-type Message = {
-  id: number;
+interface Message {
   content: string;
-  sender_id: number;
-  receiver_id?: number;
+  sender_id: string;
+  receiver_id?: string;
   ticket_id?: number;
+  status?: string;
   created_at: string;
-  read_at?: string | null;
-};
+}
 
-export function useRealtime(userId: number | undefined, role: string | undefined) {
+export function useRealtime(userId: string | undefined, role: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
-  const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   useEffect(() => {
-    async function requestPermission() {
-      if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        setHasNotificationPermission(permission === 'granted');
-      }
-    }
-    requestPermission();
-  }, []);
-
-  useEffect(() => {
     if (!userId) return;
 
-    // Subscribe to messages channel
-    const messagesChannel = supabase
-      .channel('messages')
+    // Subscribe to relevant channels
+    const channel = supabase.channel('messages')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: role === 'customer' 
@@ -49,91 +35,64 @@ export function useRealtime(userId: number | undefined, role: string | undefined
         (payload) => {
           const message = payload.new as Message;
 
-          // Handle different message scenarios
-          if (message) {
-            // For ticket messages
-            if (message.ticket_id) {
-              queryClient.invalidateQueries({ 
-                queryKey: ['/api/tickets', message.ticket_id, 'messages']
-              });
-            }
+          // Handle ticket messages
+          if (message.ticket_id) {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/tickets', message.ticket_id, 'messages']
+            });
+          }
 
-            // For direct messages
-            if (message.receiver_id === userId) {
-              queryClient.invalidateQueries({ 
-                queryKey: ['/api/messages/direct']
-              });
-
-              // Show notification if tab is not active
-              if (hasNotificationPermission && document.hidden) {
-                new Notification('New Message', {
-                  body: message.content.substring(0, 50) + 
-                    (message.content.length > 50 ? '...' : ''),
-                  icon: '/notification-icon.png'
-                });
-              }
-            }
+          // Handle direct messages
+          if (message.receiver_id === userId) {
+            queryClient.invalidateQueries({ 
+              queryKey: ['/api/direct-messages', message.sender_id]
+            });
           }
         }
       )
       .subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
+        if (status === 'SUBSCRIBED') {
+          toast({
+            title: "Connected",
+            description: "Message connection established",
+          });
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          toast({
+            variant: "destructive",
+            title: "Connection Lost",
+            description: "Attempting to reconnect...",
+          });
+          setIsConnected(false);
+        }
       });
 
-    // Subscribe to tickets channel for status updates
-    const ticketsChannel = supabase
-      .channel('tickets')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tickets'
-        },
-        (payload) => {
-          const ticket = payload.new as Tables['tickets'];
-          if (ticket) {
-            queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-
-            // Notify customer when their ticket is resolved
-            if (role === 'customer' && 
-                ticket.status === 'resolved' && 
-                hasNotificationPermission && 
-                document.hidden) {
-              new Notification('Ticket Resolved', {
-                body: `Your ticket #${ticket.id} has been resolved.`,
-                icon: '/notification-icon.png'
-              });
-            }
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
-      messagesChannel.unsubscribe();
-      ticketsChannel.unsubscribe();
+      channel.unsubscribe();
     };
-  }, [userId, role, queryClient, hasNotificationPermission]);
+  }, [userId, role, queryClient, toast]);
 
   const sendMessage = useCallback(async (message: {
     content: string;
-    senderId: number;
-    receiverId?: number;
+    senderId: string;
+    receiverId?: string;
     ticketId?: number;
   }) => {
     try {
-      const { error } = await supabase.from('messages').insert([{
-        content: message.content,
-        sender_id: message.senderId,
-        receiver_id: message.receiverId,
-        ticket_id: message.ticketId,
-        created_at: new Date().toISOString()
-      }]);
+      const { error } = await supabase
+        .from('messages')
+        .insert([{
+          content: message.content,
+          sender_id: message.senderId,
+          receiver_id: message.receiverId,
+          ticket_id: message.ticketId,
+          status: 'sent',
+          created_at: new Date().toISOString()
+        }]);
 
       if (error) throw error;
 
-      // Invalidate relevant queries based on message type
+      // Invalidate relevant queries
       if (message.ticketId) {
         queryClient.invalidateQueries({ 
           queryKey: ['/api/tickets', message.ticketId, 'messages']
@@ -141,7 +100,7 @@ export function useRealtime(userId: number | undefined, role: string | undefined
       }
       if (message.receiverId) {
         queryClient.invalidateQueries({ 
-          queryKey: ['/api/messages/direct']
+          queryKey: ['/api/direct-messages', message.receiverId]
         });
       }
     } catch (error) {
@@ -149,8 +108,9 @@ export function useRealtime(userId: number | undefined, role: string | undefined
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to send message",
+        description: "Failed to send message. Please try again.",
       });
+      throw error;
     }
   }, [queryClient, toast]);
 

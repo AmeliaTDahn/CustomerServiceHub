@@ -3,47 +3,41 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Table Definitions
-// ================
-
 // Base user table to store auth info
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: text("id").primaryKey(), // Changed to text for UUID compatibility
   username: text("username").unique().notNull(),
-  password: text("password").notNull(),
   role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// Business details table - separate from user auth info
+// Business details table
 export const businessProfiles = pgTable("business_profiles", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull().unique(), // One-to-one with business user
+  userId: text("user_id").references(() => users.id).notNull().unique(),
   businessName: text("business_name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
-// Keep existing businessEmployees table but reference businessProfiles instead
 export const businessEmployees = pgTable("business_employees", {
   id: serial("id").primaryKey(),
   businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
-  employeeId: integer("employee_id").references(() => users.id).notNull(),
+  employeeId: text("employee_id").references(() => users.id).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// Employee invitations to reference businessProfiles
 export const employeeInvitations = pgTable("employee_invitations", {
   id: serial("id").primaryKey(),
   businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
-  employeeId: integer("employee_id").references(() => users.id).notNull(),
+  employeeId: text("employee_id").references(() => users.id).notNull(),
   status: text("status", { enum: ["pending", "accepted", "rejected"] }).default("pending").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
-// Tickets reference businessProfiles
+// Updated tickets table with text IDs for users
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -55,9 +49,9 @@ export const tickets = pgTable("tickets", {
   priority: text("priority", {
     enum: ["low", "medium", "high", "urgent"]
   }).default("medium").notNull(),
-  customerId: integer("customer_id").references(() => users.id).notNull(),
+  customerId: text("customer_id").references(() => users.id).notNull(),
   businessProfileId: integer("business_profile_id").references(() => businessProfiles.id).notNull(),
-  claimedById: integer("claimed_by_id").references(() => users.id),
+  claimedById: text("claimed_by_id").references(() => users.id),
   claimedAt: timestamp("claimed_at"),
   escalationLevel: text("escalation_level", {
     enum: ["none", "low", "medium", "high"]
@@ -70,28 +64,27 @@ export const tickets = pgTable("tickets", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+// Updated messages table with Supabase-compatible schema
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  ticketId: integer("ticket_id").references(() => tickets.id),
+  senderId: text("sender_id").references(() => users.id).notNull(),
+  receiverId: text("receiver_id").references(() => users.id).notNull(),
+  status: text("status", { enum: ["sending", "sent", "delivered", "read"] }).default("sent").notNull(),
+  chatInitiator: boolean("chat_initiator").default(false).notNull(),
+  initiatedAt: timestamp("initiated_at"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const ticketFeedback = pgTable("ticket_feedback", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").references(() => tickets.id).notNull(),
   rating: integer("rating").notNull(),
   comment: text("comment"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  content: text("content").notNull(),
-  ticketId: integer("ticket_id").references(() => tickets.id),  
-  senderId: integer("sender_id").references(() => users.id).notNull(),
-  receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  status: text("status", { 
-    enum: ["sent", "delivered", "read"] 
-  }).default("sent").notNull(),
-  chatInitiator: boolean("chat_initiator").default(false).notNull(), 
-  initiatedAt: timestamp("initiated_at"), 
-  sentAt: timestamp("sent_at").defaultNow().notNull(),
-  deliveredAt: timestamp("delivered_at"),
-  readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -133,8 +126,8 @@ export const directMessages = pgTable("direct_messages", {
   content: text("content").notNull(),
   senderId: integer("sender_id").references(() => users.id).notNull(),
   receiverId: integer("receiver_id").references(() => users.id).notNull(),
-  status: text("status", { 
-    enum: ["sent", "delivered", "read"] 
+  status: text("status", {
+    enum: ["sent", "delivered", "read"]
   }).default("sent").notNull(),
   businessProfileId: integer("business_profile_id").references(() => businessProfiles.id),
   sentAt: timestamp("sent_at").defaultNow().notNull(),

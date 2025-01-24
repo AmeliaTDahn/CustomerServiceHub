@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Search, ArrowLeft, Building2 } from "lucide-react";
+import { MessageCircle, Search, ArrowLeft, Building2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import {
   Select,
@@ -18,7 +18,7 @@ import { type Ticket } from "@db/schema";
 
 interface TicketWithCustomer extends Ticket {
   customer: {
-    id: number;
+    id: string;
     username: string;
   };
   lastMessageAt?: string;
@@ -26,13 +26,13 @@ interface TicketWithCustomer extends Ticket {
 }
 
 interface User {
-  id: number;
+  id: string;
   username: string;
   role: string;
 }
 
 interface BusinessUser {
-  id: number;
+  id: string;
   username: string;
   role: 'business';
 }
@@ -47,7 +47,7 @@ export default function EmployeeMessages() {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
     ticketId ? parseInt(ticketId) : null
   );
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [viewType, setViewType] = useState<'active' | 'resolved' | 'direct'>('active');
   const [chatType, setChatType] = useState<ChatType>('ticket');
   const queryClient = useQueryClient();
@@ -65,70 +65,60 @@ export default function EmployeeMessages() {
   });
 
   // Fetch users for direct messaging
-  const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<User[]>({
+  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ['/api/users/staff'],
     enabled: viewType === 'direct'
   });
 
-  // Fetch business user for direct messaging
-  const { data: businessUser, isLoading: businessUserLoading, refetch: refetchBusinessUser } = useQuery<BusinessUser>({
+  // Fetch business users for direct messaging
+  const { data: businessUsers = [], isLoading: businessUsersLoading } = useQuery<BusinessUser[]>({
     queryKey: ['/api/users/business'],
     enabled: viewType === 'direct'
   });
 
-  // Force refresh when entering direct messages view
+  // Force refresh when switching view types
   useEffect(() => {
     if (viewType === 'direct') {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
-      refetchUsers();
-      refetchBusinessUser();
     }
-  }, [viewType, queryClient, refetchUsers, refetchBusinessUser]);
+  }, [viewType, queryClient]);
 
-  // Filter users based on search term, excluding current user and business user
-  const filteredUsers = users.filter(u =>
-    u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) &&
-    u.id !== user?.id &&
-    u.id !== businessUser?.id
-  );
-
-  // Sort and filter tickets based on view type and status
+  // Filter tickets based on search term and status
   const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
+    const matchesSearch = 
+      ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
       ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
 
-    // Only show tickets claimed by the current employee
-    const isClaimedByMe = ticket.claimedById === user?.id;
-
-    if (!isClaimedByMe) return false;
-
-    const matchesViewType = viewType === 'active'
+    const matchesViewType = viewType === 'active' 
       ? ticket.status !== 'resolved'
       : ticket.status === 'resolved';
 
     return matchesSearch && matchesViewType;
   });
 
-  // Sort tickets by last message time and status
+  // Sort tickets by last message time
   const sortedTickets = [...filteredTickets].sort((a, b) => {
-    if (a.status === 'resolved' && b.status !== 'resolved') return 1;
-    if (a.status !== 'resolved' && b.status === 'resolved') return -1;
-
     const aTime = a.lastMessageAt || a.createdAt;
     const bTime = b.lastMessageAt || b.createdAt;
     return new Date(bTime).getTime() - new Date(aTime).getTime();
   });
 
-  const handleUserSelect = (userId: number, type: ChatType) => {
-    setSelectedUserId(userId);
-    setSelectedTicketId(null);
-    setChatType(type);
-  };
+  // Filter users for direct messaging
+  const filteredUsers = users.filter(u =>
+    u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) &&
+    u.id !== user?.id
+  );
 
   const handleTicketSelect = (ticketId: number) => {
     setSelectedTicketId(ticketId);
     setSelectedUserId(null);
     setChatType('ticket');
+  };
+
+  const handleUserSelect = (userId: string, type: ChatType) => {
+    setSelectedUserId(userId);
+    setSelectedTicketId(null);
+    setChatType(type);
   };
 
   return (
@@ -160,32 +150,31 @@ export default function EmployeeMessages() {
                   value={viewType}
                   onValueChange={(value: 'active' | 'resolved' | 'direct') => {
                     setViewType(value);
-                    if (value !== 'direct') {
-                      setChatType('ticket');
-                    }
+                    setSelectedTicketId(null);
+                    setSelectedUserId(null);
                   }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select view">
-                      {viewType === 'active' && "Active Tickets"}
-                      {viewType === 'resolved' && "Resolved Tickets"}
-                      {viewType === 'direct' && "Direct Messages"}
+                      {viewType === 'active' && "Customer Chats"}
+                      {viewType === 'resolved' && "Resolved Chats"}
+                      {viewType === 'direct' && "Team Messages"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active Tickets</SelectItem>
-                    <SelectItem value="resolved">Resolved Tickets</SelectItem>
-                    <SelectItem value="direct">Direct Messages</SelectItem>
+                    <SelectItem value="active">Customer Chats</SelectItem>
+                    <SelectItem value="resolved">Resolved Chats</SelectItem>
+                    <SelectItem value="direct">Team Messages</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Search Area */}
+              {/* Search */}
               <div className="p-4 border-b">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder={viewType === "direct" ? "Search users..." : "Search tickets..."}
+                    placeholder={viewType === "direct" ? "Search team members..." : "Search customer chats..."}
                     value={viewType === "direct" ? userSearchTerm : ticketSearchTerm}
                     onChange={(e) => viewType === "direct"
                       ? setUserSearchTerm(e.target.value)
@@ -196,111 +185,121 @@ export default function EmployeeMessages() {
                 </div>
               </div>
 
-              {/* Ticket/User List */}
+              {/* Chat List */}
               <div className="flex-1 overflow-auto">
                 <CardContent className="p-0">
-                  <div className="divide-y">
-                    {viewType !== 'direct' && sortedTickets.length === 0 ? (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No {viewType === 'active' ? 'active' : 'resolved'} claimed tickets
-                      </div>
-                    ) : viewType !== 'direct' ? (
-                      sortedTickets.map((ticket) => (
-                        <button
-                          key={ticket.id}
-                          onClick={() => handleTicketSelect(ticket.id)}
-                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
-                            selectedTicketId === ticket.id ? "bg-primary/5" : ""
-                          }`}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium truncate">{ticket.title}</p>
-                                {ticket.unreadCount > 0 && (
-                                  <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                                )}
-                              </div>
-                              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                                <span>{ticket.customer.username}</span>
-                                <span>•</span>
-                                <span>{new Date(ticket.lastMessageAt || ticket.createdAt).toLocaleDateString()}</span>
+                  {viewType !== 'direct' ? (
+                    <div className="divide-y">
+                      {sortedTickets.length === 0 ? (
+                        <div className="p-4 text-center text-muted-foreground flex items-center justify-center gap-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>No {viewType === 'active' ? 'active' : 'resolved'} customer chats</span>
+                        </div>
+                      ) : (
+                        sortedTickets.map((ticket) => (
+                          <button
+                            key={ticket.id}
+                            onClick={() => handleTicketSelect(ticket.id)}
+                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
+                              selectedTicketId === ticket.id ? "bg-primary/5" : ""
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium truncate">{ticket.customer.username}</p>
+                                  {ticket.unreadCount && ticket.unreadCount > 0 && (
+                                    <span className="inline-flex items-center justify-center bg-primary text-primary-foreground text-xs rounded-full h-5 min-w-[1.25rem] px-1">
+                                      {ticket.unreadCount}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground truncate">
+                                  {ticket.title}
+                                </p>
+                                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span>{new Date(ticket.lastMessageAt || ticket.createdAt).toLocaleDateString()}</span>
+                                  <span>•</span>
+                                  <span className={`capitalize ${
+                                    ticket.status === 'open' ? 'text-green-600' :
+                                    ticket.status === 'in_progress' ? 'text-blue-600' :
+                                    'text-gray-600'
+                                  }`}>
+                                    {ticket.status.replace('_', ' ')}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                            <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                              ticket.status === 'open' ? 'bg-green-100 text-green-800' :
-                              ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {ticket.status.replace('_', ' ')}
-                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  ) : (
+                    // Team Messages Section
+                    <div className="divide-y">
+                      {/* Business Users Section */}
+                      {businessUsers.length > 0 && (
+                        <div className="p-4 bg-muted/50">
+                          <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                            <Building2 className="h-4 w-4" />
+                            Business Team
+                          </h3>
+                          <div className="space-y-2">
+                            {businessUsers.map((businessUser) => (
+                              <button
+                                key={businessUser.id}
+                                onClick={() => handleUserSelect(businessUser.id, 'business')}
+                                className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
+                                  selectedUserId === businessUser.id && chatType === 'business'
+                                    ? "bg-primary text-primary-foreground"
+                                    : "hover:bg-muted"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <p className="font-medium">{businessUser.username}</p>
+                                  <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                                    Business Owner
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
                           </div>
-                        </button>
-                      ))
-                    ) : (
-                      // Direct Messages Section
-                      <div className="divide-y">
-                        {/* Business User Section */}
-                        {viewType === 'direct' && businessUser && (
-                          <div className="p-4 bg-muted/50">
-                            <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                              <Building2 className="h-4 w-4" />
-                              Business Account
-                            </h3>
+                        </div>
+                      )}
+
+                      {/* Other Team Members */}
+                      <div className="p-4">
+                        <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                          Team Members
+                        </h3>
+                        <div className="space-y-2">
+                          {filteredUsers.map((teamMember) => (
                             <button
-                              onClick={() => handleUserSelect(businessUser.id, 'business')}
+                              key={teamMember.id}
+                              onClick={() => handleUserSelect(teamMember.id, 'employee')}
                               className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                                selectedUserId === businessUser.id && chatType === 'business'
+                                selectedUserId === teamMember.id && chatType === 'employee'
                                   ? "bg-primary text-primary-foreground"
-                                  : "bg-background hover:bg-muted"
+                                  : "hover:bg-muted"
                               }`}
                             >
                               <div className="flex items-center justify-between">
-                                <p className="font-medium">{businessUser.username}</p>
-                                <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-                                  Business Owner
+                                <p className="font-medium">{teamMember.username}</p>
+                                <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                                  {teamMember.role}
                                 </span>
                               </div>
                             </button>
-                          </div>
-                        )}
-
-                        {/* Other Users Section */}
-                        {viewType === 'direct' && (
-                          <div className="p-4">
-                            <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                              Other Employees
-                            </h3>
-                            <div className="space-y-2">
-                              {filteredUsers.map((otherUser) => (
-                                <button
-                                  key={otherUser.id}
-                                  onClick={() => handleUserSelect(otherUser.id, 'employee')}
-                                  className={`w-full px-4 py-3 text-left rounded-lg transition-colors ${
-                                    selectedUserId === otherUser.id && chatType === 'employee'
-                                      ? "bg-primary text-primary-foreground"
-                                      : "hover:bg-muted"
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-medium">{otherUser.username}</p>
-                                    <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                                      {otherUser.role}
-                                    </span>
-                                  </div>
-                                </button>
-                              ))}
-                              {filteredUsers.length === 0 && userSearchTerm && (
-                                <div className="text-sm text-muted-foreground">
-                                  No users found matching "{userSearchTerm}"
-                                </div>
-                              )}
+                          ))}
+                          {filteredUsers.length === 0 && userSearchTerm && (
+                            <div className="text-sm text-muted-foreground">
+                              No team members found matching "{userSearchTerm}"
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </CardContent>
               </div>
             </div>
@@ -310,23 +309,19 @@ export default function EmployeeMessages() {
           <Card className="col-span-8 flex flex-col overflow-hidden">
             <CardContent className="p-0 flex-1 flex flex-col h-full">
               {selectedTicketId ? (
-                <div className="flex-1 flex flex-col h-full overflow-hidden">
-                  <TicketChat
-                    ticketId={selectedTicketId}
-                    readonly={false}
-                  />
-                </div>
+                <TicketChat
+                  ticketId={selectedTicketId}
+                  readonly={false}
+                />
               ) : selectedUserId ? (
-                <div className="flex-1 flex flex-col h-full overflow-hidden">
-                  <TicketChat
-                    directMessageUserId={selectedUserId}
-                    chatType={chatType}
-                    readonly={false}
-                  />
-                </div>
+                <TicketChat
+                  directMessageUserId={selectedUserId}
+                  chatType={chatType}
+                  readonly={false}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Select a ticket or user to view messages
+                  Select a conversation to start messaging
                 </div>
               )}
             </CardContent>

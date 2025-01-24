@@ -12,6 +12,7 @@ export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -84,6 +85,26 @@ export default function AuthPage() {
                 required
               />
             </div>
+            
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label>Account Type</Label>
+                <RadioGroup value={role} onValueChange={(value: "business" | "customer" | "employee") => setRole(value)} className="flex flex-col space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="customer" id="customer" />
+                    <Label htmlFor="customer">Customer</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="business" id="business" />
+                    <Label htmlFor="business">Business</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="employee" id="employee" />
+                    <Label htmlFor="employee">Support Agent</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
             
             <Button type="submit" className="w-full">
               {isLogin ? "Login" : "Register"}

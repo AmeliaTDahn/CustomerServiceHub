@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,11 +23,21 @@ import {
 import TicketChat from "@/components/ticket-chat";
 import TicketFeedback from "@/components/ticket-feedback";
 import TicketForm from "@/components/ticket-form";
-import type { Ticket } from "@db/schema";
+import { supabase } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
-interface TicketWithInfo extends Ticket {
+type TicketStatus = 'open' | 'in_progress' | 'resolved';
+
+interface TicketWithInfo {
+  id: number;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  customer_id: string;
+  business_id: string;
+  created_at: string;
+  updated_at: string;
   business?: {
     id: number;
     username: string;
@@ -38,6 +48,7 @@ interface TicketWithInfo extends Ticket {
 }
 
 export default function CustomerMessages() {
+  const queryClient = useQueryClient();
   const ticketId = new URLSearchParams(window.location.search).get('ticketId');
   const { user } = useUser();
   const [ticketSearchTerm, setTicketSearchTerm] = useState("");
@@ -47,17 +58,50 @@ export default function CustomerMessages() {
   const [activeTab, setActiveTab] = useState<string>("active");
   const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
 
-  // Fetch customer's tickets
+  // Fetch customer's tickets using Supabase's real-time subscription
   const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
-      const res = await fetch('/api/tickets/customer', {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
+      if (!user?.id) return [];
+      const { data: tickets, error } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          business:business_id (
+            id,
+            username
+          )
+        `)
+        .eq('customer_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Fetch unread counts and business responses for each ticket
+      const ticketsWithInfo = await Promise.all((tickets || []).map(async (ticket) => {
+        const { count: unreadCount } = await supabase
+          .from('messages')
+          .select('*', { head: true, count: 'exact' })
+          .eq('ticket_id', ticket.id)
+          .eq('sender_id', ticket.business_id)
+          .eq('status', 'unread');
+
+        const { count: hasBusinessResponse } = await supabase
+          .from('messages')
+          .select('*', { head: true, count: 'exact' })
+          .eq('ticket_id', ticket.id)
+          .eq('sender_id', ticket.business_id);
+
+        return {
+          ...ticket,
+          unreadCount: unreadCount || 0,
+          hasBusinessResponse: hasBusinessResponse ? hasBusinessResponse > 0 : false
+        };
+      }));
+
+      return ticketsWithInfo;
     },
-    refetchInterval: 5000
+    refetchInterval: 5000 // Poll every 5 seconds for updates
   });
 
   // Get the selected ticket
@@ -73,6 +117,32 @@ export default function CustomerMessages() {
   const handleTicketSelect = (ticketId: number) => {
     setSelectedTicketId(ticketId);
   };
+
+  // Subscribe to real-time updates when component mounts
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ticketsSubscription = supabase
+      .channel('tickets')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tickets',
+          filter: `customer_id=eq.${user.id}`
+        },
+        () => {
+          // Invalidate the tickets query to trigger a refetch
+          queryClient.invalidateQueries({ queryKey: ['/api/tickets/customer'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ticketsSubscription.unsubscribe();
+    };
+  }, [user?.id, queryClient]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -207,7 +277,7 @@ export default function CustomerMessages() {
                                   )}
                                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                                     <Clock className="h-3 w-3" />
-                                    Resolved {format(new Date(ticket.updatedAt), 'MMM d, yyyy')}
+                                    Resolved {format(new Date(ticket.updated_at), 'MMM d, yyyy')}
                                   </p>
                                   {ticket.status === "resolved" && ticket.hasFeedback === false && (
                                     <Badge variant="outline" className="w-fit text-orange-600 border-orange-600">
@@ -249,12 +319,12 @@ export default function CustomerMessages() {
                           )}
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            Created {format(new Date(selectedTicket.createdAt), 'MMM d, yyyy')}
+                            Created {format(new Date(selectedTicket.created_at), 'MMM d, yyyy')}
                           </p>
                           {selectedTicket.status === 'resolved' && (
                             <p className="text-sm text-muted-foreground flex items-center gap-1">
                               <Clock className="h-4 w-4" />
-                              Resolved {format(new Date(selectedTicket.updatedAt), 'MMM d, yyyy')}
+                              Resolved {format(new Date(selectedTicket.updated_at), 'MMM d, yyyy')}
                             </p>
                           )}
                         </div>

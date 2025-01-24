@@ -9,25 +9,23 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Ticket } from "@db/schema";
 import { QuickReplyTemplates } from "@/components/quick-reply-templates";
+import { supabase } from "@/lib/supabase";
 
 interface Message {
-  message: {
-    id: number;
-    content: string;
-    ticketId: number | null;
-    senderId: number;
-    receiverId: number;
-    status: string;
-    chatInitiator?: boolean;
-    initiatedAt?: string | null;
-    businessId?: number;
-    sentAt: string;
-    createdAt: string;
-  };
+  id: number;
+  content: string;
+  ticket_id: number | null;
+  sender_id: string;
+  receiver_id: string;
+  status: 'sent' | 'delivered' | 'read';
+  chat_initiator?: boolean;
+  initiated_at?: string | null;
+  business_id?: string;
+  sent_at: string;
+  created_at: string;
   sender: {
-    id: number;
+    id: string;
     username: string;
     role: string;
   };
@@ -35,7 +33,7 @@ interface Message {
 
 interface TicketChatProps {
   ticketId?: number;
-  directMessageUserId?: number;
+  directMessageUserId?: string;
   chatType?: 'ticket' | 'business' | 'employee';
   readonly?: boolean;
 }
@@ -54,13 +52,11 @@ const MessageHeader = ({ username, role, isBroadcast }: { username: string; role
 
 export default function TicketChat({ ticketId, directMessageUserId, chatType = 'ticket', readonly = false }: TicketChatProps) {
   const [newMessage, setNewMessage] = useState("");
-  const [optimisticMessages, setOptimisticMessages] = useState<Map<number, Message>>(new Map());
   const { user } = useUser();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { isConnected, sendMessage } = useRealtime(user?.id, user?.role);
-  const lastProcessedMessagesRef = useRef<Set<number>>(new Set());
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
 
   // Query for messages - either ticket messages or direct messages
   const { data: messages = [] } = useQuery<Message[]>({
@@ -71,52 +67,59 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
         : [],
     queryFn: async () => {
       if (ticketId) {
-        const res = await fetch(`/api/tickets/${ticketId}/messages`, {
-          credentials: 'include'
-        });
-        if (!res.ok) throw new Error(await res.text());
-        return res.json();
+        const { data, error } = await supabase
+          .from('messages')
+          .select(`
+            *,
+            sender:sender_id (
+              id,
+              username,
+              role
+            )
+          `)
+          .eq('ticket_id', ticketId)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
       } else if (directMessageUserId) {
-        const res = await fetch(`/api/direct-messages/${directMessageUserId}`, {
-          credentials: 'include'
-        });
-        if (!res.ok) throw new Error(await res.text());
-        return res.json();
+        const { data, error } = await supabase
+          .from('messages')
+          .select(`
+            *,
+            sender:sender_id (
+              id,
+              username,
+              role
+            )
+          `)
+          .or(`sender_id.eq.${user?.id},receiver_id.eq.${user?.id}`)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
       }
       return [];
     },
-    enabled: !!(ticketId || directMessageUserId)
+    enabled: !!(ticketId || directMessageUserId) && !!user
   });
 
   // Get ticket details if in ticket mode
-  const { data: ticket } = useQuery<Ticket>({
+  const { data: ticket } = useQuery({
     queryKey: ['/api/tickets', ticketId],
-    enabled: !!ticketId,
+    queryFn: async () => {
+      if (!ticketId) return null;
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!ticketId
   });
-
-  useEffect(() => {
-    // Clean up stale optimistic messages when real messages arrive
-    const currentMessageIds = new Set(messages.map(m => m.message.id));
-    const newOptimisticMessages = new Map(optimisticMessages);
-    let hasChanges = false;
-
-    for (const [tempId, optMessage] of optimisticMessages) {
-      // If we find a real message with the same content and timestamp (within 1 second)
-      const matchingRealMessage = messages.find(m =>
-        m.message.content === optMessage.message.content &&
-        Math.abs(new Date(m.message.sentAt).getTime() - new Date(optMessage.message.sentAt).getTime()) < 1000
-      );
-
-      if (matchingRealMessage) {
-        newOptimisticMessages.delete(tempId);
-        hasChanges = true;
-      }
-    }
-
-    if (hasChanges) {
-      setOptimisticMessages(newOptimisticMessages);
-    }
-  }, [messages]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -125,96 +128,114 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
     }
   }, [messages, optimisticMessages]);
 
-  // Mark messages as read
+  // Subscribe to real-time updates for messages
   useEffect(() => {
-    if ((!ticketId && !directMessageUserId) || !user || readonly) return;
+    if (!ticketId && !directMessageUserId) return;
 
-    async function markMessagesAsRead() {
-      try {
-        if (ticketId) {
-          await fetch(`/api/tickets/${ticketId}/messages/read`, {
-            method: 'POST',
-            credentials: 'include'
-          });
-          queryClient.invalidateQueries({
-            queryKey: ['/api/tickets']
-          });
-        } else if (directMessageUserId) {
-          await fetch(`/api/direct-messages/${directMessageUserId}/read`, {
-            method: 'POST',
-            credentials: 'include'
+    const messageSubscription = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: ticketId 
+            ? `ticket_id=eq.${ticketId}`
+            : `or(sender_id.eq.${user?.id},receiver_id.eq.${user?.id})`
+        },
+        () => {
+          queryClient.invalidateQueries({ 
+            queryKey: ticketId 
+              ? ['/api/tickets', ticketId, 'messages']
+              : ['/api/direct-messages', directMessageUserId]
           });
         }
-      } catch (error) {
-        console.error('Error marking messages as read:', error);
-      }
-    }
+      )
+      .subscribe();
 
-    markMessagesAsRead();
-  }, [ticketId, directMessageUserId, user, readonly, queryClient]);
+    return () => {
+      messageSubscription.unsubscribe();
+    };
+  }, [ticketId, directMessageUserId, user?.id, queryClient]);
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!isConnected) {
-        throw new Error("Not connected to message server");
-      }
+      if (!user) throw new Error("Not authenticated");
 
-      let receiverId: number;
+      let receiverId: string;
       if (chatType === 'ticket' && ticket) {
-        if (!ticketId) throw new Error("Ticket ID is required");
-        receiverId = user?.role === 'customer' 
-          ? (ticket.claimedById || ticket.businessId!)
-          : ticket.customerId;
+        receiverId = user.role === 'customer' 
+          ? ticket.business_id
+          : ticket.customer_id;
       } else if (directMessageUserId) {
         receiverId = directMessageUserId;
       } else {
         throw new Error("Invalid message target");
       }
 
-      const tempId = Date.now();
-
-      const optimisticMessage: Message = {
-        message: {
-          id: tempId,
-          content,
-          ticketId: ticketId || null,
-          senderId: user!.id,
-          receiverId,
-          status: 'sending',
-          chatInitiator: messages.length === 0,
-          initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
-          sentAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        },
-        sender: {
-          id: user!.id,
-          username: user!.username,
-          role: user!.role,
-        },
+      const message = {
+        content,
+        ticket_id: ticketId || null,
+        sender_id: user.id,
+        receiver_id: receiverId,
+        status: 'sent',
+        chat_initiator: messages.length === 0,
+        initiated_at: messages.length === 0 ? new Date().toISOString() : null,
+        sent_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
       };
 
-      setOptimisticMessages(prev => {
-        const next = new Map(prev);
-        next.set(tempId, optimisticMessage);
-        return next;
-      });
+      const { data, error } = await supabase
+        .from('messages')
+        .insert(message)
+        .select(`
+          *,
+          sender:sender_id (
+            id,
+            username,
+            role
+          )
+        `)
+        .single();
 
-      await sendMessage({
+      if (error) throw error;
+      return data;
+    },
+    onMutate: async (content) => {
+      if (!user) return;
+
+      const optimisticMessage: Message = {
+        id: Date.now(),
         content,
-        senderId: user!.id,
-        receiverId,
-        ticketId,
-      });
+        ticket_id: ticketId || null,
+        sender_id: user.id,
+        receiver_id: directMessageUserId || '',
+        status: 'sending',
+        chat_initiator: messages.length === 0,
+        initiated_at: messages.length === 0 ? new Date().toISOString() : null,
+        sent_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        sender: {
+          id: user.id,
+          username: user.username,
+          role: user.role
+        }
+      };
 
-      return optimisticMessage;
+      setOptimisticMessages(prev => [...prev, optimisticMessage]);
+      return { optimisticMessage };
     },
     onError: (error) => {
-      setOptimisticMessages(new Map());
+      setOptimisticMessages([]);
       toast({
         variant: "destructive",
         title: "Error sending message",
-        description: (error as Error).message
+        description: error.message
       });
+    },
+    onSettled: () => {
+      setOptimisticMessages([]);
     }
   });
 
@@ -225,7 +246,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
     setNewMessage("");
   };
 
-  const allMessages = [...messages, ...Array.from(optimisticMessages.values())];
+  const allMessages = [...messages, ...optimisticMessages];
 
   const handleTemplateSelect = (template: string) => {
     setNewMessage(template);
@@ -245,7 +266,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           <AnimatePresence initial={false}>
             {allMessages?.map((messageData) => (
               <motion.div
-                key={messageData.message.id}
+                key={messageData.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
@@ -269,23 +290,23 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
                       chatType === 'ticket' &&
                       user?.role === 'customer' &&
                       ticket &&
-                      !ticket.claimedById
+                      !ticket.claimed_by_id
                     }
                   />
                   <p className="text-sm whitespace-pre-wrap break-words">
-                    {messageData.message.content}
+                    {messageData.content}
                   </p>
                   <div className="flex items-center justify-between mt-1 text-xs opacity-70">
-                    <span>{new Date(messageData.message.sentAt).toLocaleTimeString()}</span>
+                    <span>{new Date(messageData.sent_at).toLocaleTimeString()}</span>
                     {messageData.sender.id === user?.id && (
                       <span className="ml-2 flex items-center gap-1">
-                        {messageData.message.status === 'sending' ? (
+                        {messageData.status === 'sending' ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : messageData.message.status === 'sent' ? (
+                        ) : messageData.status === 'sent' ? (
                           <Check className="h-3 w-3" />
-                        ) : messageData.message.status === 'delivered' ? (
+                        ) : messageData.status === 'delivered' ? (
                           <CheckCheck className="h-3 w-3" />
-                        ) : messageData.message.status === 'read' ? (
+                        ) : messageData.status === 'read' ? (
                           <motion.span
                             initial={{ scale: 0.8 }}
                             animate={{ scale: 1 }}
@@ -320,16 +341,14 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={
-                isConnected
-                  ? "Type your message..."
-                  : "Connecting..."
+                user && user.id ? "Type your message..." : "Connecting..."
               }
               className="flex-1"
-              disabled={!isConnected || sendMessageMutation.isPending}
+              disabled={!user || sendMessageMutation.isPending}
             />
             <Button
               type="submit"
-              disabled={!newMessage.trim() || !isConnected || sendMessageMutation.isPending}
+              disabled={!newMessage.trim() || !user || sendMessageMutation.isPending}
               className="relative"
             >
               {sendMessageMutation.isPending ? (

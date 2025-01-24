@@ -62,7 +62,7 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email, username, password and role are required");
       }
 
-      // Create user in Supabase Auth using provided email
+      // Create user in Supabase Auth using provided email with email confirmation
       const { data: authUser, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -70,7 +70,8 @@ export function setupAuth(app: Express) {
           data: {
             username,
             role
-          }
+          },
+          emailRedirectTo: `${process.env.VITE_APP_URL || 'http://localhost:5000'}/auth`
         }
       });
 
@@ -164,6 +165,10 @@ export function setupAuth(app: Express) {
 
       if (!authData.user) {
         return res.status(400).send("Invalid credentials");
+      }
+
+      if (!authData.user.email_confirmed_at) {
+        return res.status(403).send("Please confirm your email before logging in");
       }
 
       // Get user from our database

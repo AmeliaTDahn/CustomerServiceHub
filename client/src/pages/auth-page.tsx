@@ -12,7 +12,6 @@ export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -22,13 +21,13 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const result = await login({ username, password, role });
+        const result = await login({ username, password });
         if (!result.ok) {
           throw new Error(result.message);
         }
         // Login successful - will automatically redirect due to useUser hook in App.tsx
       } else {
-        const result = await register({ username, password, role });
+        const result = await register({ username, password });
         if (!result.ok) {
           throw new Error(result.message);
         }
@@ -85,31 +84,7 @@ export default function AuthPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label>Account Type</Label>
-              <RadioGroup
-                value={role}
-                onValueChange={(value) => setRole(value as "business" | "customer" | "employee")}
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="customer" id="customer" />
-                  <Label htmlFor="customer">Customer</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="business" id="business" />
-                  <Label htmlFor="business">Business</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="employee" id="employee" />
-                  <Label htmlFor="employee">Employee</Label>
-                </div>
-              </RadioGroup>
-              {!isLogin && role === "employee" && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  After registration, wait for a business to invite you to their support system.
-                </p>
-              )}
-            </div>
+            
             <Button type="submit" className="w-full">
               {isLogin ? "Login" : "Register"}
             </Button>

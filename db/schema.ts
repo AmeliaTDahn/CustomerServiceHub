@@ -5,9 +5,11 @@ import { z } from "zod";
 
 // Base user table to store auth info
 export const users = pgTable("users", {
-  id: text("id").primaryKey(), // Changed to text for UUID compatibility
+  id: serial("id").primaryKey(), // Keep as serial for now
   username: text("username").unique().notNull(),
   role: text("role", { enum: ["business", "customer", "employee"] }).notNull(),
+  supabase_id: text("supabase_id").unique().notNull(),
+  email: text("email").unique().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -295,7 +297,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 
 const baseUserSchema = {
   username: z.string().min(1, "Username is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  //password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["business", "customer", "employee"]),
   businessName: z.string().optional()
 };

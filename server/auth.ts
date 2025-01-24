@@ -9,6 +9,7 @@ declare module 'express-session' {
       id: number;
       username: string;
       role: 'business' | 'customer' | 'employee';
+      supabaseId: string;
     };
   }
 }
@@ -55,12 +56,34 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res) => {
     try {
-      const { username, password, role } = req.body;
+      const { email, username, password, role } = req.body;
 
-      if (!username || !password || !role) {
-        return res.status(400).send("Username, password and role are required");
+      if (!email || !username || !password || !role) {
+        return res.status(400).send("Email, username, password and role are required");
       }
 
+      // First create the user in Supabase Auth
+      const { data: authUser, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+            role
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('Supabase Auth error:', authError);
+        return res.status(400).send(authError.message);
+      }
+
+      if (!authUser.user) {
+        return res.status(500).send("Failed to create auth user");
+      }
+
+      // Check if username already exists in our database
       const { data: existingUser } = await supabase
         .from('users')
         .select()
@@ -68,26 +91,35 @@ export function setupAuth(app: Express) {
         .single();
 
       if (existingUser) {
+        // Rollback the auth user creation
+        await supabase.auth.admin.deleteUser(authUser.user.id);
         return res.status(400).send("Username already exists");
       }
 
-      const { data: newUser, error } = await supabase
+      // Create the user record in our database
+      const { data: newUser, error: dbError } = await supabase
         .from('users')
         .insert([{
           username,
-          password,
           role,
+          supabase_id: authUser.user.id,
+          email: email.toLowerCase(),
           created_at: new Date().toISOString()
         }])
         .select()
         .single();
 
-      if (error) throw error;
+      if (dbError) {
+        // Rollback the auth user creation
+        await supabase.auth.admin.deleteUser(authUser.user.id);
+        throw dbError;
+      }
 
       req.session.user = {
         id: newUser.id,
         username: newUser.username,
-        role: newUser.role
+        role: newUser.role,
+        supabaseId: authUser.user.id
       };
 
       await new Promise<void>((resolve, reject) => {
@@ -113,24 +145,35 @@ export function setupAuth(app: Express) {
 
   app.post("/api/login", async (req, res) => {
     try {
-      const { username, password, role } = req.body;
+      const { email, password, role } = req.body;
 
-      if (!username || !password) {
-        return res.status(400).send("Username and password are required");
+      if (!email || !password) {
+        return res.status(400).send("Email and password are required");
       }
 
-      const { data: user, error } = await supabase
+      // Authenticate with Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authError) {
+        return res.status(400).send(authError.message);
+      }
+
+      if (!authData.user) {
+        return res.status(400).send("Invalid credentials");
+      }
+
+      // Get user from our database
+      const { data: user, error: dbError } = await supabase
         .from('users')
         .select()
-        .eq('username', username)
+        .eq('supabase_id', authData.user.id)
         .single();
 
-      if (!user) {
+      if (dbError || !user) {
         return res.status(400).send("User not found");
-      }
-
-      if (user.password !== password) {
-        return res.status(400).send("Invalid password");
       }
 
       if (role && user.role !== role) {
@@ -140,7 +183,8 @@ export function setupAuth(app: Express) {
       req.session.user = {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        supabaseId: authData.user.id
       };
 
       await new Promise<void>((resolve, reject) => {
@@ -166,6 +210,9 @@ export function setupAuth(app: Express) {
 
   app.post("/api/logout", async (req, res) => {
     try {
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+
       req.session.destroy((err) => {
         if (err) {
           console.error('Logout error:', err);

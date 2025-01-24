@@ -63,12 +63,17 @@ export default function EmployeeDashboard() {
           <div className="flex flex-1 items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-semibold">Employee Dashboard</h1>
-              {businessConnections.length > 0 && (
-                <BusinessSwitcher
-                  onBusinessChange={setCurrentBusinessId}
-                  currentBusinessId={currentBusinessId}
-                />
-              )}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  Connected to {businessConnections.length} business{businessConnections.length !== 1 ? 'es' : ''}
+                </span>
+                {businessConnections.length > 0 && (
+                  <BusinessSwitcher
+                    onBusinessChange={setCurrentBusinessId}
+                    currentBusinessId={currentBusinessId}
+                  />
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <Link href="/messages">

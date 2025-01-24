@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import type { Business } from "@db/schema";
+import type { BusinessProfile } from "@db/schema";
 
 interface BusinessSwitcherProps {
   onBusinessChange: (businessId: string) => void;
@@ -10,7 +10,7 @@ interface BusinessSwitcherProps {
 
 export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }: BusinessSwitcherProps) {
   // Fetch businesses where the employee has active relationships
-  const { data: businesses = [] } = useQuery<Business[]>({
+  const { data: businesses = [] } = useQuery<BusinessProfile[]>({
     queryKey: ['/api/employees/businesses'],
     queryFn: async () => {
       const res = await fetch('/api/employees/businesses', {
@@ -39,7 +39,7 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
               key={business.id}
               value={business.id.toString()}
             >
-              {business.username}
+              {business.businessName}
             </SelectItem>
           ))}
         </SelectContent>

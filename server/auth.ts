@@ -1,4 +1,3 @@
-
 import type { Express } from "express";
 import session from "express-session";
 import createMemoryStore from "memorystore";

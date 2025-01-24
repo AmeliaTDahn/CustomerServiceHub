@@ -44,8 +44,9 @@ async function fetchUser(): Promise<User | null> {
   });
 
   if (!response.ok) {
+    // More robust error handling: check for specific error codes and handle accordingly.
     if (response.status === 401) {
-      return null;
+      return null; // User not authenticated
     }
 
     if (response.status >= 500) {
@@ -55,7 +56,8 @@ async function fetchUser(): Promise<User | null> {
     throw new Error(`${response.status}: ${await response.text()}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  return data.user || null; // Handle cases where the response might not contain a user object.
 }
 
 export function useUser() {

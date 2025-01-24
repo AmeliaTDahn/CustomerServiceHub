@@ -111,14 +111,19 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
       if (!ticketId) return null;
       const { data, error } = await supabase
         .from('tickets')
-        .select('*')
+        .select('*, claimed_by_id')
         .eq('id', ticketId)
         .single();
 
       if (error) throw error;
+      
+      if (user?.role === 'employee' && data.claimed_by_id !== user.id) {
+        throw new Error('You can only view chats of tickets you have claimed');
+      }
+      
       return data;
     },
-    enabled: !!ticketId
+    enabled: !!ticketId && !!user
   });
 
   // Scroll to bottom when new messages arrive

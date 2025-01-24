@@ -12,6 +12,7 @@ import EmployeeDashboard from "@/pages/employee-dashboard";
 import EmployeeMessages from "@/pages/employee-messages";
 import CustomerMessages from "@/pages/customer-messages";
 import BusinessMessages from "@/pages/business-messages";
+import BusinessAnalytics from "@/pages/business-analytics";
 import BusinessProfileSetup from "@/pages/business-profile-setup";
 
 function LoadingSpinner() {
@@ -60,6 +61,14 @@ function Router() {
               default:
                 return <NotFound />;
             }
+          }}
+        </Route>
+        <Route path="/analytics">
+          {() => {
+            if (user.role === "business") {
+              return <BusinessAnalytics />;
+            }
+            return <NotFound />;
           }}
         </Route>
         <Route path="/business/profile" component={BusinessProfileSetup} />

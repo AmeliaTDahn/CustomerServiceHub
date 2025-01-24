@@ -108,18 +108,7 @@ export default function EmployeeMessages() {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
     }
   }, [viewType, queryClient]);
-    const matchesSearch = 
-      ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-      ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
-
-    const matchesViewType = viewType === 'active' 
-      ? ticket.status !== 'resolved'
-      : ticket.status === 'resolved';
-
-    return matchesSearch && matchesViewType;
-  });
-
-  // Sort tickets by last message time
+    // Sort tickets by last message time
   const sortedTickets = [...filteredTickets].sort((a, b) => {
     const aTime = a.lastMessageAt || a.createdAt;
     const bTime = b.lastMessageAt || b.createdAt;

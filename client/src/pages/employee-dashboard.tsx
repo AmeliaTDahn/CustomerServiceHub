@@ -60,47 +60,43 @@ export default function EmployeeDashboard() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-8 flex h-16 items-center">
-          <div className="flex flex-1 items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-semibold">Employee Dashboard</h1>
-              {businessConnections.length > 0 && (
-                <BusinessSwitcher
-                  onBusinessChange={setCurrentBusinessId}
-                  currentBusinessId={currentBusinessId}
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-4">
-              <Link href="/messages">
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                  <MessageCircle className="h-4 w-4" />
-                  Messages
-                </Button>
-              </Link>
-              <div className="flex items-center gap-4 border-l pl-4">
-                <span className="text-sm text-muted-foreground">
-                  Welcome, {user?.username}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => logout()}>
-                  Logout
-                </Button>
-              </div>
+          <div className="mr-4">
+            <h1 className="text-xl font-semibold">Employee Dashboard</h1>
+          </div>
+
+          {/* Business Switcher - Always visible */}
+          <BusinessSwitcher
+            onBusinessChange={setCurrentBusinessId}
+            currentBusinessId={currentBusinessId}
+          />
+
+          <div className="flex-1 flex items-center justify-end gap-4">
+            <Link href="/messages">
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                Messages
+              </Button>
+            </Link>
+            <div className="flex items-center gap-4 border-l pl-4">
+              <span className="text-sm text-muted-foreground">
+                Welcome, {user?.username}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => logout()}>
+                Logout
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Display business context if available */}
-      {businessConnections.length > 0 && (
-        <div className="border-b">
+      {/* Display selected business context */}
+      {currentBusiness && (
+        <div className="border-b bg-muted/50">
           <div className="container mx-auto px-8 py-4">
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-muted-foreground" />
               <span className="text-lg font-medium">
-                {currentBusiness 
-                  ? `Working for: ${currentBusiness.business.businessName}`
-                  : `Connected to ${businessConnections.length} business${businessConnections.length > 1 ? 'es' : ''}`
-                }
+                Working with: {currentBusiness.business.businessName}
               </span>
             </div>
           </div>

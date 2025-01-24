@@ -72,14 +72,14 @@ export default function TicketList({
       if (isEmployee) {
         switch (view) {
           case 'active':
-            // Show only unclaimed, unresolved tickets
+            // Show only unresolved and unclaimed tickets
             return !isResolved && !isClaimedByAnyone;
           case 'my-tickets':
-            // Show only tickets claimed by current employee and not resolved
+            // Show unresolved tickets that are claimed by current employee
             return !isResolved && isClaimedByMe;
           case 'history':
-            // Show resolved tickets that were either claimed by me or were never claimed
-            return isResolved && (isClaimedByMe || !isClaimedByAnyone);
+            // Show resolved tickets that were resolved by this employee
+            return isResolved && isClaimedByMe;
           default:
             return false;
         }

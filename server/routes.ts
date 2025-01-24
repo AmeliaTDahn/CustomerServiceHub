@@ -221,10 +221,14 @@ export function registerRoutes(app: Express): Server {
           throw new Error("Failed to create invitation record");
         }
 
-      res.json({
-        message: "Invitation sent successfully",
-        invitation
-      });
+        res.json({
+          message: "Invitation sent successfully",
+          invitation
+        });
+      } catch (error) {
+        console.error('Error inviting employee:', error);
+        res.status(500).json({ error: "Failed to send invitation" });
+      }
     } catch (error) {
       console.error('Error inviting employee:', error);
       res.status(500).json({ error: "Failed to send invitation" });

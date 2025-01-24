@@ -41,6 +41,8 @@ interface TicketListProps {
     unreadCount: number;
     claimedById?: number | null;
     claimedAt?: string | null;
+    category: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
@@ -184,13 +186,26 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground space-y-0.5">
-                    <div className="flex items-center gap-4">
-                      <span>{ticket.customer.username}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{ticket.customer?.username}</span>
                       <span>·</span>
                       <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                       <Badge variant={ticket.status === "resolved" ? "secondary" : "default"}>
-                        {ticket.status === "in_progress" ? "In Progress" : 
+                        {ticket.status === "in_progress" ? "In Progress" :
                          ticket.status === "resolved" ? "Resolved" : "Open"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="capitalize">
+                        {ticket.category.replace(/_/g, ' ')}
+                      </Badge>
+                      <Badge variant="outline" className={`capitalize ${
+                        ticket.priority === 'urgent' ? 'border-red-500 text-red-500' :
+                        ticket.priority === 'high' ? 'border-orange-500 text-orange-500' :
+                        ticket.priority === 'medium' ? 'border-yellow-500 text-yellow-500' :
+                        'border-blue-500 text-blue-500'
+                      }`}>
+                        {ticket.priority}
                       </Badge>
                     </div>
                     {viewType !== 'history' && ticket.claimedAt && (

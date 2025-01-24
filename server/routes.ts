@@ -594,6 +594,157 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add notes endpoints after the tickets endpoints
+  app.get("/api/tickets/:id/notes", async (req: Request, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const ticketId = parseInt(req.params.id);
+
+      // Get the ticket first to check permissions
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          business:business_profiles!business_profile_id(
+            id,
+            user_id
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check if user has access to the ticket
+      if (req.user.role === 'business' && ticket.business.user_id !== req.user.id) {
+        return res.status(403).json({ error: "No access to this ticket" });
+      }
+
+      if (req.user.role === 'employee') {
+        const { data: hasAccess } = await supabase
+          .from('business_employees')
+          .select()
+          .eq('employee_id', req.user.id)
+          .eq('business_profile_id', ticket.business_profile_id)
+          .eq('is_active', true)
+          .single();
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket" });
+        }
+      }
+
+      // Get notes with author information
+      const { data: notes, error } = await supabase
+        .from('ticket_notes')
+        .select(`
+          *,
+          author:users(
+            id,
+            username,
+            role
+          )
+        `)
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching notes:', error);
+        return res.status(500).json({ error: "Failed to fetch notes" });
+      }
+
+      res.json(notes);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      res.status(500).json({ error: "Failed to fetch notes" });
+    }
+  });
+
+  app.post("/api/tickets/:id/notes", async (req: Request, res) => {
+    try {
+      if (!req.user || !['business', 'employee'].includes(req.user.role)) {
+        return res.status(403).json({ error: "Only business and employees can add notes" });
+      }
+
+      const ticketId = parseInt(req.params.id);
+      const { content } = req.body;
+
+      if (!content?.trim()) {
+        return res.status(400).json({ error: "Note content is required" });
+      }
+
+      // Get the ticket first to check permissions
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          business:business_profiles!business_profile_id(
+            id,
+            user_id
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check if user has access to the ticket
+      if (req.user.role === 'business' && ticket.business.user_id !== req.user.id) {
+        return res.status(403).json({ error: "No access to this ticket" });
+      }
+
+      if (req.user.role === 'employee') {
+        const { data: hasAccess } = await supabase
+          .from('business_employees')
+          .select()
+          .eq('employee_id', req.user.id)
+          .eq('business_profile_id', ticket.business_profile_id)
+          .eq('is_active', true)
+          .single();
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No access to this ticket" });
+        }
+      }
+
+      // Add the note
+      const { data: note, error } = await supabase
+        .from('ticket_notes')
+        .insert({
+          ticket_id: ticketId,
+          author_id: req.user.id,
+          content: content.trim(),
+          created_at: new Date().toISOString()
+        })
+        .select(`
+          *,
+          author:users(
+            id,
+            username,
+            role
+          )
+        `)
+        .single();
+
+      if (error) {
+        console.error('Error creating note:', error);
+        return res.status(500).json({ error: "Failed to create note" });
+      }
+
+      res.json(note);
+    } catch (error) {
+      console.error('Error creating note:', error);
+      res.status(500).json({ error: "Failed to create note" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -35,7 +35,25 @@ export type Tables = {
     customer_id: number;
     business_profile_id: number;
     claimed_by_id: number | null;
+    category: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
     created_at: string;
     updated_at: string;
+  };
+  messages: {
+    id: number;
+    content: string;
+    sender_id: number;
+    receiver_id?: number;
+    ticket_id?: number;
+    created_at: string;
+    read_at?: string | null;
+  };
+  ticket_notes: {
+    id: number;
+    ticket_id: number;
+    user_id: number;
+    content: string;
+    created_at: string;
   };
 };

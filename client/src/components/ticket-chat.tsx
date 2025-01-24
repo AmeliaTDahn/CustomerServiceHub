@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useWebSocket } from "@/hooks/use-websocket";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -59,7 +59,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { isConnected, sendMessage, sendReadReceipt } = useWebSocket(user?.id, user?.role);
+  const { isConnected, sendMessage } = useRealtime(user?.id, user?.role);
   const lastProcessedMessagesRef = useRef<Set<number>>(new Set());
 
   // Query for messages - either ticket messages or direct messages
@@ -118,33 +118,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
     }
   }, [messages]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const currentMessages = new Set(messages.map(m => m.message.id));
-    const processedMessages = lastProcessedMessagesRef.current;
-
-    messages.forEach(messageData => {
-      const messageId = messageData.message.id;
-
-      if (!processedMessages.has(messageId) &&
-        messageData.sender.id !== user.id &&
-        messageData.message.status !== 'read') {
-
-        sendReadReceipt(messageId);
-        processedMessages.add(messageId);
-      }
-    });
-
-    Array.from(processedMessages).forEach(id => {
-      if (!currentMessages.has(id)) {
-        processedMessages.delete(id);
-      }
-    });
-
-    lastProcessedMessagesRef.current = processedMessages;
-  }, [messages, user, sendReadReceipt]);
-
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -197,7 +171,6 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
         throw new Error("Invalid message target");
       }
 
-      const isBroadcast = chatType === 'ticket' && user?.role === 'customer' && ticket && !ticket.claimedById;
       const tempId = Date.now();
 
       const optimisticMessage: Message = {
@@ -207,7 +180,6 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           ticketId: ticketId || null,
           senderId: user!.id,
           receiverId,
-          businessId: chatType === 'business' ? receiverId : undefined,
           status: 'sending',
           chatInitiator: messages.length === 0,
           initiatedAt: messages.length === 0 ? new Date().toISOString() : null,
@@ -227,26 +199,13 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
         return next;
       });
 
-      const messagePayload = chatType === 'ticket' 
-        ? {
-            type: 'message',
-            senderId: user!.id,
-            receiverId,
-            content,
-            timestamp: new Date().toISOString(),
-            ticketId,
-            chatInitiator: messages.length === 0,
-          }
-        : {
-            type: 'direct_message',
-            senderId: user!.id,
-            receiverId,
-            content,
-            timestamp: new Date().toISOString(),
-            businessId: chatType === 'business' ? receiverId : undefined,
-          };
+      await sendMessage({
+        content,
+        senderId: user!.id,
+        receiverId,
+        ticketId,
+      });
 
-      sendMessage(messagePayload);
       return optimisticMessage;
     },
     onError: (error) => {

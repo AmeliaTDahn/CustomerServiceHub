@@ -1,8 +1,18 @@
-
 import { useEffect, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
+import type { Tables } from '@/lib/supabase';
+
+type Message = {
+  id: number;
+  content: string;
+  sender_id: number;
+  receiver_id?: number;
+  ticket_id?: number;
+  created_at: string;
+  read_at?: string | null;
+};
 
 export function useRealtime(userId: number | undefined, role: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
@@ -23,6 +33,7 @@ export function useRealtime(userId: number | undefined, role: string | undefined
   useEffect(() => {
     if (!userId) return;
 
+    // Subscribe to messages channel
     const messagesChannel = supabase
       .channel('messages')
       .on(
@@ -30,17 +41,34 @@ export function useRealtime(userId: number | undefined, role: string | undefined
         {
           event: '*',
           schema: 'public',
-          table: 'messages'
+          table: 'messages',
+          filter: role === 'customer' 
+            ? `receiver_id=eq.${userId}` 
+            : undefined
         },
         (payload) => {
-          if (payload.new) {
-            const message = payload.new;
-            if (message.receiver_id === userId) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+          const message = payload.new as Message;
 
+          // Handle different message scenarios
+          if (message) {
+            // For ticket messages
+            if (message.ticket_id) {
+              queryClient.invalidateQueries({ 
+                queryKey: ['/api/tickets', message.ticket_id, 'messages']
+              });
+            }
+
+            // For direct messages
+            if (message.receiver_id === userId) {
+              queryClient.invalidateQueries({ 
+                queryKey: ['/api/messages/direct']
+              });
+
+              // Show notification if tab is not active
               if (hasNotificationPermission && document.hidden) {
                 new Notification('New Message', {
-                  body: message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''),
+                  body: message.content.substring(0, 50) + 
+                    (message.content.length > 50 ? '...' : ''),
                   icon: '/notification-icon.png'
                 });
               }
@@ -48,8 +76,11 @@ export function useRealtime(userId: number | undefined, role: string | undefined
           }
         }
       )
-      .subscribe(() => setIsConnected(true));
+      .subscribe((status) => {
+        setIsConnected(status === 'SUBSCRIBED');
+      });
 
+    // Subscribe to tickets channel for status updates
     const ticketsChannel = supabase
       .channel('tickets')
       .on(
@@ -60,15 +91,19 @@ export function useRealtime(userId: number | undefined, role: string | undefined
           table: 'tickets'
         },
         (payload) => {
-          if (payload.new) {
+          const ticket = payload.new as Tables['tickets'];
+          if (ticket) {
             queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-            if (role === 'customer' && payload.new.status === 'resolved') {
-              if (hasNotificationPermission && document.hidden) {
-                new Notification('Ticket Resolved', {
-                  body: `Your ticket #${payload.new.id} has been resolved.`,
-                  icon: '/notification-icon.png'
-                });
-              }
+
+            // Notify customer when their ticket is resolved
+            if (role === 'customer' && 
+                ticket.status === 'resolved' && 
+                hasNotificationPermission && 
+                document.hidden) {
+              new Notification('Ticket Resolved', {
+                body: `Your ticket #${ticket.id} has been resolved.`,
+                icon: '/notification-icon.png'
+              });
             }
           }
         }
@@ -84,7 +119,7 @@ export function useRealtime(userId: number | undefined, role: string | undefined
   const sendMessage = useCallback(async (message: {
     content: string;
     senderId: number;
-    receiverId: number;
+    receiverId?: number;
     ticketId?: number;
   }) => {
     try {
@@ -97,7 +132,18 @@ export function useRealtime(userId: number | undefined, role: string | undefined
       }]);
 
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
+
+      // Invalidate relevant queries based on message type
+      if (message.ticketId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/tickets', message.ticketId, 'messages']
+        });
+      }
+      if (message.receiverId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/messages/direct']
+        });
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       toast({

@@ -253,13 +253,36 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ error: "Business profile not found" });
       }
 
-      // Get only employees connected to this specific business
-      const { data: employees } = await supabase
+      // Get only employees connected to this specific business with their connection status
+      const { data: employees, error } = await supabase
         .from('business_employees')
-        .select('employee:users(*), is_active, created_at')
+        .select(`
+          employee_id,
+          is_active,
+          created_at,
+          employee:users!employee_id(
+            id,
+            username,
+            role
+          )
+        `)
         .eq('business_profile_id', businessProfile.id);
 
-      res.json(employees);
+      if (error) {
+        console.error('Error fetching employees:', error);
+        return res.status(500).json({ error: "Failed to fetch employees" });
+      }
+
+      // Transform the data to match the expected structure
+      const transformedEmployees = employees?.map(emp => ({
+        employee: emp.employee,
+        connection: {
+          isActive: emp.is_active,
+          createdAt: emp.created_at
+        }
+      })) || [];
+
+      res.json(transformedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
       res.status(500).json({ error: "Failed to fetch employees" });

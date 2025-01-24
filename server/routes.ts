@@ -81,36 +81,43 @@ export function registerRoutes(app: Express): Server {
       const { employeeId } = req.body;
 
       if (!employeeId) {
-        return res.status(400).json({ error: "Invalid employee ID" });
+        return res.status(400).json({ error: "Employee ID is required" });
       }
 
       // Get the business profile
-      const { data: businessProfile } = await supabase
+      const { data: businessProfile, error: profileError } = await supabase
         .from('business_profiles')
-        .select()
+        .select('id')
         .eq('user_id', req.user.id)
         .single();
 
-      if (!businessProfile) {
-        return res.status(404).json({ error: "Business profile not found" });
+      if (profileError || !businessProfile) {
+        console.error('Business profile error:', profileError);
+        return res.status(404).json({ 
+          error: "Please complete your business profile setup before inviting employees",
+          details: profileError?.message
+        });
       }
 
       // Verify the employee exists and is of role 'employee'
-      const { data: employee } = await supabase
+      const { data: employee, error: employeeError } = await supabase
         .from('users')
-        .select()
+        .select('id, role')
         .eq('id', employeeId)
-        .eq('role', 'employee')
         .single();
 
-      if (!employee) {
+      if (employeeError || !employee) {
         return res.status(404).json({ error: "Employee not found" });
+      }
+
+      if (employee.role !== 'employee') {
+        return res.status(400).json({ error: "Selected user is not an employee" });
       }
 
       // Check if employee is already connected to this business
       const { data: existingConnection } = await supabase
         .from('business_employees')
-        .select()
+        .select('id')
         .eq('business_profile_id', businessProfile.id)
         .eq('employee_id', employeeId)
         .single();
@@ -122,29 +129,33 @@ export function registerRoutes(app: Express): Server {
       // Check if invitation already exists
       const { data: existingInvitation } = await supabase
         .from('employee_invitations')
-        .select()
+        .select('id, status')
         .eq('business_profile_id', businessProfile.id)
         .eq('employee_id', employeeId)
         .eq('status', 'pending')
         .single();
 
       if (existingInvitation) {
-        return res.status(400).json({ error: "Invitation already sent" });
+        return res.status(400).json({ error: "An invitation is already pending for this employee" });
       }
 
       // Create invitation
-      const { data: invitation, error } = await supabase
+      const { data: invitation, error: invitationError } = await supabase
         .from('employee_invitations')
         .insert({
           business_profile_id: businessProfile.id,
           employee_id: employeeId,
           status: 'pending',
         })
-        .select();
+        .select()
+        .single();
 
-      if (error) {
-        console.error('Error creating invitation:', error);
-        return res.status(500).json({ error: "Failed to create invitation" });
+      if (invitationError) {
+        console.error('Error creating invitation:', invitationError);
+        return res.status(500).json({ 
+          error: "Failed to create invitation",
+          details: invitationError.message
+        });
       }
 
       res.json(invitation);

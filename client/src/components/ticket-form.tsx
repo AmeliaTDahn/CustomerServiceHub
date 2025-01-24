@@ -74,7 +74,13 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, priority: "medium" }),
+        body: JSON.stringify({
+          title: data.title,
+          description: data.description,
+          category: data.category,
+          priority: "medium",
+          businessProfileId: data.businessProfileId
+        }),
         credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());

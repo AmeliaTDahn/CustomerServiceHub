@@ -10,7 +10,6 @@ import BusinessDashboard from "@/pages/business-dashboard";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import EmployeeDashboard from "@/pages/employee-dashboard";
 import BusinessProfileSetup from "@/pages/business-profile-setup";
-import { useQuery } from "@tanstack/react-query";
 
 function LoadingSpinner() {
   return (
@@ -26,23 +25,12 @@ function LoadingSpinner() {
 function Router() {
   const { user, isLoading } = useUser();
 
-  // Check if business user has completed profile setup
-  const { data: businessProfile, isLoading: profileLoading } = useQuery({
-    queryKey: ['/api/business-profile'],
-    enabled: user?.role === 'business',
-  });
-
-  if (isLoading || (user?.role === 'business' && profileLoading)) {
+  if (isLoading) {
     return <LoadingSpinner />;
   }
 
   if (!user) {
     return <AuthPage />;
-  }
-
-  // Redirect business users to profile setup if not completed
-  if (user.role === 'business' && !businessProfile) {
-    return <BusinessProfileSetup />;
   }
 
   return (

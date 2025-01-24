@@ -171,11 +171,25 @@ export function registerRoutes(app: Express): Server {
         .single();
 
       if (profileError || !businessProfile) {
-        console.error('Business profile error:', profileError);
-        return res.status(404).json({ 
-          error: "Please complete your business profile setup before inviting employees",
-          details: profileError?.message
-        });
+        // Create a default business profile if it doesn't exist
+        const { data: newProfile, error: createError } = await supabase
+          .from('business_profiles')
+          .insert({
+            user_id: req.user.id,
+            business_name: req.user.username // Use username as default business name
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating business profile:', createError);
+          return res.status(500).json({ 
+            error: "Failed to create business profile",
+            details: createError.message
+          });
+        }
+
+        businessProfile = newProfile;
       }
 
       // Verify the employee exists and is of role 'employee'

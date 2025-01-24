@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import BusinessProfileManager from "@/components/business-profile-manager";
 import {
   Dialog,
   DialogContent,
@@ -167,6 +168,7 @@ export default function EmployeeManagement() {
 
   return (
     <div className="space-y-4">
+      <BusinessProfileManager />
       <div className="flex items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />

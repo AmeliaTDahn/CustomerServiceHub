@@ -30,8 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 
 interface Business {
   id: number;
-  name: string;
-  userId: number;
+  business_name: string;
+  user_id: number;
 }
 
 type TicketFormData = {
@@ -117,7 +117,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
               {isLoadingBusinesses ? (
                 "Loading businesses..."
               ) : selectedBusinessId ? (
-                businesses.find((business) => business.id === selectedBusinessId)?.name
+                businesses.find((business) => business.id === selectedBusinessId)?.business_name
               ) : (
                 "Search for a business..."
               )}
@@ -144,7 +144,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
                         selectedBusinessId === business.id ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    {business.name}
+                    {business.business_name}
                   </CommandItem>
                 ))}
               </CommandGroup>

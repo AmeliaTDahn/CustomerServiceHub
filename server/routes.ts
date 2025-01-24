@@ -203,16 +203,17 @@ export function registerRoutes(app: Express): Server {
           business_profile_id: businessProfile.id,
           employee_id: employeeId,
           status: 'pending',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
       if (invitationError) {
-        console.error('Error creating invitation:', invitationError);
+        console.error('Error creating invitation:', invitationError.message);
         return res.status(500).json({ 
           error: "Failed to create invitation",
-          details: invitationError.message
+          details: invitationError.message || "Database error occurred"
         });
       }
 

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,14 +15,25 @@ export default function AuthPage() {
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
   const { login, register } = useUser();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     try {
       if (isLogin) {
-        await login({ username, password, role });
+        const result = await login({ username, password, role });
+        if (!result.ok) {
+          throw new Error(result.message);
+        }
+        // Login successful - will automatically redirect due to useUser hook in App.tsx
       } else {
         const result = await register({ username, password, role });
+        if (!result.ok) {
+          throw new Error(result.message);
+        }
+
+        // Registration successful - will automatically redirect due to useUser hook in App.tsx
         if (result.ok && role === "employee") {
           toast({
             title: "Registration successful",
@@ -73,33 +85,31 @@ export default function AuthPage() {
                 required
               />
             </div>
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label>Account Type</Label>
-                <RadioGroup
-                  value={role}
-                  onValueChange={(value) => setRole(value as "business" | "customer" | "employee")}
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="customer" id="customer" />
-                    <Label htmlFor="customer">Customer</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="business" id="business" />
-                    <Label htmlFor="business">Business</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="employee" id="employee" />
-                    <Label htmlFor="employee">Employee</Label>
-                  </div>
-                </RadioGroup>
-                {role === "employee" && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    After registration, wait for a business to invite you to their support system.
-                  </p>
-                )}
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Account Type</Label>
+              <RadioGroup
+                value={role}
+                onValueChange={(value) => setRole(value as "business" | "customer" | "employee")}
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="customer" id="customer" />
+                  <Label htmlFor="customer">Customer</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="business" id="business" />
+                  <Label htmlFor="business">Business</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="employee" id="employee" />
+                  <Label htmlFor="employee">Employee</Label>
+                </div>
+              </RadioGroup>
+              {!isLogin && role === "employee" && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  After registration, wait for a business to invite you to their support system.
+                </p>
+              )}
+            </div>
             <Button type="submit" className="w-full">
               {isLogin ? "Login" : "Register"}
             </Button>

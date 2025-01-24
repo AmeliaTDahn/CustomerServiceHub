@@ -1,4 +1,3 @@
-
 import { useForm } from "react-hook-form";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,14 +27,16 @@ import {
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import type { NewTicket } from "@db/schema";
 
 interface Business {
   id: number;
   name: string;
+  userId: number;
 }
 
-type TicketFormData = NewTicket & {
+type TicketFormData = {
+  title: string;
+  description: string;
   businessProfileId: number;
   category: "technical" | "billing" | "feature_request" | "general_inquiry" | "bug_report";
 };
@@ -53,20 +54,15 @@ interface TicketFormProps {
 }
 
 export default function TicketForm({ onSuccess }: TicketFormProps) {
-  const { register, handleSubmit, reset, setValue } = useForm<TicketFormData>();
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<TicketFormData>();
   const [open, setOpen] = useState(false);
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch all available businesses
-  const { data: businesses = [] } = useQuery<Business[]>({
+  const { data: businesses = [], isLoading: isLoadingBusinesses } = useQuery<Business[]>({
     queryKey: ['/api/businesses'],
-    queryFn: async () => {
-      const res = await fetch('/api/businesses', { credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    }
   });
 
   const createTicket = useMutation({
@@ -74,16 +70,13 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: data.title,
-          description: data.description,
-          category: data.category,
-          priority: "medium",
-          businessProfileId: data.businessProfileId
-        }),
+        body: JSON.stringify(data),
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error);
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -119,10 +112,15 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
               role="combobox"
               aria-expanded={open}
               className="w-full justify-between"
+              disabled={isLoadingBusinesses}
             >
-              {selectedBusinessId
-                ? businesses.find((business) => business.id === selectedBusinessId)?.name
-                : "Search for a business..."}
+              {isLoadingBusinesses ? (
+                "Loading businesses..."
+              ) : selectedBusinessId ? (
+                businesses.find((business) => business.id === selectedBusinessId)?.name
+              ) : (
+                "Search for a business..."
+              )}
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -173,28 +171,41 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
             ))}
           </SelectContent>
         </Select>
+        {errors.category && (
+          <p className="text-sm text-red-500">{errors.category.message}</p>
+        )}
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="title">Title</Label>
         <Input
           id="title"
-          {...register("title", { required: true })}
+          {...register("title", { required: "Title is required" })}
           placeholder="Brief description of the issue"
         />
+        {errors.title && (
+          <p className="text-sm text-red-500">{errors.title.message}</p>
+        )}
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="description">Description</Label>
         <Textarea
           id="description"
-          {...register("description", { required: true })}
+          {...register("description", { required: "Description is required" })}
           placeholder="Detailed explanation of your issue"
           rows={4}
         />
+        {errors.description && (
+          <p className="text-sm text-red-500">{errors.description.message}</p>
+        )}
       </div>
 
-      <Button type="submit" disabled={createTicket.isPending || !selectedBusinessId} className="w-full">
+      <Button 
+        type="submit" 
+        disabled={createTicket.isPending || !selectedBusinessId || isLoadingBusinesses} 
+        className="w-full"
+      >
         {createTicket.isPending ? "Creating..." : "Create Ticket"}
       </Button>
     </form>

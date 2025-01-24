@@ -1,25 +1,24 @@
 import type { Express } from "express";
-import { supabase } from "@db";
+import { db } from "@db/index";
+import { users } from "@db/schema";
+import { eq } from "drizzle-orm";
 
 export function setupAuth(app: Express) {
   // Middleware to check authentication
   app.use(async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
+    if (!req.session?.user) {
       return next();
     }
 
     try {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error } = await supabase.auth.getUser(token);
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, req.session.user.id))
+        .limit(1);
 
-      if (error) throw error;
       if (user) {
-        req.user = {
-          id: parseInt(user.id),
-          username: user.email || '',
-          role: user.user_metadata.role
-        };
+        req.user = user;
       }
     } catch (error) {
       console.error('Auth error:', error);
@@ -27,96 +26,120 @@ export function setupAuth(app: Express) {
     next();
   });
 
-  app.post("/api/register", async (req, res, next) => {
+  app.post("/api/register", async (req, res) => {
     try {
-      const { email, password, role, businessName } = req.body;
+      const { username, password, role } = req.body;
 
-      const { data: existingUser, error: existingUserError } = await supabase
-        .from('users')
-        .select()
-        .eq('email', email)
-        .single();
-
-      if (existingUserError) throw existingUserError;
-      if (existingUser) {
-        return res.status(400).send("Email already exists");
+      if (!username || !password || !role) {
+        return res.status(400).send("Username, password and role are required");
       }
 
-      const { user, error: userError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            role: role,
-            businessName: businessName
-          }
-        }
-      });
+      // Check if user already exists
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
 
-      if (userError) throw userError;
+      if (existingUser) {
+        return res.status(400).send("Username already exists");
+      }
+
+      // Create new user
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          username,
+          password, // Note: In production, you should hash the password
+          role,
+          createdAt: new Date()
+        })
+        .returning();
+
+      // Set session
+      req.session.user = newUser;
+      await req.session.save();
 
       return res.json({
         message: "Registration successful",
         user: {
-          id: user.id,
-          username: user.email,
-          role: user.user_metadata.role
+          id: newUser.id,
+          username: newUser.username,
+          role: newUser.role
         },
       });
     } catch (error) {
-      next(error);
+      console.error('Registration error:', error);
+      return res.status(500).send("Registration failed");
     }
   });
 
-  app.post("/api/login", async (req, res, next) => {
+  app.post("/api/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
-      const { data: { user }, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      if (error) {
-        return res.status(400).send(error.message);
+      const { username, password, role } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).send("Username and password are required");
       }
+
+      // Find user
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
+
+      if (!user) {
+        return res.status(400).send("User not found");
+      }
+
+      // In production, you should compare hashed passwords
+      if (user.password !== password) {
+        return res.status(400).send("Invalid password");
+      }
+
+      if (role && user.role !== role) {
+        return res.status(400).send(`Invalid role for user. Expected ${user.role}, got ${role}`);
+      }
+
+      // Set session
+      req.session.user = user;
+      await req.session.save();
+
       return res.json({
         message: "Login successful",
         user: {
           id: user.id,
-          username: user.email,
-          role: user.user_metadata.role
+          username: user.username,
+          role: user.role
         },
       });
     } catch (error) {
-      next(error);
+      console.error('Login error:', error);
+      return res.status(500).send("Login failed");
     }
   });
 
   app.post("/api/logout", async (req, res) => {
     try {
-      await supabase.auth.signOut();
-      res.json({ message: "Logout successful" });
+      req.session.destroy(() => {
+        res.json({ message: "Logout successful" });
+      });
     } catch (error) {
+      console.error('Logout error:', error);
       return res.status(500).send("Logout failed");
     }
   });
 
   app.get("/api/user", async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).send("Not logged in");
-    }
-    try {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (error || !user) return res.status(401).send("Not logged in");
+    if (req.user) {
       return res.json({
-        id: parseInt(user.id),
-        username: user.email || '',
-        role: user.user_metadata.role
+        id: req.user.id,
+        username: req.user.username,
+        role: req.user.role
       });
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      return res.status(500).send("Server error");
     }
+
+    res.status(401).send("Not logged in");
   });
 }

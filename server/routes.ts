@@ -1,9 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-
-import { supabase } from "@db";
-import type { Tables } from "@/lib/supabase";
+import { db } from "@db";
+import { users, businessProfiles, businessEmployees, employeeInvitations, tickets } from "@db/schema";
+import { eq, and } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -18,7 +18,7 @@ declare global {
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
-  // Get all employees for a business
+  // Get all employees for a specific business
   app.get("/api/businesses/employees", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
@@ -26,36 +26,32 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get the current business profile
-      const { data: businessProfile, error: profileError } = await supabase
-        .from('business_profiles')
+      const [businessProfile] = await db
         .select()
-        .eq('user_id', req.user.id)
-        .single();
+        .from(businessProfiles)
+        .where(eq(businessProfiles.userId, req.user.id))
+        .limit(1);
 
-      if (profileError || !businessProfile) {
+      if (!businessProfile) {
         return res.status(404).json({ error: "Business profile not found" });
       }
 
       // Get only employees connected to this specific business
-      const { data: employees, error: employeesError } = await supabase
-        .from('business_employees')
-        .select(`
-          employee:users (
-            id,
-            username,
-            role
-          ),
-          connection:business_employees (
-            is_active,
-            created_at
-          )
-        `)
-        .eq('business_profile_id', businessProfile.id)
-        .order('created_at');
-
-      if (employeesError) {
-        throw employeesError;
-      }
+      const employees = await db
+        .select({
+          employee: {
+            id: users.id,
+            username: users.username,
+            role: users.role
+          },
+          connection: {
+            isActive: businessEmployees.isActive,
+            createdAt: businessEmployees.createdAt
+          }
+        })
+        .from(businessEmployees)
+        .innerJoin(users, eq(businessEmployees.employeeId, users.id))
+        .where(eq(businessEmployees.businessProfileId, businessProfile.id));
 
       res.json(employees);
     } catch (error) {
@@ -78,74 +74,128 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get the business profile
-      const { data: businessProfile, error: profileError } = await supabase
-        .from('business_profiles')
+      const [businessProfile] = await db
         .select()
-        .eq('user_id', req.user.id)
-        .single();
+        .from(businessProfiles)
+        .where(eq(businessProfiles.userId, req.user.id))
+        .limit(1);
 
-      if (profileError || !businessProfile) {
+      if (!businessProfile) {
         return res.status(404).json({ error: "Business profile not found" });
       }
 
       // Verify the employee exists and is of role 'employee'
-      const { data: employee, error: employeeError } = await supabase
-        .from('users')
+      const [employee] = await db
         .select()
-        .eq('id', employeeId)
-        .eq('role', 'employee')
-        .single();
+        .from(users)
+        .where(and(
+          eq(users.id, employeeId),
+          eq(users.role, 'employee')
+        ))
+        .limit(1);
 
-      if (employeeError || !employee) {
+      if (!employee) {
         return res.status(404).json({ error: "Employee not found" });
       }
 
       // Check if employee is already connected to this business
-      const { data: existingConnection, error: connectionError } = await supabase
-        .from('business_employees')
+      const [existingConnection] = await db
         .select()
-        .eq('business_profile_id', businessProfile.id)
-        .eq('employee_id', employeeId)
-        .single();
+        .from(businessEmployees)
+        .where(and(
+          eq(businessEmployees.businessProfileId, businessProfile.id),
+          eq(businessEmployees.employeeId, employeeId)
+        ))
+        .limit(1);
 
       if (existingConnection) {
         return res.status(400).json({ error: "Employee is already connected to this business" });
       }
 
       // Check if invitation already exists
-      const { data: existingInvitation, error: invitationError } = await supabase
-        .from('employee_invitations')
+      const [existingInvitation] = await db
         .select()
-        .eq('business_profile_id', businessProfile.id)
-        .eq('employee_id', employeeId)
-        .eq('status', 'pending')
-        .single();
+        .from(employeeInvitations)
+        .where(and(
+          eq(employeeInvitations.businessProfileId, businessProfile.id),
+          eq(employeeInvitations.employeeId, employeeId),
+          eq(employeeInvitations.status, 'pending')
+        ))
+        .limit(1);
 
       if (existingInvitation) {
         return res.status(400).json({ error: "Invitation already sent" });
       }
 
       // Create invitation
-      const { data: invitation, error: createError } = await supabase
-        .from('employee_invitations')
-        .insert([{
-          business_profile_id: businessProfile.id,
-          employee_id: employeeId,
+      const [invitation] = await db
+        .insert(employeeInvitations)
+        .values({
+          businessProfileId: businessProfile.id,
+          employeeId: employeeId,
           status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (createError) {
-        throw createError;
-      }
+        })
+        .returning();
 
       res.json(invitation);
     } catch (error) {
       console.error('Error inviting employee:', error);
       res.status(500).json({ error: "Failed to send invitation" });
+    }
+  });
+
+  // Get all available businesses for ticket creation
+  app.get("/api/businesses", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const businesses = await db
+        .select({
+          id: businessProfiles.id,
+          name: businessProfiles.businessName,
+          userId: businessProfiles.userId
+        })
+        .from(businessProfiles);
+
+      res.json(businesses);
+    } catch (error) {
+      console.error('Error fetching businesses:', error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  // Create ticket with business selection
+  app.post("/api/tickets", async (req, res) => {
+    try {
+      const { title, description, businessProfileId } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (!businessProfileId) {
+        return res.status(400).json({ error: "Business profile ID is required" });
+      }
+
+      const [ticket] = await db
+        .insert(tickets)
+        .values({
+          title,
+          description,
+          status: 'open',
+          customerId: req.user.id,
+          businessProfileId,
+          category: 'general_inquiry',
+          priority: 'medium',
+        })
+        .returning();
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      res.status(500).json({ error: "Failed to create ticket" });
     }
   });
 
@@ -156,22 +206,28 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only employees can view their invitations" });
       }
 
-      const { data: invitations, error } = await supabase
-        .from('employee_invitations')
-        .select(`
-          *,
-          business:business_profiles (
-            id,
-            business_name,
-            user_id
-          )
-        `)
-        .eq('employee_id', req.user.id)
-        .eq('status', 'pending');
-
-      if (error) {
-        throw error;
-      }
+      const invitations = await db
+        .select({
+          employeeInvitations: {
+            id: employeeInvitations.id,
+            businessProfileId: employeeInvitations.businessProfileId,
+            employeeId: employeeInvitations.employeeId,
+            status: employeeInvitations.status,
+            createdAt: employeeInvitations.createdAt,
+            updatedAt: employeeInvitations.updatedAt
+          },
+          business: {
+            id: businessProfiles.id,
+            businessName: businessProfiles.businessName,
+            userId: businessProfiles.userId
+          }
+        })
+        .from(employeeInvitations)
+        .innerJoin(businessProfiles, eq(employeeInvitations.businessProfileId, businessProfiles.id))
+        .where(and(
+          eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.status, 'pending')
+        ));
 
       res.json(invitations);
     } catch (error) {
@@ -187,21 +243,19 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only employees can view their business connections" });
       }
 
-      const { data: connections, error } = await supabase
-        .from('business_employees')
-        .select(`
-          business:business_profiles (
-            id,
-            business_name,
-            user_id
-          ),
-          is_active
-        `)
-        .eq('employee_id', req.user.id);
+      const connections = await db
+        .select({
+          business: {
+            id: businessProfiles.id,
+            businessName: businessProfiles.businessName,
+            userId: businessProfiles.userId
+          },
+          isActive: businessEmployees.isActive
+        })
+        .from(businessEmployees)
+        .innerJoin(businessProfiles, eq(businessEmployees.businessProfileId, businessProfiles.id))
+        .where(eq(businessEmployees.employeeId, req.user.id));
 
-      if (error) {
-        throw error;
-      }
 
       res.json(connections);
     } catch (error) {
@@ -210,57 +264,59 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Get all tickets
+  // Get all tickets -  modified to include businessProfileId filtering
   app.get("/api/tickets", async (req, res) => {
     try {
-      const { data: tickets, error } = await supabase
-        .from('tickets')
-        .select(`
-          *,
-          customer:users!customer_id(*),
-          business:business_profiles!business_profile_id(*),
-          claimed_by:users!claimed_by_id(*)
-        `)
-        .order('created_at', { ascending: false });
+      if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'business' && req.user.role !== 'employee')) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
 
-      if (error) throw error;
-      res.json(tickets);
+      const businessProfileId = req.user.role === 'business' ? (await db.select().from(businessProfiles).where(eq(businessProfiles.userId, req.user.id)).limit(1))[0]?.id : undefined;
+
+      const ticketsQuery = db.select({
+        tickets: {
+          id: tickets.id,
+          title: tickets.title,
+          description: tickets.description,
+          status: tickets.status,
+          customerId: tickets.customerId,
+          businessProfileId: tickets.businessProfileId,
+          claimedById: tickets.claimedById,
+          createdAt: tickets.createdAt,
+          updatedAt: tickets.updatedAt,
+          category: tickets.category,
+          priority: tickets.priority
+        },
+        customer: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        },
+        business: {
+          id: businessProfiles.id,
+          businessName: businessProfiles.businessName,
+          userId: businessProfiles.userId
+        },
+        claimedBy: {
+          id: users.id,
+          username: users.username,
+          role: users.role
+        }
+      }).from(tickets)
+        .leftJoin(users, eq(tickets.customerId, users.id), 'customer')
+        .leftJoin(businessProfiles, eq(tickets.businessProfileId, businessProfiles.id), 'business')
+        .leftJoin(users, eq(tickets.claimedById, users.id), 'claimedBy')
+        .orderBy(tickets.createdAt, 'desc');
+
+
+      const ticketsResult = businessProfileId ? await ticketsQuery.where(eq(tickets.businessProfileId, businessProfileId)) : await ticketsQuery;
+      res.json(ticketsResult);
     } catch (error) {
       console.error('Error fetching tickets:', error);
       res.status(500).json({ error: "Failed to fetch tickets" });
     }
   });
 
-  // Create ticket
-  app.post("/api/tickets", async (req, res) => {
-    try {
-      const { title, description, businessProfileId } = req.body;
-
-      if (!req.user) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const { data: ticket, error } = await supabase
-        .from('tickets')
-        .insert([{
-          title,
-          description,
-          status: 'open',
-          customer_id: req.user.id,
-          business_profile_id: businessProfileId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      res.json(ticket);
-    } catch (error) {
-      console.error('Error creating ticket:', error);
-      res.status(500).json({ error: "Failed to create ticket" });
-    }
-  });
 
   // Update ticket
   app.patch("/api/tickets/:id", async (req, res) => {
@@ -268,17 +324,18 @@ export function registerRoutes(app: Express): Server {
       const { id } = req.params;
       const updates = req.body;
 
-      const { data: ticket, error } = await supabase
-        .from('tickets')
-        .update({
+      const [ticket] = await db
+        .update(tickets)
+        .set({
           ...updates,
-          updated_at: new Date().toISOString()
+          updatedAt: new Date()
         })
-        .eq('id', id)
-        .select()
-        .single();
+        .where(eq(tickets.id, id))
+        .returning();
 
-      if (error) throw error;
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
       res.json(ticket);
     } catch (error) {
       console.error('Error updating ticket:', error);

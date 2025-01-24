@@ -210,7 +210,81 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  //The rest of the routes are omitted due to the significant changes required for conversion to Supabase.  A complete rewrite is beyond the scope of this response.
+  // Get all tickets
+  app.get("/api/tickets", async (req, res) => {
+    try {
+      const { data: tickets, error } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          customer:users!customer_id(*),
+          business:business_profiles!business_profile_id(*),
+          claimed_by:users!claimed_by_id(*)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      res.json(tickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
+    }
+  });
+
+  // Create ticket
+  app.post("/api/tickets", async (req, res) => {
+    try {
+      const { title, description, businessProfileId } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { data: ticket, error } = await supabase
+        .from('tickets')
+        .insert([{
+          title,
+          description,
+          status: 'open',
+          customer_id: req.user.id,
+          business_profile_id: businessProfileId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      res.status(500).json({ error: "Failed to create ticket" });
+    }
+  });
+
+  // Update ticket
+  app.patch("/api/tickets/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const { data: ticket, error } = await supabase
+        .from('tickets')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error updating ticket:', error);
+      res.status(500).json({ error: "Failed to update ticket" });
+    }
+  });
 
   const httpServer = createServer(app);
   setupWebSocket(httpServer);

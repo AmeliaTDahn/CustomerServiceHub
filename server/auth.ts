@@ -104,6 +104,7 @@ export function setupAuth(app: Express) {
           role,
           supabase_id: authUser.user.id,
           email: email,
+          password_hash: password,
           created_at: new Date().toISOString()
         }])
         .select()

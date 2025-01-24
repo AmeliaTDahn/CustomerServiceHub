@@ -67,19 +67,25 @@ export default function TicketList({
     return tickets.filter(ticket => {
       const isResolved = ticket.status === "resolved";
       const isClaimedByMe = ticket.claimedById === userId;
+      const isClaimedByAnyone = ticket.claimedById !== null;
 
       if (isEmployee) {
         switch (view) {
           case 'active':
-            return !isResolved && !ticket.claimedById;
+            // Show only unclaimed, unresolved tickets
+            return !isResolved && !isClaimedByAnyone;
           case 'my-tickets':
+            // Show only tickets claimed by current employee and not resolved
             return !isResolved && isClaimedByMe;
           case 'history':
-            return isResolved && (isClaimedByMe || !ticket.claimedById);
+            // Show resolved tickets that were either claimed by me or were never claimed
+            return isResolved && (isClaimedByMe || !isClaimedByAnyone);
           default:
             return false;
         }
       }
+
+      // For non-employee views
       return view === 'history' ? isResolved : !isResolved;
     });
   };

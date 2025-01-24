@@ -12,7 +12,7 @@ interface Invitation {
   };
   business: {
     id: number;
-    username: string;
+    name: string;
   };
 }
 
@@ -80,7 +80,7 @@ export default function InvitationHandler() {
               className="flex items-center justify-between p-4 rounded-lg border"
             >
               <div>
-                <p className="font-medium">{business.username}</p>
+                <p className="font-medium">{business.name}</p>
                 <p className="text-sm text-muted-foreground">
                   Invited {new Date(invitation.createdAt).toLocaleDateString()}
                 </p>

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface Invitation {
   id: number;
@@ -17,6 +18,7 @@ interface Invitation {
 export default function InvitationHandler() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   // Fetch pending invitations
   const { data: invitations = [] } = useQuery<Invitation[]>({
@@ -46,13 +48,19 @@ export default function InvitationHandler() {
       return res.json();
     },
     onSuccess: (_, variables) => {
+      // Invalidate multiple queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ['/api/employees/invitations'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/employees/businesses'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/employees/active-businesses'] });
 
       toast({
         title: "Success",
         description: `Invitation ${variables.accept ? 'accepted' : 'declined'} successfully`,
       });
+
+      // If invitation was accepted, redirect to messages page
+      if (variables.accept) {
+        setLocation('/messages');
+      }
     },
     onError: (error) => {
       toast({

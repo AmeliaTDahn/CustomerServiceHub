@@ -514,7 +514,7 @@ export function registerRoutes(app: Express): Server {
       // Get the invitation details first
       const { data: invitation, error: invitationError } = await supabase
         .from('employee_invitations')
-        .select('*')
+        .select('*, business_profile:business_profiles(user_id, business_name)')
         .eq('id', invitationId)
         .eq('employee_id', req.user.id)
         .single();
@@ -539,6 +539,29 @@ export function registerRoutes(app: Express): Server {
           error: "Failed to handle invitation response",
           details: updateError.message
         });
+      }
+
+      // If invitation was accepted, create a welcome message
+      if (accept) {
+        const welcomeMessage = {
+          content: `Welcome! You are now connected with ${invitation.business_profile.business_name}. You can start chatting here.`,
+          sender_id: invitation.business_profile.user_id,
+          receiver_id: req.user.id,
+          status: 'sent',
+          chat_initiator: true,
+          initiated_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+
+        const { error: messageError } = await supabase
+          .from('messages')
+          .insert(welcomeMessage);
+
+        if (messageError) {
+          console.error('Error creating welcome message:', messageError);
+          // Don't return error as the invitation was already accepted
+        }
       }
 
       res.json({ message: `Invitation ${accept ? 'accepted' : 'declined'} successfully` });

@@ -8,177 +8,120 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
-import TicketChat from "@/components/ticket-chat";
+//import TicketChat from "@/components/ticket-chat"; // Removed as per intention
+import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/lib/supabase";
 
 interface Employee {
-  employee: {
-    id: number;
-    username: string;
+  id: string;
+  username: string;
+  role: string;
+  status: 'active' | 'inactive';
+  unreadCount: number;
+  lastMessage?: {
+    content: string;
+    sent_at: string;
   };
-  relation: {
-    id: number;
-    isActive: boolean;
-  };
-}
-
-interface Message {
-  id: number;
-  senderId: number;
-  receiverId: number;
-  content: string;
-  status: 'sent' | 'delivered' | 'read';
-  sentAt: string;
-  deliveredAt?: string;
-  readAt?: string;
-  createdAt: string;
 }
 
 export default function BusinessMessages() {
   const { user } = useUser();
   const { toast } = useToast();
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [newMessage, setNewMessage] = useState("");
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const queryClient = useQueryClient();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Fetch all employees for this business
-  const { data: employees = [] } = useQuery<Employee[]>({
-    queryKey: ['/api/businesses/employees'],
+  // Fetch all employees with their last message and unread count
+  const { data: employees = [], isLoading } = useQuery<Employee[]>({
+    queryKey: ['/api/business/employees/messages'],
+    queryFn: async () => {
+      if (!user?.id) {
+        console.log('No user ID available');
+        return [];
+      }
+
+      // First get all employees
+      const { data: employees, error: employeesError } = await supabase
+        .from('business_employees')
+        .select(`
+          employee:employee_id (
+            id,
+            username,
+            role
+          ),
+          status
+        `)
+        .eq('business_id', user.id)
+        .eq('status', 'active');
+
+      if (employeesError) {
+        console.error('Error fetching employees:', employeesError);
+        throw employeesError;
+      }
+
+      // For each employee, get their last message and unread count
+      const employeesWithMessages = await Promise.all((employees || []).map(async ({ employee, status }) => {
+        // Get last message
+        const { data: lastMessage } = await supabase
+          .from('messages')
+          .select('content, sent_at')
+          .or(`sender_id.eq.${employee.id},receiver_id.eq.${employee.id}`)
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        // Get unread count
+        const { count: unreadCount } = await supabase
+          .from('messages')
+          .select('*', { head: true, count: 'exact' })
+          .eq('sender_id', employee.id)
+          .eq('receiver_id', user.id)
+          .eq('status', 'unread');
+
+        return {
+          id: employee.id,
+          username: employee.username,
+          role: employee.role,
+          status: status,
+          unreadCount: unreadCount || 0,
+          lastMessage: lastMessage || undefined
+        };
+      }));
+
+      return employeesWithMessages;
+    },
+    refetchInterval: 5000 // Poll every 5 seconds for updates
   });
 
-  // Fetch messages for selected employee
-  const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ['/api/messages', selectedEmployee?.employee.id],
-    enabled: !!selectedEmployee,
-  });
-
+  // Filter employees based on search
   const filteredEmployees = employees.filter(emp =>
-    emp.employee.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
+    emp.username.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   );
 
-  // Force refresh when component mounts
+  // Subscribe to real-time updates when component mounts
   useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
-  }, [queryClient]);
+    if (!user?.id) return;
 
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
-
-  // WebSocket setup
-  useEffect(() => {
-    if (!user) return;
-
-    const connectWebSocket = () => {
-      try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?userId=${user.id}&role=${user.role}`;
-        const wsInstance = new WebSocket(wsUrl);
-
-        wsInstance.onopen = () => {
-          toast({
-            title: "Connected",
-            description: "Message connection established",
-          });
-        };
-
-        wsInstance.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-
-            // Handle connection status message
-            if (data.type === 'connection') {
-              return;
-            }
-
-            // Handle error message
-            if (data.error) {
-              toast({
-                variant: "destructive",
-                title: "Error",
-                description: data.error,
-              });
-              return;
-            }
-
-            // Handle regular message - update messages if it's from/to current selected employee
-            if (selectedEmployee && 
-                (data.senderId === selectedEmployee.employee.id || 
-                 data.receiverId === selectedEmployee.employee.id)) {
-              queryClient.invalidateQueries({ queryKey: ['/api/messages', selectedEmployee.employee.id] });
-            }
-          } catch (error) {
-            console.error('Error parsing message:', error);
-          }
-        };
-
-        wsInstance.onerror = (error) => {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Connection error. Attempting to reconnect...",
-          });
-        };
-
-        wsInstance.onclose = () => {
-          setWs(null);
-          // Attempt to reconnect after 3 seconds
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-        };
-
-        setWs(wsInstance);
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to setup chat connection. Retrying...",
-        });
-        // Attempt to reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
-      }
-    };
-
-    connectWebSocket();
+    const messagesSubscription = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `or(sender_id.eq.${user.id},receiver_id.eq.${user.id})`
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['/api/business/employees/messages'] });
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (ws) {
-        ws.close();
-      }
+      messagesSubscription.unsubscribe();
     };
-  }, [user?.id]);
-
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedEmployee || !user || !ws || ws.readyState !== WebSocket.OPEN) return;
-
-    const message = {
-      type: "message",
-      senderId: user.id,
-      receiverId: selectedEmployee.employee.id,
-      content: newMessage.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    try {
-      ws.send(JSON.stringify(message));
-      setNewMessage("");
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-      });
-    }
-  };
+  }, [user?.id, queryClient]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -190,6 +133,7 @@ export default function BusinessMessages() {
           </Button>
         </Link>
       </div>
+
       <div className="grid grid-cols-12 gap-4 px-4 h-[calc(100vh-5rem)]">
         {/* Employee List */}
         <Card className="col-span-4 flex flex-col">
@@ -203,26 +147,42 @@ export default function BusinessMessages() {
 
           <ScrollArea className="flex-1">
             <div className="space-y-2 p-2">
-              {filteredEmployees.map((emp) => (
-                <div
-                  key={emp.employee.id}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                    selectedEmployee?.employee.id === emp.employee.id
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                  onClick={() => setSelectedEmployee(emp)}
-                >
-                  <div className="font-medium">{emp.employee.username}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {emp.relation.isActive ? "Active" : "Inactive"}
+              {isLoading ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Loading conversations...
+                </div>
+              ) : filteredEmployees.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  No conversations found
+                </div>
+              ) : (
+                filteredEmployees.map((emp) => (
+                  <div
+                    key={emp.id}
+                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                      selectedEmployee?.id === emp.id
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    }`}
+                    onClick={() => setSelectedEmployee(emp)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{emp.username}</div>
+                        {emp.lastMessage && (
+                          <p className="text-sm text-muted-foreground truncate mt-1">
+                            {emp.lastMessage.content}
+                          </p>
+                        )}
+                      </div>
+                      {emp.unreadCount > 0 && (
+                        <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                          {emp.unreadCount}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {filteredEmployees.length === 0 && (
-                <div className="p-3 text-sm text-muted-foreground">
-                  No employees found
-                </div>
+                ))
               )}
             </div>
           </ScrollArea>
@@ -231,11 +191,9 @@ export default function BusinessMessages() {
         {/* Chat Area */}
         <Card className="col-span-8 flex flex-col">
           {selectedEmployee ? (
-            <TicketChat
-              directMessageUserId={selectedEmployee.employee.id}
-              chatType="business"
-              readonly={false}
-            />
+            //  Replace TicketChat with a suitable chat component for direct messages
+            <div>Direct Message Component Placeholder - Replace with your implementation</div>
+
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               Select an employee to start messaging

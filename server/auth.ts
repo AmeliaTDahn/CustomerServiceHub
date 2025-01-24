@@ -182,10 +182,6 @@ export function setupAuth(app: Express) {
         return res.status(400).send("User not found");
       }
 
-      if (role && user.role !== role) {
-        return res.status(400).send(`Invalid role for user. Expected ${user.role}, got ${role}`);
-      }
-
       req.session.user = {
         id: user.id,
         username: user.username,

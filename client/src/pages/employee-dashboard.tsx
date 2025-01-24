@@ -7,7 +7,7 @@ import TicketFilters from "@/components/ticket-filters";
 import InvitationHandler from "@/components/invitation-handler";
 import BusinessSwitcher from "@/components/business-switcher";
 import { useUser } from "@/hooks/use-user";
-import { MessageCircle, Building2, AlertCircle } from "lucide-react";
+import { MessageCircle, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Ticket } from "@db/schema";
 
@@ -31,17 +31,12 @@ export default function EmployeeDashboard() {
   const [sortBy, setSortBy] = useState("newest");
 
   // Query to check business connections
-  const { data: businessConnections = [], isLoading } = useQuery<BusinessConnection[]>({
+  const { data: businessConnections = [], isLoading: isLoadingBusinesses } = useQuery<BusinessConnection[]>({
     queryKey: ['/api/employees/active-businesses'],
   });
 
-  // Get current business name
-  const currentBusiness = businessConnections.find(
-    conn => conn.business.id.toString() === currentBusinessId
-  );
-
   // Get tickets for the selected business or all connected businesses
-  const { data: tickets = [] } = useQuery<Ticket[]>({
+  const { data: tickets = [], isLoading: isLoadingTickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets', currentBusinessId],
     queryFn: async () => {
       const url = currentBusinessId 
@@ -55,6 +50,11 @@ export default function EmployeeDashboard() {
     },
     enabled: businessConnections.length > 0,
   });
+
+  // Get current business name
+  const currentBusiness = businessConnections.find(
+    conn => conn.business.id.toString() === currentBusinessId
+  );
 
   // Filter tickets based on user input
   const filteredTickets = tickets.filter((ticket) => {
@@ -116,13 +116,16 @@ export default function EmployeeDashboard() {
         </div>
       </header>
 
-      {/* Add business context section */}
-      {currentBusiness && (
+      {/* Display business context if available */}
+      {businessConnections.length > 0 && (
         <div className="container py-4 border-b">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-muted-foreground" />
             <span className="text-lg font-medium">
-              Working for: {currentBusiness.business.businessName}
+              {currentBusiness 
+                ? `Working for: ${currentBusiness.business.businessName}`
+                : `Connected to ${businessConnections.length} business${businessConnections.length > 1 ? 'es' : ''}`
+              }
             </span>
           </div>
         </div>
@@ -131,7 +134,7 @@ export default function EmployeeDashboard() {
       <main className="container py-8 space-y-8">
         <InvitationHandler />
 
-        {isLoading ? (
+        {isLoadingBusinesses || isLoadingTickets ? (
           <Card>
             <CardContent className="py-8">
               <div className="flex justify-center">
@@ -139,35 +142,12 @@ export default function EmployeeDashboard() {
               </div>
             </CardContent>
           </Card>
-        ) : businessConnections.length === 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Welcome to the Support Platform
-              </CardTitle>
-              <CardDescription>
-                No business available. Accept invitations to see businesses here.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                To start handling customer support tickets, you need to:
-              </p>
-              <ol className="list-decimal list-inside space-y-2 mt-4 text-muted-foreground">
-                <li>Wait for a business to invite you to their support team</li>
-                <li>Accept the invitation when it arrives</li>
-                <li>Once accepted, you'll see customer tickets here</li>
-              </ol>
-            </CardContent>
-          </Card>
         ) : (
           <Card>
             <CardHeader>
               <CardTitle>
                 {currentBusinessId 
-                  ? `Tickets for ${businessConnections.find(conn => 
-                      conn.business.id.toString() === currentBusinessId)?.business.businessName}`
+                  ? `Tickets for ${currentBusiness?.business.businessName}`
                   : "All Active Tickets"}
               </CardTitle>
             </CardHeader>

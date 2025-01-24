@@ -395,23 +395,34 @@ export function registerRoutes(app: Express): Server {
             id,
             business_name,
             user_id
-          ),
-          business_employees!business_profile_id(
-            employee_id,
-            is_active
           )
         `)
         .order('created_at', { ascending: false });
 
       // Apply filters based on user role
       if (req.user.role === 'employee') {
-        // For employees, show tickets of businesses they're actively connected to
-        query = query
-          .eq('business_employees.employee_id', req.user.id)
-          .eq('business_employees.is_active', true);
+        // For employees, first get their active business connections
+        const { data: activeConnections } = await supabase
+          .from('business_employees')
+          .select('business_profile_id')
+          .eq('employee_id', req.user.id)
+          .eq('is_active', true);
+
+        if (!activeConnections?.length) {
+          return res.json([]); // No active business connections
+        }
+
+        const businessIds = activeConnections.map(conn => conn.business_profile_id);
 
         if (businessProfileId) {
+          // If specific business is selected, check if employee has access
+          if (!businessIds.includes(Number(businessProfileId))) {
+            return res.status(403).json({ error: "No access to this business" });
+          }
           query = query.eq('business_profile_id', businessProfileId);
+        } else {
+          // Show tickets from all connected businesses
+          query = query.in('business_profile_id', businessIds);
         }
       } else if (req.user.role === 'business') {
         // For business users, show only their tickets

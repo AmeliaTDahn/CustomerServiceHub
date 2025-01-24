@@ -96,7 +96,7 @@ export function useUser() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (userData: { username: string; password: string; role: string }) => {
+    mutationFn: async (userData: { username: string; email: string; password: string; role: string }) => {
       const result = await handleRequest('/api/register', 'POST', userData);
       if (!result.ok) {
         throw new Error(result.message);

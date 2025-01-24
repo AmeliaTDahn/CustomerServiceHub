@@ -35,6 +35,11 @@ export default function EmployeeDashboard() {
     queryKey: ['/api/employees/active-businesses'],
   });
 
+  // Get current business name
+  const currentBusiness = businessConnections.find(
+    conn => conn.business.id.toString() === currentBusinessId
+  );
+
   // Get tickets for the selected business or all connected businesses
   const { data: tickets = [] } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets', currentBusinessId],
@@ -110,6 +115,18 @@ export default function EmployeeDashboard() {
           </div>
         </div>
       </header>
+
+      {/* Add business context section */}
+      {currentBusiness && (
+        <div className="container py-4 border-b">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            <span className="text-lg font-medium">
+              Working for: {currentBusiness.business.businessName}
+            </span>
+          </div>
+        </div>
+      )}
 
       <main className="container py-8 space-y-8">
         <InvitationHandler />

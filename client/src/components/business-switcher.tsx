@@ -23,31 +23,36 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
 
   const businesses = connections.map(conn => conn.business);
 
-  if (businesses.length === 0) {
-    return <div className="text-sm text-muted-foreground">No businesses available. Accept invitations to see businesses here.</div>;
-  }
-
   return (
     <div className="flex items-center gap-2">
       <Label>Business:</Label>
-      <Select
-        value={currentBusinessId}
-        onValueChange={onBusinessChange}
-      >
-        <SelectTrigger className="w-[200px]">
-          <SelectValue placeholder="Select business" />
-        </SelectTrigger>
-        <SelectContent>
-          {businesses.map((business) => (
-            <SelectItem
-              key={business.id}
-              value={business.id.toString()}
-            >
-              {business.businessName}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {businesses.length === 0 ? (
+        <div className="text-sm text-muted-foreground">No businesses available. Accept invitations to see businesses here.</div>
+      ) : (
+        <Select
+          value={currentBusinessId}
+          onValueChange={onBusinessChange}
+        >
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Select business" />
+          </SelectTrigger>
+          <SelectContent>
+            {businesses.map((business) => (
+              <SelectItem
+                key={business.id}
+                value={business.id.toString()}
+              >
+                {business.businessName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {businesses.length > 0 && (
+        <div className="text-sm text-muted-foreground ml-4">
+          Connected to: {businesses.map(b => b.businessName).join(', ')}
+        </div>
+      )}
     </div>
   );
 }

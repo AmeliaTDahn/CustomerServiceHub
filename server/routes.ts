@@ -475,7 +475,7 @@ export function registerRoutes(app: Express): Server {
         query = query.eq('business_profile_id', businessProfile.id);
       } else if (req.user.role === 'customer') {
         // For customers, show only their tickets
-        query = query.eq('customer_id', req.user.id); //Corrected line
+        query = query.eq('customer_id', req.user.id.toString());
       }
 
       const { data: tickets, error } = await query;

@@ -10,7 +10,6 @@ import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
@@ -77,15 +76,7 @@ export default function AuthPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input

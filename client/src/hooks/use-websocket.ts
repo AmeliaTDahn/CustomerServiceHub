@@ -3,18 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 
-interface Message {
-  type: string;
-  senderId: number;
-  receiverId: number;
-  content: string;
-  timestamp: string;
-  ticketId?: number;
-  directMessageUserId?: number;
-  chatInitiator?: boolean;
-  id?: number;
-}
-
 export function useWebSocket(userId: number | undefined, role: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
   const [hasNotificationPermission, setHasNotificationPermission] = useState(false);
@@ -34,7 +22,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
   useEffect(() => {
     if (!userId) return;
 
-    // Subscribe to messages table changes
     const messagesChannel = supabase
       .channel('messages')
       .on(
@@ -62,7 +49,6 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
       )
       .subscribe(() => setIsConnected(true));
 
-    // Subscribe to tickets table changes
     const ticketsChannel = supabase
       .channel('tickets')
       .on(
@@ -94,7 +80,12 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     };
   }, [userId, role, queryClient, hasNotificationPermission]);
 
-  const sendMessage = useCallback(async (message: Message) => {
+  const sendMessage = useCallback(async (message: {
+    content: string;
+    senderId: number;
+    receiverId: number;
+    ticketId?: number;
+  }) => {
     try {
       const { error } = await supabase.from('messages').insert([{
         content: message.content,
@@ -116,26 +107,8 @@ export function useWebSocket(userId: number | undefined, role: string | undefine
     }
   }, [queryClient, toast]);
 
-  const sendReadReceipt = useCallback(async (messageId: number) => {
-    try {
-      const { error } = await supabase
-        .from('message_status')
-        .upsert([{
-          message_id: messageId,
-          status: 'read',
-          updated_at: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
-    } catch (error) {
-      console.error('Error sending read receipt:', error);
-    }
-  }, [queryClient]);
-
   return {
     isConnected,
-    sendMessage,
-    sendReadReceipt
+    sendMessage
   };
 }

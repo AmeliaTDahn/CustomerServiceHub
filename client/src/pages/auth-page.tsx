@@ -20,6 +20,10 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await login({ username, password });
+        // Reload the page if the logged-in user is a business user
+        if (role === "business") {
+          window.location.reload();
+        }
       } else {
         await register({ username, password, role });
         if (role === "employee") {

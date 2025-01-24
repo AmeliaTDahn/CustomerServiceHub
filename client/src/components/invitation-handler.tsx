@@ -31,7 +31,10 @@ export default function InvitationHandler() {
       const res = await fetch(`/api/invitations/${id}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accept: status === 'accepted' }),
+        body: JSON.stringify({ 
+          accept: status === 'accepted',
+          businessId: invitation.business.id 
+        }),
         credentials: "include",
       });
       if (!res.ok) {

@@ -1466,7 +1466,11 @@ export function registerRoutes(app: Express): Server {
       }
 
       const { id } = req.params;
-      const { accept } = req.body;
+      const { accept, businessId } = req.body;
+
+      if (!businessId) {
+        return res.status(400).json({ error: "Business ID is required" });
+      }
 
       // Get the invitation
       const [invitation] = await db.select()
@@ -1474,6 +1478,7 @@ export function registerRoutes(app: Express): Server {
         .where(and(
           eq(employeeInvitations.id, parseInt(id)),
           eq(employeeInvitations.employeeId, req.user.id),
+          eq(employeeInvitations.businessProfileId, businessId),
           eq(employeeInvitations.status, "pending")
         ));
 

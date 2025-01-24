@@ -109,6 +109,21 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Employee ID is required" });
       }
 
+      // Check if employee exists and is actually an employee
+      const { data: employee, error: employeeError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', employeeId)
+        .single();
+
+      if (employeeError || !employee) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      if (employee.role !== 'employee') {
+        return res.status(400).json({ error: "Selected user is not an employee" });
+      }
+
       // Get or create business profile
       let { data: businessProfile, error: profileError } = await supabase
         .from('business_profiles')
@@ -189,14 +204,28 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Employee is already connected to this business" });
       }
 
+      // Check for existing invitation
+      const { data: existingInvitation } = await supabase
+        .from('employee_invitations')
+        .select('*')
+        .eq('business_profile_id', businessProfile.id)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .single();
+
+      if (existingInvitation) {
+        return res.status(400).json({ error: "An invitation is already pending for this employee" });
+      }
+
       // Create invitation
       const { data: invitation, error: invitationError } = await supabase
         .from('employee_invitations')
-        .insert([{
+        .insert({
           business_profile_id: businessProfile.id,
           employee_id: employeeId,
-          status: 'pending'
-        }])
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
         .select()
         .single();
 

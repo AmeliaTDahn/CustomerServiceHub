@@ -171,11 +171,11 @@ export function setupAuth(app: Express) {
         return res.status(403).send("Please confirm your email before logging in");
       }
 
-      // Get user from our database
+      // Get user from our database using either supabase_id or email
       const { data: user, error: dbError } = await supabase
         .from('users')
         .select()
-        .eq('supabase_id', authData.user.id)
+        .eq('email', email)
         .single();
 
       if (dbError || !user) {

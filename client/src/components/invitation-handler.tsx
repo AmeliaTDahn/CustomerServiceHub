@@ -27,13 +27,13 @@ export default function InvitationHandler() {
 
   // Handle invitation response
   const handleInvitation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: 'accepted' | 'rejected' }) => {
+    mutationFn: async ({ id, status, businessId }: { id: number; status: 'accepted' | 'rejected'; businessId: number }) => {
       const res = await fetch(`/api/invitations/${id}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           accept: status === 'accepted',
-          businessId: invitation.business.id 
+          businessId
         }),
         credentials: "include",
       });
@@ -95,6 +95,7 @@ export default function InvitationHandler() {
                     handleInvitation.mutate({
                       id: invitation.id,
                       status: "accepted",
+                      businessId: business.id
                     })
                   }
                   disabled={handleInvitation.isPending}
@@ -107,6 +108,7 @@ export default function InvitationHandler() {
                     handleInvitation.mutate({
                       id: invitation.id,
                       status: "rejected",
+                      businessId: business.id
                     })
                   }
                   disabled={handleInvitation.isPending}

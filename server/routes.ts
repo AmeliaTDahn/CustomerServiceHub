@@ -485,6 +485,52 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Create ticket with business selection
+  app.post("/api/tickets", async (req: Request, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { title, description, businessProfileId, category } = req.body;
+
+      if (!businessProfileId) {
+        return res.status(400).json({ error: "Business profile ID is required" });
+      }
+
+      if (!title || !description) {
+        return res.status(400).json({ error: "Title and description are required" });
+      }
+
+      // Create the ticket
+      const { data: ticket, error } = await supabase
+        .from('tickets')
+        .insert({
+          title,
+          description,
+          business_profile_id: businessProfileId,
+          customer_id: req.user.id,
+          category: category || 'general_inquiry',
+          status: 'open',
+          priority: 'medium',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating ticket:', error);
+        return res.status(500).json({ error: "Failed to create ticket" });
+      }
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      res.status(500).json({ error: "Failed to create ticket" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

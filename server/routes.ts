@@ -196,26 +196,30 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "An invitation is already pending for this employee" });
       }
 
-      // Create invitation
-      const { data: invitation, error: invitationError } = await supabase
-        .from('employee_invitations')
-        .insert({
-          business_profile_id: businessProfile.id,
-          employee_id: employeeId,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      try {
+        const { data: invitation, error: invitationError } = await supabase
+          .from('employee_invitations')
+          .insert({
+            business_profile_id: businessProfile.id,
+            employee_id: employeeId,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
 
-      if (invitationError) {
-        console.error('Error creating invitation:', invitationError.message);
-        return res.status(500).json({ 
-          error: "Failed to create invitation",
-          details: invitationError.message || "Database error occurred"
-        });
-      }
+        if (invitationError) {
+          console.error('Error creating invitation:', invitationError);
+          return res.status(500).json({ 
+            error: "Failed to create invitation",
+            details: invitationError.message || "Database error occurred"
+          });
+        }
+
+        if (!invitation) {
+          throw new Error("Failed to create invitation record");
+        }
 
       res.json({
         message: "Invitation sent successfully",

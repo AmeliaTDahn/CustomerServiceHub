@@ -151,6 +151,7 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email and password are required");
       }
 
+      // Sign in with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password

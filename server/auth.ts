@@ -145,13 +145,14 @@ export function setupAuth(app: Express) {
 
   app.post("/api/login", async (req, res) => {
     try {
-      const { email, password, role } = req.body;
+      const { username, password } = req.body;
 
-      if (!email || !password) {
-        return res.status(400).send("Email and password are required");
+      if (!username || !password) {
+        return res.status(400).send("Username and password are required");
       }
 
-      // Authenticate with Supabase
+      // Authenticate with Supabase using username as email
+      const email = `${username}@internal.local`;
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password

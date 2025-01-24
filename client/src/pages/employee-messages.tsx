@@ -22,7 +22,7 @@ interface TicketWithCustomer extends Ticket {
     username: string;
   };
   lastMessageAt?: string;
-  unreadCount?: number; // Added unreadCount
+  unreadCount?: number;
 }
 
 interface User {
@@ -52,9 +52,16 @@ export default function EmployeeMessages() {
   const [chatType, setChatType] = useState<ChatType>('ticket');
   const queryClient = useQueryClient();
 
-  // Fetch all tickets with their last message timestamps
+  // Fetch only tickets claimed by the current employee
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery<TicketWithCustomer[]>({
-    queryKey: ['/api/tickets']
+    queryKey: ['/api/tickets/claimed'],
+    queryFn: async () => {
+      const res = await fetch('/api/tickets/claimed', {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
   });
 
   // Fetch users for direct messaging
@@ -72,7 +79,6 @@ export default function EmployeeMessages() {
   // Force refresh when entering direct messages view
   useEffect(() => {
     if (viewType === 'direct') {
-      // Invalidate and refetch all direct message related queries
       queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
       refetchUsers();
       refetchBusinessUser();
@@ -86,24 +92,15 @@ export default function EmployeeMessages() {
     u.id !== businessUser?.id
   );
 
-  // Sort tickets by last message time and status
-  const sortTickets = (tickets: TicketWithCustomer[]) => {
-    return [...tickets].sort((a, b) => {
-      // Always put resolved tickets at the bottom
-      if (a.status === 'resolved' && b.status !== 'resolved') return 1;
-      if (a.status !== 'resolved' && b.status === 'resolved') return -1;
-
-      // Sort by last message time for non-resolved tickets
-      const aTime = a.lastMessageAt || a.createdAt;
-      const bTime = b.lastMessageAt || b.createdAt;
-      return new Date(bTime).getTime() - new Date(aTime).getTime();
-    });
-  };
-
-  // Filter tickets based on search term and view type
+  // Sort and filter tickets based on view type and status
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
       ticket.customer.username.toLowerCase().includes(ticketSearchTerm.toLowerCase());
+
+    // Only show tickets claimed by the current employee
+    const isClaimedByMe = ticket.claimedById === user?.id;
+
+    if (!isClaimedByMe) return false;
 
     const matchesViewType = viewType === 'active'
       ? ticket.status !== 'resolved'
@@ -112,8 +109,15 @@ export default function EmployeeMessages() {
     return matchesSearch && matchesViewType;
   });
 
-  // Sort the filtered tickets
-  const sortedTickets = sortTickets(filteredTickets);
+  // Sort tickets by last message time and status
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    if (a.status === 'resolved' && b.status !== 'resolved') return 1;
+    if (a.status !== 'resolved' && b.status === 'resolved') return -1;
+
+    const aTime = a.lastMessageAt || a.createdAt;
+    const bTime = b.lastMessageAt || b.createdAt;
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
+  });
 
   const handleUserSelect = (userId: number, type: ChatType) => {
     setSelectedUserId(userId);
@@ -129,7 +133,7 @@ export default function EmployeeMessages() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Fixed Header */}
+      {/* Header */}
       <div className="flex items-center justify-between bg-white shadow px-4 py-2">
         <Link href="/">
           <Button variant="outline" size="sm" className="flex items-center gap-2">
@@ -141,10 +145,10 @@ export default function EmployeeMessages() {
           <MessageCircle className="h-5 w-5" />
           Message Center
         </h1>
-        <div className="w-[88px]" /> {/* Spacer to center heading */}
+        <div className="w-[88px]" />
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8 overflow-hidden">
         <div className="grid grid-cols-12 gap-4 h-full">
           {/* Sidebar */}
@@ -163,13 +167,13 @@ export default function EmployeeMessages() {
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select view">
-                      {viewType === 'active' && "Support Tickets"}
+                      {viewType === 'active' && "Active Tickets"}
                       {viewType === 'resolved' && "Resolved Tickets"}
                       {viewType === 'direct' && "Direct Messages"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Support Tickets</SelectItem>
+                    <SelectItem value="active">Active Tickets</SelectItem>
                     <SelectItem value="resolved">Resolved Tickets</SelectItem>
                     <SelectItem value="direct">Direct Messages</SelectItem>
                   </SelectContent>
@@ -196,7 +200,11 @@ export default function EmployeeMessages() {
               <div className="flex-1 overflow-auto">
                 <CardContent className="p-0">
                   <div className="divide-y">
-                    {viewType !== 'direct' ? (
+                    {viewType !== 'direct' && sortedTickets.length === 0 ? (
+                      <div className="p-4 text-center text-muted-foreground">
+                        No {viewType === 'active' ? 'active' : 'resolved'} claimed tickets
+                      </div>
+                    ) : viewType !== 'direct' ? (
                       sortedTickets.map((ticket) => (
                         <button
                           key={ticket.id}
@@ -221,8 +229,8 @@ export default function EmployeeMessages() {
                             </div>
                             <span className={`ml-2 px-2 py-1 rounded text-xs ${
                               ticket.status === 'open' ? 'bg-green-100 text-green-800' :
-                                ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-gray-100 text-gray-800'
+                              ticket.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
                             }`}>
                               {ticket.status.replace('_', ' ')}
                             </span>
@@ -230,6 +238,7 @@ export default function EmployeeMessages() {
                         </button>
                       ))
                     ) : (
+                      // Direct Messages Section
                       <div className="divide-y">
                         {/* Business User Section */}
                         {viewType === 'direct' && businessUser && (

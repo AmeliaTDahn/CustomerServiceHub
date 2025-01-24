@@ -36,19 +36,20 @@ export default function EmployeeDashboard() {
   });
 
   // Get tickets for the selected business or all connected businesses
+  // Get tickets for the selected business
   const { data: tickets = [], isLoading: isLoadingTickets } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets', currentBusinessId],
     queryFn: async () => {
-      const url = currentBusinessId 
-        ? `/api/tickets?businessProfileId=${currentBusinessId}`
-        : '/api/tickets';
-      const res = await fetch(url, {
+      if (!currentBusinessId) {
+        return [];
+      }
+      const res = await fetch(`/api/tickets?businessProfileId=${currentBusinessId}`, {
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: businessConnections.length > 0,
+    enabled: !!currentBusinessId && businessConnections.length > 0,
   });
 
   // Get current business name

@@ -111,14 +111,11 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
       if (!ticketId) return null;
       const { data, error } = await supabase
         .from('tickets')
-        .select('*, claimed_by_id')
+        .select('*')
         .eq('id', ticketId)
         .single();
 
       if (error) throw error;
-      if (user?.role === 'employee' && ticket?.claimed_by_id !== user?.id) {
-        throw new Error('You can only view chats of tickets you have claimed');
-      }
       return data;
     },
     enabled: !!ticketId

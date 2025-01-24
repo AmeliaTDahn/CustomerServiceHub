@@ -96,7 +96,7 @@ export default function EmployeeDashboard() {
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-muted-foreground" />
               <span className="text-lg font-medium">
-                Working with: {currentBusiness.business.businessName}
+                Working with: {currentBusiness.business.business_name}
               </span>
             </div>
           </div>

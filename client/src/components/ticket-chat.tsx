@@ -287,10 +287,19 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
   return (
     <div className="flex flex-col h-full relative">
       {!readonly && chatType === 'ticket' && ticket && messages.length === 0 && user?.role === 'customer' && (
-        <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2 absolute top-0 left-0 right-0 z-10">
-          <Megaphone className="h-4 w-4" />
-          Your message will be sent to support staff.
-        </div>
+        <>
+          <div className="bg-blue-50 text-blue-700 px-4 py-2 text-sm flex items-center gap-2 absolute top-0 left-0 right-0 z-10">
+            <Megaphone className="h-4 w-4" />
+            Your message will be sent to support staff.
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4 text-muted-foreground text-center">
+            <div>
+              <Clock className="h-8 w-8 mx-auto mb-2 animate-pulse" />
+              <p>Waiting for a support representative to respond...</p>
+              <p className="text-sm mt-1">We'll notify you when someone replies to your ticket.</p>
+            </div>
+          </div>
+        </>
       )}
 
       <ScrollArea className="flex-1 px-4">

@@ -12,7 +12,7 @@ export default function AuthPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
-  const { login, register, refetch } = useUser();
+  const { login, register } = useUser();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,12 +20,9 @@ export default function AuthPage() {
     try {
       if (isLogin) {
         await login({ username, password, role });
-        await refetch(); // Force refresh user data after login
       } else {
-        await register({ username, password, role });
-        await refetch(); // Force refresh user data after registration
-
-        if (role === "employee") {
+        const result = await register({ username, password, role });
+        if (result.ok && role === "employee") {
           toast({
             title: "Registration successful",
             description: "Your account has been created. Wait for a business to invite you to their support system.",

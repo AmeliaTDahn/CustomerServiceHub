@@ -315,6 +315,42 @@ export function registerRoutes(app: Express): Server {
 
 
   // Get all available businesses for ticket creation
+  // Get claimed tickets for employee
+  app.get("/api/tickets/claimed", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== 'employee') {
+        return res.status(403).json({ error: "Only employees can view claimed tickets" });
+      }
+
+      const { data: tickets, error } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          customer:users!customer_id(
+            id,
+            username
+          ),
+          business:business_profiles!business_profile_id(
+            id,
+            business_name,
+            user_id
+          )
+        `)
+        .eq('claimed_by_id', req.user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching claimed tickets:', error);
+        return res.status(500).json({ error: "Failed to fetch claimed tickets" });
+      }
+
+      res.json(tickets);
+    } catch (error) {
+      console.error('Error fetching claimed tickets:', error);
+      res.status(500).json({ error: "Failed to fetch claimed tickets" });
+    }
+  });
+
   app.get("/api/businesses", async (req: Request, res) => {
     try {
       if (!req.user) {

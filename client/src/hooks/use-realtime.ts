@@ -28,9 +28,7 @@ export function useRealtime(userId: string | undefined, role: string | undefined
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: role === 'customer' 
-            ? `receiver_id=eq.${userId}` 
-            : undefined
+          filter: `or(receiver_id.eq.${userId},sender_id.eq.${userId})`
         },
         (payload) => {
           const message = payload.new as Message;

@@ -105,7 +105,6 @@ export function setupAuth(app: Express) {
           role,
           supabase_id: authUser.user.id,
           email: email,
-          password: authData.session?.access_token || '',
           created_at: new Date().toISOString()
         }])
         .select()
@@ -167,15 +166,11 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Invalid credentials");
       }
 
-      if (!authData.user.email_confirmed_at) {
-        return res.status(403).send("Please confirm your email before logging in");
-      }
-
-      // Get user from our database using either supabase_id or email
+      // Get user from database using Supabase ID
       const { data: user, error: dbError } = await supabase
         .from('users')
         .select()
-        .eq('email', email)
+        .eq('supabase_id', authData.user.id)
         .single();
 
       if (dbError || !user) {

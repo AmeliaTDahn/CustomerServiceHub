@@ -5,14 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
 interface Invitation {
-  invitation: {
-    id: number;
-    status: string;
-    createdAt: string;
-  };
-  business: {
-    id: number;
-    name: string;
+  id: number;
+  businessProfileId: number;
+  status: string;
+  createdAt: string;
+  businessProfile: {
+    businessName: string;
   };
 }
 
@@ -23,18 +21,22 @@ export default function InvitationHandler() {
   // Fetch pending invitations
   const { data: invitations = [] } = useQuery<Invitation[]>({
     queryKey: ['/api/employees/invitations'],
+    queryFn: async () => {
+      const res = await fetch('/api/employees/invitations', {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   });
 
   // Handle invitation response
   const handleInvitation = useMutation({
-    mutationFn: async ({ id, status, businessId }: { id: number; status: 'accepted' | 'rejected'; businessId: number }) => {
-      const res = await fetch(`/api/invitations/${id}/respond`, {
+    mutationFn: async ({ invitationId, accept }: { invitationId: number; accept: boolean }) => {
+      const res = await fetch(`/api/invitations/${invitationId}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          accept: status === 'accepted',
-          businessId
-        }),
+        body: JSON.stringify({ accept }),
         credentials: "include",
       });
       if (!res.ok) {
@@ -44,17 +46,12 @@ export default function InvitationHandler() {
       return res.json();
     },
     onSuccess: (_, variables) => {
-      // If invitation was accepted, invalidate relevant queries
-      if (variables.status === 'accepted') {
-        // Invalidate both direct messages and employee lists
-        queryClient.invalidateQueries({ queryKey: ['/api/messages/direct'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/businesses/employees'] });
-      }
       queryClient.invalidateQueries({ queryKey: ['/api/employees/invitations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/employees/businesses'] });
 
       toast({
         title: "Success",
-        description: `Invitation ${variables.status} successfully`,
+        description: `Invitation ${variables.accept ? 'accepted' : 'declined'} successfully`,
       });
     },
     onError: (error) => {
@@ -77,13 +74,13 @@ export default function InvitationHandler() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {invitations.map(({ invitation, business }) => (
+          {invitations.map((invitation) => (
             <div
               key={invitation.id}
               className="flex items-center justify-between p-4 rounded-lg border"
             >
               <div>
-                <p className="font-medium">{business.name}</p>
+                <p className="font-medium">{invitation.businessProfile.businessName}</p>
                 <p className="text-sm text-muted-foreground">
                   Invited {new Date(invitation.createdAt).toLocaleDateString()}
                 </p>
@@ -93,9 +90,8 @@ export default function InvitationHandler() {
                   variant="default"
                   onClick={() =>
                     handleInvitation.mutate({
-                      id: invitation.id,
-                      status: "accepted",
-                      businessId: business.id
+                      invitationId: invitation.id,
+                      accept: true
                     })
                   }
                   disabled={handleInvitation.isPending}
@@ -106,14 +102,13 @@ export default function InvitationHandler() {
                   variant="outline"
                   onClick={() =>
                     handleInvitation.mutate({
-                      id: invitation.id,
-                      status: "rejected",
-                      businessId: business.id
+                      invitationId: invitation.id,
+                      accept: false
                     })
                   }
                   disabled={handleInvitation.isPending}
                 >
-                  Reject
+                  Decline
                 </Button>
               </div>
             </div>

@@ -133,7 +133,7 @@ export function registerRoutes(app: Express): Server {
 
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('Error fetching business profile:', profileError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: "Failed to fetch business profile",
           details: profileError.message
         });
@@ -152,7 +152,7 @@ export function registerRoutes(app: Express): Server {
 
         if (createError) {
           console.error('Error creating business profile:', createError);
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Failed to create business profile",
             details: createError.message
           });
@@ -173,7 +173,7 @@ export function registerRoutes(app: Express): Server {
 
       if (connectionError && connectionError.code !== 'PGRST116') {
         console.error('Error checking existing connection:', connectionError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: "Failed to check existing connection",
           details: connectionError.message
         });
@@ -211,7 +211,7 @@ export function registerRoutes(app: Express): Server {
 
         if (invitationError) {
           console.error('Error creating invitation:', invitationError);
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Failed to create invitation",
             details: invitationError.message || "Database error occurred"
           });
@@ -339,6 +339,88 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error creating ticket:', error);
       res.status(500).json({ error: "Failed to create ticket" });
+    }
+  });
+
+  // Get pending invitations for employee
+  app.get("/api/employees/invitations", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can view invitations" });
+      }
+
+      const { data: invitations, error } = await supabase
+        .from('employee_invitations')
+        .select(`
+          id,
+          business_profile_id,
+          status,
+          created_at,
+          businessProfile:business_profiles(business_name)
+        `)
+        .eq('employee_id', req.user.id)
+        .eq('status', 'pending');
+
+      if (error) {
+        console.error('Error fetching invitations:', error);
+        return res.status(500).json({ error: "Failed to fetch invitations" });
+      }
+
+      res.json(invitations);
+    } catch (error) {
+      console.error('Error fetching invitations:', error);
+      res.status(500).json({ error: "Failed to fetch invitations" });
+    }
+  });
+
+  // Handle invitation response
+  app.post("/api/invitations/:id/respond", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can respond to invitations" });
+      }
+
+      const invitationId = parseInt(req.params.id);
+      const { accept } = req.body;
+
+      if (typeof accept !== 'boolean') {
+        return res.status(400).json({ error: "Accept parameter must be a boolean" });
+      }
+
+      // Get the invitation details first
+      const { data: invitation, error: invitationError } = await supabase
+        .from('employee_invitations')
+        .select('*')
+        .eq('id', invitationId)
+        .eq('employee_id', req.user.id)
+        .single();
+
+      if (invitationError || !invitation) {
+        console.error('Error fetching invitation:', invitationError);
+        return res.status(404).json({ error: "Invitation not found" });
+      }
+
+      // Start a transaction
+      const { error: updateError } = await supabase
+        .rpc('handle_invitation_response', {
+          p_invitation_id: invitationId,
+          p_employee_id: req.user.id,
+          p_business_profile_id: invitation.business_profile_id,
+          p_accept: accept
+        });
+
+      if (updateError) {
+        console.error('Error handling invitation:', updateError);
+        return res.status(500).json({
+          error: "Failed to handle invitation response",
+          details: updateError.message
+        });
+      }
+
+      res.json({ message: `Invitation ${accept ? 'accepted' : 'declined'} successfully` });
+    } catch (error) {
+      console.error('Error handling invitation response:', error);
+      res.status(500).json({ error: "Failed to handle invitation response" });
     }
   });
 

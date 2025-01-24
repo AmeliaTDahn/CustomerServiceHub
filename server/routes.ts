@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { db } from "@db";
-import { users, businessProfiles, businessEmployees, employeeInvitations, tickets } from "@db/schema";
+import { supabase } from "./supabaseClient"; // Add this import
+import { users, businessProfiles, businessEmployees, employeeInvitations, tickets } from "@db/schema"; //Note: This line likely needs to be updated to reflect your Supabase schema if it's different
 import { eq, and } from "drizzle-orm";
 
 declare global {
@@ -26,32 +26,22 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get the current business profile
-      const [businessProfile] = await db
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
         .select()
-        .from(businessProfiles)
-        .where(eq(businessProfiles.userId, req.user.id))
-        .limit(1);
+        .eq('user_id', req.user.id)
+        .single();
 
       if (!businessProfile) {
         return res.status(404).json({ error: "Business profile not found" });
       }
 
       // Get only employees connected to this specific business
-      const employees = await db
-        .select({
-          employee: {
-            id: users.id,
-            username: users.username,
-            role: users.role
-          },
-          connection: {
-            isActive: businessEmployees.isActive,
-            createdAt: businessEmployees.createdAt
-          }
-        })
-        .from(businessEmployees)
-        .innerJoin(users, eq(businessEmployees.employeeId, users.id))
-        .where(eq(businessEmployees.businessProfileId, businessProfile.id));
+      //This section needs to be rewritten for Supabase.  The exact query depends on your schema.
+      const employees = await supabase
+          .from('business_employees')
+          .select('employee:users(*), isActive, created_at') // Adjust fields as needed
+          .eq('business_profile_id', businessProfile.id);
 
       res.json(employees);
     } catch (error) {
@@ -74,68 +64,63 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get the business profile
-      const [businessProfile] = await db
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
         .select()
-        .from(businessProfiles)
-        .where(eq(businessProfiles.userId, req.user.id))
-        .limit(1);
+        .eq('user_id', req.user.id)
+        .single();
 
       if (!businessProfile) {
         return res.status(404).json({ error: "Business profile not found" });
       }
 
       // Verify the employee exists and is of role 'employee'
-      const [employee] = await db
+      const { data: employee } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(and(
-          eq(users.id, employeeId),
-          eq(users.role, 'employee')
-        ))
-        .limit(1);
+        .eq('id', employeeId)
+        .eq('role', 'employee')
+        .single();
 
       if (!employee) {
         return res.status(404).json({ error: "Employee not found" });
       }
 
       // Check if employee is already connected to this business
-      const [existingConnection] = await db
+      const { data: existingConnection } = await supabase
+        .from('business_employees')
         .select()
-        .from(businessEmployees)
-        .where(and(
-          eq(businessEmployees.businessProfileId, businessProfile.id),
-          eq(businessEmployees.employeeId, employeeId)
-        ))
-        .limit(1);
+        .eq('business_profile_id', businessProfile.id)
+        .eq('employee_id', employeeId)
+        .single();
 
       if (existingConnection) {
         return res.status(400).json({ error: "Employee is already connected to this business" });
       }
 
       // Check if invitation already exists
-      const [existingInvitation] = await db
+      const { data: existingInvitation } = await supabase
+        .from('employee_invitations')
         .select()
-        .from(employeeInvitations)
-        .where(and(
-          eq(employeeInvitations.businessProfileId, businessProfile.id),
-          eq(employeeInvitations.employeeId, employeeId),
-          eq(employeeInvitations.status, 'pending')
-        ))
-        .limit(1);
+        .eq('business_profile_id', businessProfile.id)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .single();
 
       if (existingInvitation) {
         return res.status(400).json({ error: "Invitation already sent" });
       }
 
       // Create invitation
-      const [invitation] = await db
-        .insert(employeeInvitations)
-        .values({
-          businessProfileId: businessProfile.id,
-          employeeId: employeeId,
+      const { data: invitation } = await supabase
+        .from('employee_invitations')
+        .insert({
+          business_profile_id: businessProfile.id,
+          employee_id: employeeId,
           status: 'pending',
         })
-        .returning();
+        .select();
+
 
       res.json(invitation);
     } catch (error) {
@@ -151,13 +136,9 @@ export function registerRoutes(app: Express): Server {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const businesses = await db
-        .select({
-          id: businessProfiles.id,
-          name: businessProfiles.businessName,
-          userId: businessProfiles.userId
-        })
-        .from(businessProfiles);
+      const { data: businesses } = await supabase
+        .from('business_profiles')
+        .select('id, business_name, user_id');
 
       res.json(businesses);
     } catch (error) {
@@ -179,18 +160,18 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Business profile ID is required" });
       }
 
-      const [ticket] = await db
-        .insert(tickets)
-        .values({
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .insert({
           title,
           description,
           status: 'open',
-          customerId: req.user.id,
-          businessProfileId,
+          customer_id: req.user.id,
+          business_profile_id: businessProfileId,
           category: 'general_inquiry',
           priority: 'medium',
         })
-        .returning();
+        .select();
 
       res.json(ticket);
     } catch (error) {
@@ -206,28 +187,11 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only employees can view their invitations" });
       }
 
-      const invitations = await db
-        .select({
-          employeeInvitations: {
-            id: employeeInvitations.id,
-            businessProfileId: employeeInvitations.businessProfileId,
-            employeeId: employeeInvitations.employeeId,
-            status: employeeInvitations.status,
-            createdAt: employeeInvitations.createdAt,
-            updatedAt: employeeInvitations.updatedAt
-          },
-          business: {
-            id: businessProfiles.id,
-            businessName: businessProfiles.businessName,
-            userId: businessProfiles.userId
-          }
-        })
-        .from(employeeInvitations)
-        .innerJoin(businessProfiles, eq(employeeInvitations.businessProfileId, businessProfiles.id))
-        .where(and(
-          eq(employeeInvitations.employeeId, req.user.id),
-          eq(employeeInvitations.status, 'pending')
-        ));
+      const invitations = await supabase
+          .from('employee_invitations')
+          .select('*, business:business_profiles(id, business_name, user_id)')
+          .eq('employee_id', req.user.id)
+          .eq('status', 'pending');
 
       res.json(invitations);
     } catch (error) {
@@ -243,19 +207,10 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only employees can view their business connections" });
       }
 
-      const connections = await db
-        .select({
-          business: {
-            id: businessProfiles.id,
-            businessName: businessProfiles.businessName,
-            userId: businessProfiles.userId
-          },
-          isActive: businessEmployees.isActive
-        })
-        .from(businessEmployees)
-        .innerJoin(businessProfiles, eq(businessEmployees.businessProfileId, businessProfiles.id))
-        .where(eq(businessEmployees.employeeId, req.user.id));
-
+      const connections = await supabase
+          .from('business_employees')
+          .select('business:business_profiles(id, business_name, user_id), is_active')
+          .eq('employee_id', req.user.id);
 
       res.json(connections);
     } catch (error) {
@@ -271,45 +226,23 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Unauthorized" });
       }
 
-      const businessProfileId = req.user.role === 'business' ? (await db.select().from(businessProfiles).where(eq(businessProfiles.userId, req.user.id)).limit(1))[0]?.id : undefined;
-
-      const ticketsQuery = db.select({
-        tickets: {
-          id: tickets.id,
-          title: tickets.title,
-          description: tickets.description,
-          status: tickets.status,
-          customerId: tickets.customerId,
-          businessProfileId: tickets.businessProfileId,
-          claimedById: tickets.claimedById,
-          createdAt: tickets.createdAt,
-          updatedAt: tickets.updatedAt,
-          category: tickets.category,
-          priority: tickets.priority
-        },
-        customer: {
-          id: users.id,
-          username: users.username,
-          role: users.role
-        },
-        business: {
-          id: businessProfiles.id,
-          businessName: businessProfiles.businessName,
-          userId: businessProfiles.userId
-        },
-        claimedBy: {
-          id: users.id,
-          username: users.username,
-          role: users.role
-        }
-      }).from(tickets)
-        .leftJoin(users, eq(tickets.customerId, users.id), 'customer')
-        .leftJoin(businessProfiles, eq(tickets.businessProfileId, businessProfiles.id), 'business')
-        .leftJoin(users, eq(tickets.claimedById, users.id), 'claimedBy')
-        .orderBy(tickets.createdAt, 'desc');
+      const { data: businessProfile } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('user_id', req.user.id)
+          .single();
+      const businessProfileId = businessProfile?.id;
 
 
-      const ticketsResult = businessProfileId ? await ticketsQuery.where(eq(tickets.businessProfileId, businessProfileId)) : await ticketsQuery;
+      let ticketsQuery = supabase
+          .from('tickets')
+          .select('*, customer:users(id, username, role), business:business_profiles(id, business_name, user_id), claimed_by:users(id, username, role)')
+          .order('created_at', {ascending: false});
+
+      if(businessProfileId){
+          ticketsQuery = ticketsQuery.eq('business_profile_id', businessProfileId);
+      }
+      const {data: ticketsResult} = await ticketsQuery;
       res.json(ticketsResult);
     } catch (error) {
       console.error('Error fetching tickets:', error);
@@ -324,14 +257,14 @@ export function registerRoutes(app: Express): Server {
       const { id } = req.params;
       const updates = req.body;
 
-      const [ticket] = await db
-        .update(tickets)
-        .set({
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .update({
           ...updates,
-          updatedAt: new Date()
+          updated_at: new Date()
         })
-        .where(eq(tickets.id, id))
-        .returning();
+        .eq('id', id)
+        .select();
 
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });

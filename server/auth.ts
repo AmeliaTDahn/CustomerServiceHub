@@ -1,3 +1,4 @@
+
 import passport from "passport";
 import { IVerifyOptions, Strategy as LocalStrategy } from "passport-local";
 import { type Express } from "express";
@@ -5,9 +6,7 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { users, businessProfiles, insertUserSchema, type User } from "@db/schema";
-import { db } from "@db";
-import { eq } from "drizzle-orm";
+import { supabase } from "@db";
 
 const scryptAsync = promisify(scrypt);
 const crypto = {
@@ -30,7 +29,11 @@ const crypto = {
 
 declare global {
   namespace Express {
-    interface User extends User {}
+    interface User {
+      id: number;
+      username: string;
+      role: 'business' | 'customer' | 'employee';
+    }
   }
 }
 
@@ -60,15 +63,16 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
-        const [user] = await db
+        const { data: user, error } = await supabase
+          .from('users')
           .select()
-          .from(users)
-          .where(eq(users.username, username))
-          .limit(1);
+          .eq('username', username)
+          .single();
 
-        if (!user) {
+        if (error || !user) {
           return done(null, false, { message: "Incorrect username." });
         }
+        
         const isMatch = await crypto.compare(password, user.password);
         if (!isMatch) {
           return done(null, false, { message: "Incorrect password." });
@@ -86,11 +90,13 @@ export function setupAuth(app: Express) {
 
   passport.deserializeUser(async (id: number, done) => {
     try {
-      const [user] = await db
+      const { data: user, error } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(eq(users.id, id))
-        .limit(1);
+        .eq('id', id)
+        .single();
+        
+      if (error) throw error;
       done(null, user);
     } catch (err) {
       done(err);
@@ -99,21 +105,14 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      const result = insertUserSchema.safeParse(req.body);
-      if (!result.success) {
-        return res
-          .status(400)
-          .send("Invalid input: " + result.error.issues.map(i => i.message).join(", "));
-      }
-
-      const { username, password, role, businessName } = result.data;
+      const { username, password, role, businessName } = req.body;
 
       // Check if username already exists
-      const [existingUser] = await db
+      const { data: existingUser } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
+        .eq('username', username)
+        .single();
 
       if (existingUser) {
         return res.status(400).send("Username already exists");
@@ -121,42 +120,33 @@ export function setupAuth(app: Express) {
 
       const hashedPassword = await crypto.hash(password);
 
-      // Start a transaction to ensure user and business profile are created together
-      const newUser = await db.transaction(async (tx) => {
-        // Create the user first
-        const [user] = await tx
-          .insert(users)
-          .values({
-            username,
-            password: hashedPassword,
-            role
-          })
-          .returning();
+      // Create user
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert([{
+          username,
+          password: hashedPassword,
+          role
+        }])
+        .select()
+        .single();
 
-        // If this is a business account, create the business profile
-        if (role === "business") {
-          if (!businessName) {
-            throw new Error("Business name is required for business accounts");
-          }
+      if (userError) throw userError;
 
-          await tx
-            .insert(businessProfiles)
-            .values({
-              userId: user.id,
-              businessName,
-              createdAt: new Date(),
-              updatedAt: new Date()
-            });
-        }
+      // If business account, create profile
+      if (role === "business" && businessName) {
+        const { error: profileError } = await supabase
+          .from('business_profiles')
+          .insert([{
+            user_id: newUser.id,
+            business_name: businessName,
+          }]);
 
-        return user;
-      });
+        if (profileError) throw profileError;
+      }
 
-      // Log the user in after registration
       req.login(newUser, (err) => {
-        if (err) {
-          return next(err);
-        }
+        if (err) return next(err);
         return res.json({
           message: "Registration successful",
           user: { 
@@ -173,19 +163,11 @@ export function setupAuth(app: Express) {
 
   app.post("/api/login", (req, res, next) => {
     passport.authenticate("local", (err: any, user: Express.User, info: IVerifyOptions) => {
-      if (err) {
-        return next(err);
-      }
-
-      if (!user) {
-        return res.status(400).send(info.message ?? "Login failed");
-      }
+      if (err) return next(err);
+      if (!user) return res.status(400).send(info.message ?? "Login failed");
 
       req.logIn(user, (err) => {
-        if (err) {
-          return next(err);
-        }
-
+        if (err) return next(err);
         return res.json({
           message: "Login successful",
           user: { id: user.id, username: user.username, role: user.role },
@@ -196,10 +178,7 @@ export function setupAuth(app: Express) {
 
   app.post("/api/logout", (req, res) => {
     req.logout((err) => {
-      if (err) {
-        return res.status(500).send("Logout failed");
-      }
-
+      if (err) return res.status(500).send("Logout failed");
       res.json({ message: "Logout successful" });
     });
   });
@@ -208,7 +187,6 @@ export function setupAuth(app: Express) {
     if (req.isAuthenticated()) {
       return res.json(req.user);
     }
-
     res.status(401).send("Not logged in");
   });
 }

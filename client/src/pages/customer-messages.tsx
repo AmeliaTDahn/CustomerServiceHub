@@ -74,9 +74,10 @@ export default function CustomerMessages() {
         .from('tickets')
         .select(`
           *,
-          business:business_id (
+          business:business_profile_id (
             id,
-            username
+            business_name,
+            user_id
           )
         `)
         .eq('customer_id', user.id.toString())
@@ -128,7 +129,7 @@ export default function CustomerMessages() {
   // Filter tickets based on search term and status
   const filteredTickets = tickets.filter(ticket =>
     (ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-    (ticket.business?.username || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())) &&
+    (ticket.business?.business_name || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())) &&
     (activeTab === "active" ? ticket.status !== "resolved" : ticket.status === "resolved")
   );
 

@@ -745,6 +745,127 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Claim ticket endpoint
+  app.post("/api/tickets/:id/claim", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== 'employee') {
+        return res.status(403).json({ error: "Only employees can claim tickets" });
+      }
+
+      const ticketId = parseInt(req.params.id);
+
+      // Get the ticket first to check permissions
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          business:business_profiles!business_profile_id(
+            id,
+            user_id
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check if employee has access to this business's tickets
+      const { data: hasAccess } = await supabase
+        .from('business_employees')
+        .select()
+        .eq('employee_id', req.user.id)
+        .eq('business_profile_id', ticket.business_profile_id)
+        .eq('is_active', true)
+        .single();
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No access to this business's tickets" });
+      }
+
+      // Check if ticket is already claimed
+      if (ticket.claimed_by_id) {
+        return res.status(400).json({ error: "Ticket is already claimed" });
+      }
+
+      // Update the ticket with claim information
+      const { data: updatedTicket, error } = await supabase
+        .from('tickets')
+        .update({
+          claimed_by_id: req.user.id,
+          claimed_at: new Date().toISOString(),
+        })
+        .eq('id', ticketId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error claiming ticket:', error);
+        return res.status(500).json({ error: "Failed to claim ticket" });
+      }
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error claiming ticket:', error);
+      res.status(500).json({ error: "Failed to claim ticket" });
+    }
+  });
+
+  // Unclaim ticket endpoint
+  app.post("/api/tickets/:id/unclaim", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== 'employee') {
+        return res.status(403).json({ error: "Only employees can unclaim tickets" });
+      }
+
+      const ticketId = parseInt(req.params.id);
+
+      // Get the ticket first to check permissions
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select(`
+          *,
+          business:business_profiles!business_profile_id(
+            id,
+            user_id
+          )
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check if the ticket is claimed by the requesting employee
+      if (ticket.claimed_by_id !== req.user.id) {
+        return res.status(403).json({ error: "You can only unclaim tickets that you have claimed" });
+      }
+
+      // Update the ticket to remove claim information
+      const { data: updatedTicket, error } = await supabase
+        .from('tickets')
+        .update({
+          claimed_by_id: null,
+          claimed_at: null,
+        })
+        .eq('id', ticketId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error unclaiming ticket:', error);
+        return res.status(500).json({ error: "Failed to unclaim ticket" });
+      }
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error unclaiming ticket:', error);
+      res.status(500).json({ error: "Failed to unclaim ticket" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

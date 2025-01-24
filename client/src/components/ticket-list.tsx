@@ -67,10 +67,12 @@ export default function TicketList({
   const { user } = useUser();
   
   const filterTickets = (tickets: TicketListProps['tickets'], view: 'active' | 'my-tickets' | 'history') => {
+    if (!tickets) return [];
+    
     return tickets.filter(ticket => {
       const isResolved = ticket.status === "resolved";
-      const isClaimedByMe = ticket.claimedById === user?.id;
-      const isClaimedByAnyone = ticket.claimedById !== null;
+      const isClaimedByMe = ticket.claimed_by_id === user?.id;
+      const isClaimedByAnyone = ticket.claimed_by_id !== null;
 
       if (isEmployee) {
         switch (view) {

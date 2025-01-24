@@ -62,10 +62,9 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Username, password and role are required");
       }
 
-      // First create the user in Supabase Auth - using username as email
-      const email = `${username}@example.com`; // Temporary email for auth
+      // Create user in Supabase Auth using username as the identifier
       const { data: authUser, error: authError } = await supabase.auth.signUp({
-        email,
+        email: username,
         password,
         options: {
           data: {

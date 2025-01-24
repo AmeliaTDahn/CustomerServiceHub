@@ -1,9 +1,42 @@
 import type { Express } from "express";
+import session from "express-session";
+import createMemoryStore from "memorystore";
 import { db } from "@db/index";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
 
+// Extend Express.Session
+declare module 'express-session' {
+  interface SessionData {
+    user?: {
+      id: number;
+      username: string;
+      role: 'business' | 'customer' | 'employee';
+    };
+  }
+}
+
 export function setupAuth(app: Express) {
+  const MemoryStore = createMemoryStore(session);
+  const sessionSettings: session.SessionOptions = {
+    secret: process.env.REPL_ID || "porygon-supremacy",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {},
+    store: new MemoryStore({
+      checkPeriod: 86400000, // prune expired entries every 24h
+    }),
+  };
+
+  if (app.get("env") === "production") {
+    app.set("trust proxy", 1);
+    sessionSettings.cookie = {
+      secure: true,
+    };
+  }
+
+  app.use(session(sessionSettings));
+
   // Middleware to check authentication
   app.use(async (req, res, next) => {
     if (!req.session?.user) {
@@ -57,8 +90,18 @@ export function setupAuth(app: Express) {
         .returning();
 
       // Set session
-      req.session.user = newUser;
-      await req.session.save();
+      req.session.user = {
+        id: newUser.id,
+        username: newUser.username,
+        role: newUser.role
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          resolve();
+        });
+      });
 
       return res.json({
         message: "Registration successful",
@@ -103,8 +146,18 @@ export function setupAuth(app: Express) {
       }
 
       // Set session
-      req.session.user = user;
-      await req.session.save();
+      req.session.user = {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          resolve();
+        });
+      });
 
       return res.json({
         message: "Login successful",
@@ -122,7 +175,11 @@ export function setupAuth(app: Express) {
 
   app.post("/api/logout", async (req, res) => {
     try {
-      req.session.destroy(() => {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error('Logout error:', err);
+          return res.status(500).send("Logout failed");
+        }
         res.json({ message: "Logout successful" });
       });
     } catch (error) {
@@ -132,12 +189,8 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/user", async (req, res) => {
-    if (req.user) {
-      return res.json({
-        id: req.user.id,
-        username: req.user.username,
-        role: req.user.role
-      });
+    if (req.session?.user) {
+      return res.json(req.session.user);
     }
 
     res.status(401).send("Not logged in");

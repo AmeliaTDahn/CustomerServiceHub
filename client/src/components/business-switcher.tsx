@@ -1,17 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-
-interface Business {
-  id: number;
-  username: string;
-}
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import type { Business } from "@db/schema";
 
 interface BusinessSwitcherProps {
   onBusinessChange: (businessId: string) => void;
@@ -31,13 +21,7 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
     },
   });
 
-  if (businesses.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground">
-        No businesses available. Accept invitations to see businesses here.
-      </div>
-    );
-  }
+  if (businesses.length === 0) return null;
 
   return (
     <div className="flex items-center gap-2">

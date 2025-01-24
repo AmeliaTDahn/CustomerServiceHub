@@ -189,27 +189,6 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({ error: "Employee is already connected to this business" });
       }
 
-      // Check for existing invitation
-      const { data: existingInvitation, error: inviteCheckError } = await supabase
-        .from('employee_invitations')
-        .select('*')
-        .eq('business_profile_id', businessProfile.id)
-        .eq('employee_id', employeeId)
-        .eq('status', 'pending')
-        .single();
-
-      if (inviteCheckError && inviteCheckError.code !== 'PGRST116') {
-        console.error('Error checking existing invitation:', inviteCheckError);
-        return res.status(500).json({ 
-          error: "Failed to check existing invitation",
-          details: inviteCheckError.message
-        });
-      }
-
-      if (existingInvitation) {
-        return res.status(400).json({ error: "An invitation is already pending for this employee" });
-      }
-
       // Create invitation
       const { data: invitation, error: invitationError } = await supabase
         .from('employee_invitations')
@@ -229,7 +208,10 @@ export function registerRoutes(app: Express): Server {
         });
       }
 
-      res.json(invitation);
+      res.json({
+        message: "Invitation sent successfully",
+        invitation
+      });
     } catch (error) {
       console.error('Error inviting employee:', error);
       res.status(500).json({ error: "Failed to send invitation" });

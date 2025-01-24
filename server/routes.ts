@@ -54,43 +54,17 @@ export function registerRoutes(app: Express): Server {
         return res.status(403).json({ error: "Only business accounts can search employees" });
       }
 
-      // Get the current business profile
-      const { data: businessProfile } = await supabase
-        .from('business_profiles')
-        .select()
-        .eq('user_id', req.user.id)
-        .single();
-
-      if (!businessProfile) {
-        return res.status(404).json({ error: "Business profile not found" });
-      }
-
       // Get all users with role 'employee'
       const { data: employees } = await supabase
         .from('users')
-        .select(`
-          id,
-          username,
-          role,
-          business_employees!inner (
-            business_profile_id
-          ),
-          employee_invitations!inner (
-            business_profile_id,
-            status
-          )
-        `)
-        .eq('role', 'employee')
-        .not('business_employees.business_profile_id', 'eq', businessProfile.id)
-        .not('employee_invitations.business_profile_id', 'eq', businessProfile.id)
-        .not('employee_invitations.status', 'eq', 'pending');
+        .select('id, username')
+        .eq('role', 'employee');
 
-      const availableEmployees = employees?.map(({ id, username }) => ({
-        id,
-        username
-      })) || [];
+      if (!employees) {
+        return res.json([]);
+      }
 
-      res.json(availableEmployees);
+      res.json(employees);
     } catch (error) {
       console.error('Error fetching available employees:', error);
       res.status(500).json({ error: "Failed to fetch available employees" });

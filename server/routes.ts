@@ -367,7 +367,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update tickets endpoint to filter by business
+  // Get tickets with proper filtering based on user role
   app.get("/api/tickets", async (req: Request, res) => {
     try {
       if (!req.user) {
@@ -386,16 +386,41 @@ export function registerRoutes(app: Express): Server {
           ),
           business:business_profiles!business_profile_id(
             id,
-            business_name
+            business_name,
+            user_id
+          ),
+          business_employees!business_profile_id(
+            employee_id,
+            is_active
           )
         `)
         .order('created_at', { ascending: false });
 
-      if (req.user.role === 'employee' && businessProfileId) {
-        query = query.eq('business_profile_id', businessProfileId);
+      // Apply filters based on user role
+      if (req.user.role === 'employee') {
+        // For employees, show tickets of businesses they're actively connected to
+        query = query
+          .eq('business_employees.employee_id', req.user.id)
+          .eq('business_employees.is_active', true);
+
+        if (businessProfileId) {
+          query = query.eq('business_profile_id', businessProfileId);
+        }
       } else if (req.user.role === 'business') {
-        query = query.eq('business_profile_id', businessProfileId);
+        // For business users, show only their tickets
+        const { data: businessProfile } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('user_id', req.user.id)
+          .single();
+
+        if (!businessProfile) {
+          return res.status(404).json({ error: "Business profile not found" });
+        }
+
+        query = query.eq('business_profile_id', businessProfile.id);
       } else if (req.user.role === 'customer') {
+        // For customers, show only their tickets
         query = query.eq('customer_id', req.user.id);
       }
 
@@ -406,7 +431,17 @@ export function registerRoutes(app: Express): Server {
         return res.status(500).json({ error: "Failed to fetch tickets" });
       }
 
-      res.json(tickets);
+      // Transform the data to include only necessary information
+      const transformedTickets = tickets?.map(ticket => ({
+        ...ticket,
+        customer: ticket.customer,
+        business: ticket.business,
+        hasBusinessResponse: false, // You can implement this based on your needs
+        hasFeedback: false, // You can implement this based on your needs
+        unreadCount: 0, // You can implement this based on your needs
+      })) || [];
+
+      res.json(transformedTickets);
     } catch (error) {
       console.error('Error fetching tickets:', error);
       res.status(500).json({ error: "Failed to fetch tickets" });

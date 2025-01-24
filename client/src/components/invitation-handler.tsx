@@ -28,10 +28,10 @@ export default function InvitationHandler() {
   // Handle invitation response
   const handleInvitation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: 'accepted' | 'rejected' }) => {
-      const res = await fetch(`/api/employees/invitations/${id}/respond`, {
+      const res = await fetch(`/api/invitations/${id}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ accept: status === 'accepted' }),
         credentials: "include",
       });
       if (!res.ok) {

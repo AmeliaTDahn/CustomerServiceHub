@@ -103,7 +103,7 @@ export function setupAuth(app: Express) {
           username,
           role,
           supabase_id: authUser.user.id,
-          email: email.toLowerCase(),
+          email: `${username}@internal.local`,
           created_at: new Date().toISOString()
         }])
         .select()

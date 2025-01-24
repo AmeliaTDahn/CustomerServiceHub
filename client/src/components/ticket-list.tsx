@@ -106,8 +106,9 @@ export default function TicketList({
     });
   };
 
+  const [, setLocation] = useLocation();
+  
   const handleMessageClick = (ticketId: number) => {
-    const [, setLocation] = useLocation();
     setLocation(`/messages?ticketId=${ticketId}`);
   };
 

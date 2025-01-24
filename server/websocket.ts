@@ -1,2 +1,2 @@
 
-// This file can be safely removed as we're using Supabase's real-time features
+// This file can be safely deleted as we're using Supabase's real-time features instead

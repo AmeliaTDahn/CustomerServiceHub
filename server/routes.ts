@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { setupWebSocket } from "./websocket";
+
 import { supabase } from "@db";
 import type { Tables } from "@/lib/supabase";
 

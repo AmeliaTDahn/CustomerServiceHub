@@ -95,7 +95,7 @@ export default function CustomerDashboard() {
         </div>
       </header>
 
-      <main className="container py-8 space-y-8">
+      <main className="container mx-auto max-w-7xl px-4 py-8 space-y-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Support Tickets</CardTitle>

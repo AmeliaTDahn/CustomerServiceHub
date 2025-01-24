@@ -152,6 +152,17 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email and password are required");
       }
 
+      // Check if user exists in our database first
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select()
+        .eq('email', email)
+        .single();
+
+      if (!existingUser) {
+        return res.status(400).send("User not found. Please register first.");
+      }
+
       // Sign in with Supabase Auth
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -162,16 +173,7 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Invalid credentials");
       }
 
-      // Get user from database using Supabase ID
-      const { data: user, error: dbError } = await supabase
-        .from('users')
-        .select()
-        .eq('supabase_id', authData.user.id)
-        .single();
-
-      if (dbError || !user) {
-        return res.status(400).send("User not found");
-      }
+      const user = existingUser;
 
       req.session.user = {
         id: user.id,

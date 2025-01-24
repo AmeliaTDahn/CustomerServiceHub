@@ -161,28 +161,7 @@ export function registerRoutes(app: Express): Server {
         businessProfile = newProfile;
       }
 
-      // Verify employee exists and has correct role
-      const { data: employee, error: employeeError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', employeeId)
-        .single();
-
-      if (employeeError) {
-        console.error('Error fetching employee:', employeeError);
-        return res.status(500).json({ 
-          error: "Failed to verify employee",
-          details: employeeError.message
-        });
-      }
-
-      if (!employee) {
-        return res.status(404).json({ error: "Employee not found" });
-      }
-
-      if (employee.role !== 'employee') {
-        return res.status(400).json({ error: "Selected user is not an employee" });
-      }
+      // Employee check already done above
 
       // Check for existing connection
       const { data: existingConnection, error: connectionError } = await supabase

@@ -42,7 +42,7 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
                 key={business.id}
                 value={business.id.toString()}
               >
-                {business.businessName}
+                {business.business_name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -50,7 +50,7 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
       )}
       {businesses.length > 0 && (
         <div className="text-sm text-muted-foreground ml-4">
-          Connected to: {businesses.map(b => b.businessName).join(', ')}
+          Connected to: {businesses.map(b => b.business_name).join(', ')}
         </div>
       )}
     </div>

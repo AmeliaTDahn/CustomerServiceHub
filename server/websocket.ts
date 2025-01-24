@@ -1,11 +1,9 @@
+
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'http';
 import type { Express } from 'express';
-import { db } from "@db";
-import { messages, businessEmployees, tickets, users, directMessages } from "@db/schema";
-import { eq, and } from "drizzle-orm";
-import pkg from 'pg';
-const { Pool } = pkg;
+import { supabase } from "@db";
+import type { Tables } from "@/lib/supabase";
 
 interface DirectMessage {
   type: 'direct_message';
@@ -44,24 +42,26 @@ const connections = new Map<string, ExtendedWebSocket>();
 
 async function determineUserRole(userId: number): Promise<string | null> {
   try {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
 
+    if (error) throw error;
     if (user) {
       console.log(`User ${userId} role found:`, user.role);
       return user.role;
     }
 
-    const [customer] = await db
+    const { data: customer, error: customerError } = await supabase
+      .from('tickets')
       .select()
-      .from(tickets)
-      .where(eq(tickets.customerId, userId))
+      .eq('customer_id', userId)
       .limit(1);
 
-    if (customer) {
+    if (customerError) throw customerError;
+    if (customer && customer.length > 0) {
       console.log(`User ${userId} is a customer`);
       return 'customer';
     }
@@ -137,84 +137,79 @@ export function setupWebSocket(server: Server, _app: Express) {
         }
 
         if (message.type === 'direct_message') {
-          const [sender] = await db
+          const { data: sender, error: senderError } = await supabase
+            .from('users')
             .select()
-            .from(users)
-            .where(eq(users.id, userId));
+            .eq('id', userId)
+            .single();
 
-          if (!sender || (sender.role !== 'employee' && sender.role !== 'business')) {
+          if (senderError || !sender || (sender.role !== 'employee' && sender.role !== 'business')) {
             throw new Error('Only employees and businesses can send direct messages');
           }
 
-          // If sender is an employee, add business context
           if (sender.role === 'employee') {
-            const [senderBusiness] = await db
+            const { data: senderBusiness, error: businessError } = await supabase
+              .from('business_employees')
               .select()
-              .from(businessEmployees)
-              .where(and(
-                eq(businessEmployees.employeeId, userId),
-                eq(businessEmployees.isActive, true)
-              ));
+              .eq('employee_id', userId)
+              .eq('is_active', true)
+              .single();
 
-            if (!senderBusiness) {
+            if (businessError || !senderBusiness) {
               throw new Error('Employee not associated with any business');
             }
 
-            // If sending to business, validate business relationship
             if (message.businessId) {
-              if (message.businessId !== senderBusiness.businessId) {
+              if (message.businessId !== senderBusiness.business_profile_id) {
                 throw new Error('Not authorized to send messages to this business');
               }
             } else {
-              // For employee-to-employee messages, verify they belong to the same business
-              const [receiverBusiness] = await db
+              const { data: receiverBusiness, error: receiverError } = await supabase
+                .from('business_employees')
                 .select()
-                .from(businessEmployees)
-                .where(and(
-                  eq(businessEmployees.employeeId, message.receiverId),
-                  eq(businessEmployees.businessId, senderBusiness.businessId),
-                  eq(businessEmployees.isActive, true)
-                ));
+                .eq('employee_id', message.receiverId)
+                .eq('business_profile_id', senderBusiness.business_profile_id)
+                .eq('is_active', true)
+                .single();
 
-              if (!receiverBusiness) {
+              if (receiverError || !receiverBusiness) {
                 throw new Error('Cannot send messages to employees from different businesses');
               }
 
-              // Set the businessId for employee-to-employee messages
-              message.businessId = senderBusiness.businessId;
+              message.businessId = senderBusiness.business_profile_id;
             }
           }
 
-          // Save the message to the database
-          const [savedMessage] = await db
-            .insert(directMessages)
-            .values({
+          const { data: savedMessage, error: messageError } = await supabase
+            .from('direct_messages')
+            .insert([{
               content: message.content,
-              senderId: userId,
-              receiverId: message.receiverId,
-              businessId: message.businessId,
+              sender_id: userId,
+              receiver_id: message.receiverId,
+              business_profile_id: message.businessId,
               status: 'sent',
-              sentAt: new Date(),
-              createdAt: new Date()
-            })
-            .returning();
+              sent_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
+
+          if (messageError) throw messageError;
 
           const responseMessage = {
             type: 'direct_message',
             id: savedMessage.id,
             content: savedMessage.content,
-            senderId: savedMessage.senderId,
-            receiverId: savedMessage.receiverId,
-            businessId: savedMessage.businessId,
+            senderId: savedMessage.sender_id,
+            receiverId: savedMessage.receiver_id,
+            businessId: savedMessage.business_profile_id,
             status: savedMessage.status,
-            sentAt: savedMessage.sentAt.toISOString(),
-            createdAt: savedMessage.createdAt.toISOString()
+            sentAt: savedMessage.sent_at,
+            createdAt: savedMessage.created_at
           };
 
-          // Send to both sender and receiver
           ws.send(JSON.stringify(responseMessage));
 
-          // Send to receiver's WebSocket if they're connected
           const receiverRole = await determineUserRole(message.receiverId);
           if (receiverRole) {
             const receiverWs = connections.get(`${message.receiverId}-${receiverRole}`);
@@ -230,49 +225,53 @@ export function setupWebSocket(server: Server, _app: Express) {
             throw new Error('Ticket ID is required');
           }
 
-          const [ticket] = await db
+          const { data: ticket, error: ticketError } = await supabase
+            .from('tickets')
             .select()
-            .from(tickets)
-            .where(eq(tickets.id, message.ticketId));
+            .eq('id', message.ticketId)
+            .single();
 
-          if (!ticket) {
+          if (ticketError || !ticket) {
             throw new Error('Invalid ticket');
           }
 
           let receiverId: number;
-          if (message.senderId === ticket.customerId) {
-            receiverId = ticket.claimedById || ticket.businessId!;
+          if (message.senderId === ticket.customer_id) {
+            receiverId = ticket.claimed_by_id || ticket.business_profile_id;
           } else {
-            receiverId = ticket.customerId;
+            receiverId = ticket.customer_id;
           }
 
-          const [savedMessage] = await db
-            .insert(messages)
-            .values({
+          const { data: savedMessage, error: messageError } = await supabase
+            .from('messages')
+            .insert([{
               content: message.content,
-              senderId: userId,
-              receiverId,
-              ticketId: message.ticketId,
+              sender_id: userId,
+              receiver_id: receiverId,
+              ticket_id: message.ticketId,
               status: 'sent',
-              chatInitiator: message.chatInitiator || false,
-              initiatedAt: message.chatInitiator ? new Date() : null,
-              sentAt: new Date(),
-              createdAt: new Date(),
-            })
-            .returning();
+              chat_initiator: message.chatInitiator || false,
+              initiated_at: message.chatInitiator ? new Date().toISOString() : null,
+              sent_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            }])
+            .select()
+            .single();
+
+          if (messageError) throw messageError;
 
           const responseMessage = {
             type: 'message',
             id: savedMessage.id,
             content: savedMessage.content,
-            senderId: savedMessage.senderId,
-            receiverId: savedMessage.receiverId,
-            ticketId: savedMessage.ticketId,
+            senderId: savedMessage.sender_id,
+            receiverId: savedMessage.receiver_id,
+            ticketId: savedMessage.ticket_id,
             status: savedMessage.status,
-            chatInitiator: savedMessage.chatInitiator,
-            initiatedAt: savedMessage.initiatedAt?.toISOString(),
-            sentAt: savedMessage.sentAt.toISOString(),
-            createdAt: savedMessage.createdAt.toISOString(),
+            chatInitiator: savedMessage.chat_initiator,
+            initiatedAt: savedMessage.initiated_at,
+            sentAt: savedMessage.sent_at,
+            createdAt: savedMessage.created_at,
           };
 
           ws.send(JSON.stringify(responseMessage));

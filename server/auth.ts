@@ -1,11 +1,9 @@
+
 import type { Express } from "express";
 import session from "express-session";
 import createMemoryStore from "memorystore";
-import { db } from "@db/index";
-import { users } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@db/index";
 
-// Extend Express.Session
 declare module 'express-session' {
   interface SessionData {
     user?: {
@@ -24,31 +22,28 @@ export function setupAuth(app: Express) {
     saveUninitialized: false,
     cookie: {},
     store: new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
+      checkPeriod: 86400000
     }),
   };
 
   if (app.get("env") === "production") {
     app.set("trust proxy", 1);
-    sessionSettings.cookie = {
-      secure: true,
-    };
+    sessionSettings.cookie = { secure: true };
   }
 
   app.use(session(sessionSettings));
 
-  // Middleware to check authentication
   app.use(async (req, res, next) => {
     if (!req.session?.user) {
       return next();
     }
 
     try {
-      const [user] = await db
+      const { data: user, error } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(eq(users.id, req.session.user.id))
-        .limit(1);
+        .eq('id', req.session.user.id)
+        .single();
 
       if (user) {
         req.user = user;
@@ -67,29 +62,29 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Username, password and role are required");
       }
 
-      // Check if user already exists
-      const [existingUser] = await db
+      const { data: existingUser } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
+        .eq('username', username)
+        .single();
 
       if (existingUser) {
         return res.status(400).send("Username already exists");
       }
 
-      // Create new user
-      const [newUser] = await db
-        .insert(users)
-        .values({
+      const { data: newUser, error } = await supabase
+        .from('users')
+        .insert([{
           username,
-          password, // Note: In production, you should hash the password
+          password,
           role,
-          createdAt: new Date()
-        })
-        .returning();
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
 
-      // Set session
+      if (error) throw error;
+
       req.session.user = {
         id: newUser.id,
         username: newUser.username,
@@ -125,18 +120,16 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Username and password are required");
       }
 
-      // Find user
-      const [user] = await db
+      const { data: user, error } = await supabase
+        .from('users')
         .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
+        .eq('username', username)
+        .single();
 
       if (!user) {
         return res.status(400).send("User not found");
       }
 
-      // In production, you should compare hashed passwords
       if (user.password !== password) {
         return res.status(400).send("Invalid password");
       }
@@ -145,7 +138,6 @@ export function setupAuth(app: Express) {
         return res.status(400).send(`Invalid role for user. Expected ${user.role}, got ${role}`);
       }
 
-      // Set session
       req.session.user = {
         id: user.id,
         username: user.username,
@@ -192,7 +184,6 @@ export function setupAuth(app: Express) {
     if (req.session?.user) {
       return res.json(req.session.user);
     }
-
     res.status(401).send("Not logged in");
   });
 }

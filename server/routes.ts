@@ -286,8 +286,5 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  const httpServer = createServer(app);
-  setupWebSocket(httpServer);
-
-  return httpServer;
+  return createServer(app);
 }

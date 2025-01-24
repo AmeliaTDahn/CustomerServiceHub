@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import BusinessDashboard from "@/pages/business-dashboard";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import EmployeeDashboard from "@/pages/employee-dashboard";
+import EmployeeMessages from "@/pages/employee-messages";
 import BusinessProfileSetup from "@/pages/business-profile-setup";
 
 function LoadingSpinner() {
@@ -45,6 +46,7 @@ function Router() {
             return <CustomerDashboard />;
           }
         }} />
+        <Route path="/messages" component={EmployeeMessages} />
         <Route path="/business/profile" component={BusinessProfileSetup} />
         <Route component={NotFound} />
       </Switch>

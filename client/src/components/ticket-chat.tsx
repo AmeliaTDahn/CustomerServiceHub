@@ -111,23 +111,12 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
       if (!ticketId) return null;
       const { data, error } = await supabase
         .from('tickets')
-        .select(`
-          *,
-          customer:customer_id (
-            id,
-            username
-          ),
-          business:business_profile_id (
-            id,
-            business_name
-          ),
-          claimed_by_id
-        `)
+        .select('*, claimed_by_id')
         .eq('id', ticketId)
         .single();
 
       if (error) throw error;
-
+      
       // For employees, check if they have access to the business
       if (user?.role === 'employee') {
         const { data: hasAccess } = await supabase
@@ -142,7 +131,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           throw new Error('You do not have access to this ticket');
         }
       }
-
+      
       return data;
     },
     enabled: !!ticketId && !!user
@@ -198,9 +187,9 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           .select('customer_id, business_id')
           .eq('id', ticketId)
           .single();
-
+        
         if (!ticket) throw new Error("Ticket not found");
-
+        
         receiverId = user.role === 'customer' 
           ? ticket.business_id 
           : ticket.customer_id;

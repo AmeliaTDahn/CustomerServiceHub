@@ -1,15 +1,16 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { supabase } from "@db/index";
 
-declare global {
-  namespace Express {
-    interface User {
+// Extend Express Request type to include user
+declare module 'express' {
+  interface Request {
+    user?: {
       id: number;
       username: string;
       role: 'business' | 'customer' | 'employee';
-    }
+    };
   }
 }
 
@@ -17,7 +18,7 @@ export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
   // Get business profile
-  app.get("/api/business-profile", async (req, res) => {
+  app.get("/api/business-profile", async (req: Request, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can access this endpoint" });
@@ -30,6 +31,7 @@ export function registerRoutes(app: Express): Server {
         .single();
 
       if (error) {
+        console.error('Error fetching business profile:', error);
         return res.status(404).json({ error: "Business profile not found" });
       }
 
@@ -41,7 +43,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Create or update business profile
-  app.post("/api/business-profile", async (req, res) => {
+  app.post("/api/business-profile", async (req: Request, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can access this endpoint" });
@@ -94,9 +96,148 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Employee invitation endpoint
+  app.post("/api/businesses/employees/invite", async (req: Request, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can invite employees" });
+      }
+
+      const { employeeId } = req.body;
+
+      if (!employeeId) {
+        return res.status(400).json({ error: "Employee ID is required" });
+      }
+
+      // Get or create business profile
+      let { data: businessProfile, error: profileError } = await supabase
+        .from('business_profiles')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error fetching business profile:', profileError);
+        return res.status(500).json({ 
+          error: "Failed to fetch business profile",
+          details: profileError.message
+        });
+      }
+
+      if (!businessProfile) {
+        // Create default business profile
+        const { data: newProfile, error: createError } = await supabase
+          .from('business_profiles')
+          .insert({
+            user_id: req.user.id,
+            business_name: req.user.username
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating business profile:', createError);
+          return res.status(500).json({ 
+            error: "Failed to create business profile",
+            details: createError.message
+          });
+        }
+
+        businessProfile = newProfile;
+      }
+
+      // Verify employee exists and has correct role
+      const { data: employee, error: employeeError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', employeeId)
+        .single();
+
+      if (employeeError) {
+        console.error('Error fetching employee:', employeeError);
+        return res.status(500).json({ 
+          error: "Failed to verify employee",
+          details: employeeError.message
+        });
+      }
+
+      if (!employee) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+
+      if (employee.role !== 'employee') {
+        return res.status(400).json({ error: "Selected user is not an employee" });
+      }
+
+      // Check for existing connection
+      const { data: existingConnection, error: connectionError } = await supabase
+        .from('business_employees')
+        .select('*')
+        .eq('business_profile_id', businessProfile.id)
+        .eq('employee_id', employeeId)
+        .single();
+
+      if (connectionError && connectionError.code !== 'PGRST116') {
+        console.error('Error checking existing connection:', connectionError);
+        return res.status(500).json({ 
+          error: "Failed to check existing connection",
+          details: connectionError.message
+        });
+      }
+
+      if (existingConnection) {
+        return res.status(400).json({ error: "Employee is already connected to this business" });
+      }
+
+      // Check for existing invitation
+      const { data: existingInvitation, error: inviteCheckError } = await supabase
+        .from('employee_invitations')
+        .select('*')
+        .eq('business_profile_id', businessProfile.id)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .single();
+
+      if (inviteCheckError && inviteCheckError.code !== 'PGRST116') {
+        console.error('Error checking existing invitation:', inviteCheckError);
+        return res.status(500).json({ 
+          error: "Failed to check existing invitation",
+          details: inviteCheckError.message
+        });
+      }
+
+      if (existingInvitation) {
+        return res.status(400).json({ error: "An invitation is already pending for this employee" });
+      }
+
+      // Create invitation
+      const { data: invitation, error: invitationError } = await supabase
+        .from('employee_invitations')
+        .insert([{
+          business_profile_id: businessProfile.id,
+          employee_id: employeeId,
+          status: 'pending'
+        }])
+        .select()
+        .single();
+
+      if (invitationError) {
+        console.error('Error creating invitation:', invitationError);
+        return res.status(500).json({ 
+          error: "Failed to create invitation",
+          details: invitationError.message
+        });
+      }
+
+      res.json(invitation);
+    } catch (error) {
+      console.error('Error inviting employee:', error);
+      res.status(500).json({ error: "Failed to send invitation" });
+    }
+  });
 
   // Get all employees for a specific business
-  app.get("/api/businesses/employees", async (req, res) => {
+  app.get("/api/businesses/employees", async (req: Request, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can view their employees" });
@@ -127,7 +268,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Get all available employees that can be invited
-  app.get("/api/employees", async (req, res) => {
+  app.get("/api/employees", async (req: Request, res) => {
     try {
       if (!req.user || req.user.role !== "business") {
         return res.status(403).json({ error: "Only business accounts can search employees" });
@@ -150,116 +291,9 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Employee invitation endpoint
-  app.post("/api/businesses/employees/invite", async (req, res) => {
-    try {
-      if (!req.user?.role || req.user.role !== "business") {
-        return res.status(403).json({ error: "Only business accounts can invite employees" });
-      }
-
-      const { employeeId } = req.body;
-
-      if (!employeeId) {
-        return res.status(400).json({ error: "Employee ID is required" });
-      }
-
-      // Get the business profile
-      const { data: businessProfile, error: profileError } = await supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('user_id', req.user.id)
-        .single();
-
-      if (profileError || !businessProfile) {
-        // Create a default business profile if it doesn't exist
-        const { data: newProfile, error: createError } = await supabase
-          .from('business_profiles')
-          .insert({
-            user_id: req.user.id,
-            business_name: req.user.username // Use username as default business name
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating business profile:', createError);
-          return res.status(500).json({ 
-            error: "Failed to create business profile",
-            details: createError.message
-          });
-        }
-
-        businessProfile = newProfile;
-      }
-
-      // Verify the employee exists and is of role 'employee'
-      const { data: employee, error: employeeError } = await supabase
-        .from('users')
-        .select('id, role')
-        .eq('id', employeeId)
-        .single();
-
-      if (employeeError || !employee) {
-        return res.status(404).json({ error: "Employee not found" });
-      }
-
-      if (employee.role !== 'employee') {
-        return res.status(400).json({ error: "Selected user is not an employee" });
-      }
-
-      // Check if employee is already connected to this business
-      const { data: existingConnection } = await supabase
-        .from('business_employees')
-        .select('id')
-        .eq('business_profile_id', businessProfile.id)
-        .eq('employee_id', employeeId)
-        .single();
-
-      if (existingConnection) {
-        return res.status(400).json({ error: "Employee is already connected to this business" });
-      }
-
-      // Check if invitation already exists
-      const { data: existingInvitation } = await supabase
-        .from('employee_invitations')
-        .select('id, status')
-        .eq('business_profile_id', businessProfile.id)
-        .eq('employee_id', employeeId)
-        .eq('status', 'pending')
-        .single();
-
-      if (existingInvitation) {
-        return res.status(400).json({ error: "An invitation is already pending for this employee" });
-      }
-
-      // Create invitation
-      const { data: invitation, error: invitationError } = await supabase
-        .from('employee_invitations')
-        .insert({
-          business_profile_id: businessProfile.id,
-          employee_id: employeeId,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (invitationError) {
-        console.error('Error creating invitation:', invitationError);
-        return res.status(500).json({ 
-          error: "Failed to create invitation",
-          details: invitationError.message
-        });
-      }
-
-      res.json(invitation);
-    } catch (error) {
-      console.error('Error inviting employee:', error);
-      res.status(500).json({ error: "Failed to send invitation" });
-    }
-  });
 
   // Get all available businesses for ticket creation
-  app.get("/api/businesses", async (req, res) => {
+  app.get("/api/businesses", async (req: Request, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -277,7 +311,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Create ticket with business selection
-  app.post("/api/tickets", async (req, res) => {
+  app.post("/api/tickets", async (req: Request, res) => {
     try {
       const { title, description, businessProfileId } = req.body;
 
@@ -309,5 +343,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  return createServer(app);
+  const httpServer = createServer(app);
+  return httpServer;
 }

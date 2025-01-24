@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@/hooks/use-user";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,

@@ -46,18 +46,44 @@ interface TicketListProps {
   })[];
   isBusiness?: boolean;
   isEmployee?: boolean;
+  userId?: number;
   readonly?: boolean;
 }
 
-export default function TicketList({ tickets, isBusiness = false, isEmployee = false, readonly = false }: TicketListProps) {
+export default function TicketList({ 
+  tickets, 
+  isBusiness = false, 
+  isEmployee = false,
+  userId,
+  readonly = false 
+}: TicketListProps) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [viewType, setViewType] = useState<'active' | 'my-tickets' | 'history'>('active');
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
-  const { user } = useUser();
 
-  // Sort tickets with resolved ones at the bottom
+  // Filter tickets based on view type and claim status
+  const filterTickets = (tickets: TicketListProps['tickets'], view: 'active' | 'my-tickets' | 'history') => {
+    return tickets.filter(ticket => {
+      const isResolved = ticket.status === "resolved";
+      const isClaimedByMe = ticket.claimedById === userId;
+
+      if (isEmployee) {
+        switch (view) {
+          case 'active':
+            return !isResolved && !ticket.claimedById;
+          case 'my-tickets':
+            return !isResolved && isClaimedByMe;
+          case 'history':
+            return isResolved && (isClaimedByMe || !ticket.claimedById);
+          default:
+            return false;
+        }
+      }
+      return view === 'history' ? isResolved : !isResolved;
+    });
+  };
+
   const sortTickets = (tickets: TicketListProps['tickets']) => {
     return [...tickets].sort((a, b) => {
       // First, separate resolved and unresolved tickets
@@ -69,32 +95,10 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
     });
   };
 
-  const filterTickets = (view: 'active' | 'my-tickets' | 'history') => {
-    const filtered = tickets.filter(ticket => {
-      const isResolved = ticket.status === "resolved";
-
-      if (isEmployee) {
-        switch (view) {
-          case 'active':
-            return !isResolved && !ticket.claimedById;
-          case 'my-tickets':
-            return !isResolved && ticket.claimedById === user?.id;
-          case 'history':
-            return isResolved && (ticket.claimedById === user?.id || ticket.claimedById === null);
-          default:
-            return false;
-        }
-      } else {
-        return view === 'history' ? isResolved : !isResolved;
-      }
-    });
-
-    // Apply sorting to the filtered tickets
-    return sortTickets(filtered);
-  };
-
   const handleMessageClick = (ticketId: number) => {
-    setLocation(`/messages?ticketId=${ticketId}`);
+    const location = `/messages?ticketId=${ticketId}`;
+    // Use the provided setLocation function
+    useLocation()[1](location);
   };
 
   const claimTicket = useMutation({
@@ -168,10 +172,12 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
       </div>
 
       <div className="px-4 py-2 space-y-2">
-        {filterTickets(viewType).map((ticket) => (
+        {filterTickets(tickets, viewType).map((ticket) => (
           <Card
             key={ticket.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className={`cursor-pointer hover:shadow-md transition-shadow ${
+              ticket.claimedById && !readonly ? 'border-l-4 border-l-primary' : ''
+            }`}
             onClick={() => setSelectedTicket(ticket)}
           >
             <div className="p-3">
@@ -182,6 +188,11 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                     {ticket.unreadCount > 0 && (
                       <Badge variant="secondary" className="text-xs">
                         {ticket.unreadCount} new
+                      </Badge>
+                    )}
+                    {ticket.claimedById && (
+                      <Badge variant="outline" className="text-xs">
+                        {ticket.claimedById === userId ? 'Claimed by you' : 'Claimed'}
                       </Badge>
                     )}
                   </div>
@@ -217,7 +228,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
             </div>
           </Card>
         ))}
-        {filterTickets(viewType).length === 0 && (
+        {filterTickets(tickets, viewType).length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-8">
             No {viewType === 'active' ? 'active' : viewType === 'my-tickets' ? 'claimed' : 'resolved'} tickets
           </div>
@@ -307,7 +318,7 @@ export default function TicketList({ tickets, isBusiness = false, isEmployee = f
                             <Lock className="mr-2 h-4 w-4" />
                             Claim Ticket
                           </Button>
-                        ) : selectedTicket.claimedById === user?.id && (
+                        ) : selectedTicket.claimedById === userId && (
                           <Button
                             variant="outline"
                             size="sm"

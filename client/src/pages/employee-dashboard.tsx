@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import InvitationHandler from "@/components/invitation-handler";
@@ -55,32 +55,6 @@ export default function EmployeeDashboard() {
   const currentBusiness = businessConnections.find(
     conn => conn.business.id.toString() === currentBusinessId
   );
-
-  // Filter tickets based on user input
-  const filteredTickets = tickets.filter((ticket) => {
-    const matchesSearch = searchTerm === "" || 
-      ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
-    const matchesCategory = categoryFilter === "all" || ticket.category === categoryFilter;
-    const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
-
-    return matchesSearch && matchesStatus && matchesCategory && matchesPriority;
-  }).sort((a, b) => {
-    switch (sortBy) {
-      case "newest":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      case "priority":
-        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-        return priorityOrder[a.priority as keyof typeof priorityOrder] - 
-               priorityOrder[b.priority as keyof typeof priorityOrder];
-      default:
-        return 0;
-    }
-  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -155,13 +129,21 @@ export default function EmployeeDashboard() {
             </CardHeader>
             <CardContent className="space-y-6">
               <TicketFilters 
+                searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
+                statusFilter={statusFilter}
                 onStatusChange={setStatusFilter}
+                categoryFilter={categoryFilter}
                 onCategoryChange={setCategoryFilter}
+                priorityFilter={priorityFilter}
                 onPriorityChange={setPriorityFilter}
                 onSortChange={setSortBy}
               />
-              <TicketList tickets={filteredTickets} isEmployee />
+              <TicketList
+                tickets={tickets}
+                isEmployee={true}
+                userId={user?.id}
+              />
             </CardContent>
           </Card>
         )}

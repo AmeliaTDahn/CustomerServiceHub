@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { supabase } from "./supabaseClient"; // Add this import
+import { supabase } from "@db/index"; // Add this import
 import { users, businessProfiles, businessEmployees, employeeInvitations, tickets } from "@db/schema"; //Note: This line likely needs to be updated to reflect your Supabase schema if it's different
 import { eq, and } from "drizzle-orm";
 

@@ -28,7 +28,7 @@ export default function AuthPage() {
         }
         // Login successful - will automatically redirect due to useUser hook in App.tsx
       } else {
-        const result = await register({ username, password });
+        const result = await register({ username, password, role });
         if (!result.ok) {
           throw new Error(result.message);
         }

@@ -25,10 +25,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { MessageCircle, Lock, Unlock } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import type { Ticket } from "@db/schema";
 import { useState } from "react";
-import { useUser } from "@/hooks/use-user";
 import TicketNotes from "./ticket-notes";
 import TicketFeedback from "./ticket-feedback";
 
@@ -50,12 +49,12 @@ interface TicketListProps {
   readonly?: boolean;
 }
 
-export default function TicketList({ 
-  tickets, 
-  isBusiness = false, 
+export default function TicketList({
+  tickets,
+  isBusiness = false,
   isEmployee = false,
   userId,
-  readonly = false 
+  readonly = false
 }: TicketListProps) {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [viewType, setViewType] = useState<'active' | 'my-tickets' | 'history'>('active');
@@ -90,15 +89,14 @@ export default function TicketList({
       if (a.status === 'resolved' && b.status !== 'resolved') return 1;
       if (a.status !== 'resolved' && b.status === 'resolved') return -1;
 
-      // If both are resolved or both are unresolved, sort by date
+      // Then sort by date
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   };
 
   const handleMessageClick = (ticketId: number) => {
-    const location = `/messages?ticketId=${ticketId}`;
-    // Use the provided setLocation function
-    useLocation()[1](location);
+    const [, setLocation] = useLocation();
+    setLocation(`/messages?ticketId=${ticketId}`);
   };
 
   const claimTicket = useMutation({
@@ -176,23 +174,17 @@ export default function TicketList({
           <Card
             key={ticket.id}
             className={`cursor-pointer hover:shadow-md transition-shadow ${
-              ticket.claimedById && !readonly ? 'border-l-4 border-l-primary' : ''
+              ticket.claimedById === userId ? 'border-l-4 border-l-primary' : ''
             }`}
-            onClick={() => setSelectedTicket(ticket)}
           >
-            <div className="p-3">
-              <div className="flex justify-between items-start gap-4">
-                <div className="min-w-0 flex-1">
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1" onClick={() => setSelectedTicket(ticket)}>
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="text-sm font-medium truncate">{ticket.title}</h3>
                     {ticket.unreadCount > 0 && (
                       <Badge variant="secondary" className="text-xs">
                         {ticket.unreadCount} new
-                      </Badge>
-                    )}
-                    {ticket.claimedById && (
-                      <Badge variant="outline" className="text-xs">
-                        {ticket.claimedById === userId ? 'Claimed by you' : 'Claimed'}
                       </Badge>
                     )}
                   </div>
@@ -218,11 +210,55 @@ export default function TicketList({
                       }`}>
                         {ticket.priority}
                       </Badge>
+                      {ticket.claimedById && (
+                        <Badge variant="outline" className="text-xs">
+                          {ticket.claimedById === userId ? 'Claimed by you' : 'Claimed'}
+                        </Badge>
+                      )}
                     </div>
-                    {viewType !== 'history' && ticket.claimedAt && (
-                      <div>Claimed: {new Date(ticket.claimedAt).toLocaleDateString()}</div>
-                    )}
                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isEmployee && !readonly && !ticket.claimedById && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        claimTicket.mutate(ticket.id);
+                      }}
+                      disabled={claimTicket.isPending}
+                      className="whitespace-nowrap"
+                    >
+                      <Lock className="mr-2 h-4 w-4" />
+                      Claim
+                    </Button>
+                  )}
+                  {isEmployee && !readonly && ticket.claimedById === userId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unclaimTicket.mutate(ticket.id);
+                      }}
+                      disabled={unclaimTicket.isPending}
+                      className="whitespace-nowrap"
+                    >
+                      <Unlock className="mr-2 h-4 w-4" />
+                      Release
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMessageClick(ticket.id);
+                    }}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -308,27 +344,6 @@ export default function TicketList({
                             <SelectItem value="resolved">Resolved</SelectItem>
                           </SelectContent>
                         </Select>
-                        {selectedTicket.claimedById === null ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => claimTicket.mutate(selectedTicket.id)}
-                            disabled={claimTicket.isPending}
-                          >
-                            <Lock className="mr-2 h-4 w-4" />
-                            Claim Ticket
-                          </Button>
-                        ) : selectedTicket.claimedById === userId && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => unclaimTicket.mutate(selectedTicket.id)}
-                            disabled={unclaimTicket.isPending}
-                          >
-                            <Unlock className="mr-2 h-4 w-4" />
-                            Unclaim Ticket
-                          </Button>
-                        )}
                       </div>
                     </div>
                   )}

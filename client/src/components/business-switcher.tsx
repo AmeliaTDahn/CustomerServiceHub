@@ -1,7 +1,7 @@
+
 import { useQuery } from "@tanstack/react-query";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import type { BusinessProfile } from "@db/schema";
 
 interface BusinessSwitcherProps {
   onBusinessChange: (businessId: string) => void;
@@ -10,10 +10,10 @@ interface BusinessSwitcherProps {
 
 export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }: BusinessSwitcherProps) {
   // Fetch businesses where the employee has active relationships
-  const { data: businesses = [] } = useQuery<BusinessProfile[]>({
-    queryKey: ['/api/employees/businesses'],
+  const { data: connections = [] } = useQuery({
+    queryKey: ['/api/employees/active-businesses'],
     queryFn: async () => {
-      const res = await fetch('/api/employees/businesses', {
+      const res = await fetch('/api/employees/active-businesses', {
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
@@ -21,7 +21,11 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
     },
   });
 
-  if (businesses.length === 0) return null;
+  const businesses = connections.map(conn => conn.business);
+
+  if (businesses.length === 0) {
+    return <div className="text-sm text-muted-foreground">No businesses available. Accept invitations to see businesses here.</div>;
+  }
 
   return (
     <div className="flex items-center gap-2">

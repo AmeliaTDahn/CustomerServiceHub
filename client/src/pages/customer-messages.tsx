@@ -14,27 +14,24 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import TicketChat from "@/components/ticket-chat";
+import TicketForm from "@/components/ticket-form";
+import { supabase } from "@/lib/supabase";
+import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import TicketChat from "@/components/ticket-chat";
-import TicketFeedback from "@/components/ticket-feedback";
-import TicketForm from "@/components/ticket-form";
-import { supabase } from "@/lib/supabase";
-import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-import { useToast } from "@/hooks/use-toast";
-
-type TicketStatus = 'open' | 'in_progress' | 'resolved';
 
 interface TicketWithInfo {
   id: number;
   title: string;
   description: string;
-  status: TicketStatus;
+  status: 'open' | 'in_progress' | 'resolved';
   customer_id: string;
   business_id: string;
   created_at: string;
@@ -43,6 +40,7 @@ interface TicketWithInfo {
     id: number;
     username: string;
   };
+  claimed_by_id: string | null;
   hasBusinessResponse: boolean;
   unreadCount: number;
   hasFeedback?: boolean;
@@ -53,23 +51,19 @@ export default function CustomerMessages() {
   const { toast } = useToast();
   const ticketId = new URLSearchParams(window.location.search).get('ticketId');
   const { user } = useUser();
-  const [ticketSearchTerm, setTicketSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(
     ticketId ? parseInt(ticketId) : null
   );
   const [activeTab, setActiveTab] = useState<string>("active");
   const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
 
-  // Fetch customer's tickets using Supabase's real-time subscription
+  // Fetch customer's tickets using Supabase
   const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
-      if (!user?.id) {
-        console.log('No user ID available');
-        return [];
-      }
+      if (!user?.id) return [];
 
-      console.log('Fetching tickets for user:', user.id);
       const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
@@ -83,19 +77,9 @@ export default function CustomerMessages() {
         .eq('customer_id', user.id.toString())
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching tickets:', error);
-        toast({
-          variant: "destructive",
-          title: "Error fetching tickets",
-          description: error.message
-        });
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Retrieved tickets:', tickets);
-
-      // Fetch unread counts and business responses for each ticket
+      // Get unread counts and business responses
       const ticketsWithInfo = await Promise.all((tickets || []).map(async (ticket) => {
         const { count: unreadCount } = await supabase
           .from('messages')
@@ -117,27 +101,21 @@ export default function CustomerMessages() {
         };
       }));
 
-      console.log('Tickets with info:', ticketsWithInfo);
       return ticketsWithInfo;
     },
-    refetchInterval: 5000 // Poll every 5 seconds for updates
+    refetchInterval: 5000 // Poll every 5 seconds
   });
 
   // Get the selected ticket
   const selectedTicket = tickets.find(t => t.id === selectedTicketId);
 
-  // Filter tickets based on search term and status
+  // Filter tickets based on search
   const filteredTickets = tickets.filter(ticket =>
-    (ticket.title.toLowerCase().includes(ticketSearchTerm.toLowerCase()) ||
-    (ticket.business?.business_name || "").toLowerCase().includes(ticketSearchTerm.toLowerCase())) &&
-    (activeTab === "active" ? ticket.status !== "resolved" : ticket.status === "resolved")
+    ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ticket.business?.business_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleTicketSelect = (ticketId: number) => {
-    setSelectedTicketId(ticketId);
-  };
-
-  // Subscribe to real-time updates when component mounts
+  // Subscribe to real-time updates
   useEffect(() => {
     if (!user?.id) return;
 
@@ -152,7 +130,6 @@ export default function CustomerMessages() {
           filter: `customer_id=eq.${user.id}`
         },
         () => {
-          // Invalidate the tickets query to trigger a refetch
           queryClient.invalidateQueries({ queryKey: ['/api/tickets/customer'] });
         }
       )
@@ -182,13 +159,13 @@ export default function CustomerMessages() {
           className="flex items-center gap-2"
         >
           <Plus className="h-4 w-4" />
-          New Ticket
+          New Support Chat
         </Button>
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-3 sm:px-6 lg:px-8">
         <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
-          {/* Sidebar with Tabs */}
+          {/* Chat List Sidebar */}
           <Card className="col-span-4 flex flex-col">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
               <TabsList className="w-full">
@@ -200,9 +177,9 @@ export default function CustomerMessages() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search tickets..."
-                    value={ticketSearchTerm}
-                    onChange={(e) => setTicketSearchTerm(e.target.value)}
+                    placeholder="Search conversations..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9"
                   />
                 </div>
@@ -214,17 +191,17 @@ export default function CustomerMessages() {
                     <div className="divide-y">
                       {isLoading ? (
                         <div className="p-4 text-sm text-muted-foreground">
-                          Loading tickets...
+                          Loading conversations...
                         </div>
                       ) : filteredTickets.length === 0 ? (
                         <div className="p-4 text-sm text-muted-foreground text-center">
-                          No active tickets found
+                          No active conversations found
                         </div>
                       ) : (
                         filteredTickets.map((ticket) => (
                           <button
                             key={ticket.id}
-                            onClick={() => handleTicketSelect(ticket.id)}
+                            onClick={() => setSelectedTicketId(ticket.id)}
                             className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
                               selectedTicketId === ticket.id ? "bg-primary/5" : ""
                             }`}
@@ -232,27 +209,40 @@ export default function CustomerMessages() {
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium">{ticket.title}</p>
+                                  <p className="font-medium truncate">{ticket.title}</p>
+                                  {!ticket.claimed_by_id && (
+                                    <Badge variant="outline" className="animate-pulse">
+                                      Waiting
+                                    </Badge>
+                                  )}
                                   {ticket.unreadCount > 0 && (
-                                    <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                    <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                                      {ticket.unreadCount} new
+                                    </Badge>
                                   )}
                                 </div>
                                 <div className="mt-1.5 flex flex-col gap-1">
                                   {ticket.business && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                                       <Building2 className="h-3 w-3" />
-                                      {ticket.business.username}
+                                      {ticket.business.business_name}
                                     </p>
                                   )}
-                                  {ticket.hasBusinessResponse && ticket.unreadCount > 0 && (
-                                    <Badge variant="secondary" className="w-fit bg-blue-50 text-blue-700">
-                                      {ticket.unreadCount} new {ticket.unreadCount === 1 ? 'message' : 'messages'}
-                                    </Badge>
-                                  )}
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Clock className="h-3 w-3" />
+                                    {format(new Date(ticket.updated_at), 'MMM d, yyyy')}
+                                    {!ticket.claimed_by_id && (
+                                      <span className="text-yellow-600">• Awaiting Response</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <Badge variant={ticket.status === 'open' ? 'default' : ticket.status === 'in_progress' ? 'default' : 'secondary'}>
-                                {ticket.status.replace("_", " ")}
+                              <Badge variant={
+                                ticket.status === 'open' ? 'default' :
+                                ticket.status === 'in_progress' ? 'secondary' :
+                                'outline'
+                              }>
+                                {ticket.status.replace('_', ' ')}
                               </Badge>
                             </div>
                           </button>
@@ -262,7 +252,6 @@ export default function CustomerMessages() {
                   </ScrollArea>
                 </CardContent>
               </TabsContent>
-
               <TabsContent value="resolved" className="flex-1 border-0 m-0 p-0">
                 <CardContent className="p-0 flex-1">
                   <ScrollArea className="h-[calc(100vh-15rem)]">
@@ -279,7 +268,7 @@ export default function CustomerMessages() {
                         filteredTickets.map((ticket) => (
                           <button
                             key={ticket.id}
-                            onClick={() => handleTicketSelect(ticket.id)}
+                            onClick={() => setSelectedTicketId(ticket.id)}
                             className={`w-full px-4 py-3 text-left hover:bg-gray-50 ${
                               selectedTicketId === ticket.id ? "bg-primary/5" : ""
                             }`}
@@ -291,7 +280,7 @@ export default function CustomerMessages() {
                                   {ticket.business && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                                       <Building2 className="h-3 w-3" />
-                                      {ticket.business.username}
+                                      {ticket.business.business_name}
                                     </p>
                                   )}
                                   <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -320,63 +309,16 @@ export default function CustomerMessages() {
           </Card>
 
           {/* Chat Area */}
-          <Card className="col-span-8 flex flex-col h-full">
-            <CardContent className="p-0 flex-1">
+          <Card className="col-span-8 flex flex-col">
+            <CardContent className="p-0 flex-1 flex flex-col h-full">
               {selectedTicketId && selectedTicket ? (
-                <div className="h-full flex flex-col">
-                  {/* Ticket Details Header */}
-                  <div className="border-b p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h2 className="text-xl font-semibold">{selectedTicket.title}</h2>
-                        <div className="mt-1 space-y-1">
-                          {selectedTicket.business && (
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                              <Building2 className="h-4 w-4" />
-                              {selectedTicket.business.username}
-                            </p>
-                          )}
-                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            Created {format(new Date(selectedTicket.created_at), 'MMM d, yyyy')}
-                          </p>
-                          {selectedTicket.status === 'resolved' && (
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              Resolved {format(new Date(selectedTicket.updated_at), 'MMM d, yyyy')}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <Badge variant={
-                        selectedTicket.status === 'open' ? 'default' :
-                        selectedTicket.status === 'in_progress' ? 'default' :
-                        'secondary'
-                      }>
-                        {selectedTicket.status.replace("_", " ")}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Chat and Feedback Section */}
-                  <div className="flex-1 flex flex-col min-h-0">
-                    <TicketChat
-                      ticketId={selectedTicketId}
-                      readonly={selectedTicket.status === "resolved"}
-                    />
-                    {selectedTicket.status === "resolved" && (
-                      <div className="p-4 border-t">
-                        <TicketFeedback
-                          ticketId={selectedTicketId}
-                          isResolved={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <TicketChat
+                  ticketId={selectedTicketId}
+                  readonly={selectedTicket.status === "resolved"}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Select a ticket to view messages
+                  Select a conversation or start a new one
                 </div>
               )}
             </CardContent>
@@ -388,9 +330,9 @@ export default function CustomerMessages() {
       <Dialog open={isNewTicketDialogOpen} onOpenChange={setIsNewTicketDialogOpen}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
-            <DialogTitle>Create New Support Ticket</DialogTitle>
+            <DialogTitle>Start New Support Conversation</DialogTitle>
             <DialogDescription>
-              Fill out the form below to create a new support ticket. We'll connect you with the right business to help solve your issue.
+              Tell us about your issue and we'll connect you with the right team to help solve it.
             </DialogDescription>
           </DialogHeader>
           <TicketForm onSuccess={() => setIsNewTicketDialogOpen(false)} />

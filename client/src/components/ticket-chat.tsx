@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRealtime } from "@/hooks/use-realtime";
-import { Loader2, Check, CheckCheck, Megaphone } from "lucide-react";
+import { Loader2, Check, CheckCheck, Megaphone, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { QuickReplyTemplates } from "@/components/quick-reply-templates";
@@ -60,9 +60,9 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
 
   // Query for messages - either ticket messages or direct messages
   const { data: messages = [] } = useQuery<Message[]>({
-    queryKey: ticketId 
+    queryKey: ticketId
       ? ['/api/tickets', ticketId, 'messages']
-      : directMessageUserId 
+      : directMessageUserId
         ? ['/api/direct-messages', directMessageUserId]
         : [],
     queryFn: async () => {
@@ -116,7 +116,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
         .single();
 
       if (error) throw error;
-      
+
       // For employees, check if they have access to the business
       if (user?.role === 'employee') {
         const { data: hasAccess } = await supabase
@@ -131,7 +131,7 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           throw new Error('You do not have access to this ticket');
         }
       }
-      
+
       return data;
     },
     enabled: !!ticketId && !!user
@@ -156,13 +156,13 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           event: '*',
           schema: 'public',
           table: 'messages',
-          filter: ticketId 
+          filter: ticketId
             ? `ticket_id=eq.${ticketId}`
             : `or(sender_id.eq.${user?.id},receiver_id.eq.${user?.id})`
         },
         () => {
-          queryClient.invalidateQueries({ 
-            queryKey: ticketId 
+          queryClient.invalidateQueries({
+            queryKey: ticketId
               ? ['/api/tickets', ticketId, 'messages']
               : ['/api/direct-messages', directMessageUserId]
           });
@@ -193,10 +193,10 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
           `)
           .eq('id', ticketId)
           .single();
-        
+
         if (!ticket) throw new Error("Ticket not found");
-        
-        receiverId = user.role === 'customer' 
+
+        receiverId = user.role === 'customer'
           ? ticket.business.user_id
           : ticket.customer_id;
       } else if (directMessageUserId) {

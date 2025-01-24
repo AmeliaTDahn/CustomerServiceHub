@@ -59,7 +59,7 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch registered businesses
+  // Fetch all available businesses
   const { data: businesses = [] } = useQuery<Business[]>({
     queryKey: ['/api/businesses'],
     queryFn: async () => {

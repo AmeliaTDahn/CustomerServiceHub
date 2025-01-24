@@ -737,7 +737,23 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.get("/api/tickets/businesses", async (req, res) => {
+  // Get all available businesses
+app.get("/api/businesses", async (req, res) => {
+  try {
+    const businesses = await db.select({
+      id: businessProfiles.id,
+      name: businessProfiles.businessName,
+    })
+      .from(businessProfiles);
+
+    res.json(businesses);
+  } catch (error) {
+    console.error('Error fetching businesses:', error);
+    res.status(500).json({ error: "Failed to fetch businesses" });
+  }
+});
+
+app.get("/api/tickets/businesses", async (req, res) => {
     try {
       if (!req.user || req.user.role !== "customer") {
         return res.status(403).json({ error: "Only customers can view their business interactions" });

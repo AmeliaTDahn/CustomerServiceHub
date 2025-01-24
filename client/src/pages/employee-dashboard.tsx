@@ -85,7 +85,7 @@ export default function EmployeeDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center">
+        <div className="container mx-auto px-8 flex h-16 items-center">
           <div className="flex flex-1 items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-semibold">Employee Dashboard</h1>
@@ -118,20 +118,22 @@ export default function EmployeeDashboard() {
 
       {/* Display business context if available */}
       {businessConnections.length > 0 && (
-        <div className="container py-4 border-b">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-lg font-medium">
-              {currentBusiness 
-                ? `Working for: ${currentBusiness.business.businessName}`
-                : `Connected to ${businessConnections.length} business${businessConnections.length > 1 ? 'es' : ''}`
-              }
-            </span>
+        <div className="border-b">
+          <div className="container mx-auto px-8 py-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <span className="text-lg font-medium">
+                {currentBusiness 
+                  ? `Working for: ${currentBusiness.business.businessName}`
+                  : `Connected to ${businessConnections.length} business${businessConnections.length > 1 ? 'es' : ''}`
+                }
+              </span>
+            </div>
           </div>
         </div>
       )}
 
-      <main className="container py-8 space-y-8">
+      <main className="container mx-auto px-8 py-8 space-y-8">
         <InvitationHandler />
 
         {isLoadingBusinesses || isLoadingTickets ? (

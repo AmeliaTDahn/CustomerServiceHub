@@ -343,14 +343,12 @@ export function registerRoutes(app: Express): Server {
       const { data: connections, error } = await supabase
         .from('business_employees')
         .select(`
-          business:business_profiles(
+          business_profile:business_profiles(
             id,
             business_name
           ),
-          connection:business_employees!inner(
-            is_active,
-            created_at
-          )
+          is_active,
+          created_at
         `)
         .eq('employee_id', req.user.id)
         .eq('is_active', true);
@@ -360,7 +358,16 @@ export function registerRoutes(app: Express): Server {
         return res.status(500).json({ error: "Failed to fetch active businesses" });
       }
 
-      res.json(connections);
+      // Transform the data to match the expected structure
+      const transformedConnections = connections?.map(conn => ({
+        business: conn.business_profile,
+        connection: {
+          isActive: conn.is_active,
+          createdAt: conn.created_at
+        }
+      })) || [];
+
+      res.json(transformedConnections);
     } catch (error) {
       console.error('Error fetching active businesses:', error);
       res.status(500).json({ error: "Failed to fetch active businesses" });

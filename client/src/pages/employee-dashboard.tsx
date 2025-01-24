@@ -35,18 +35,20 @@ export default function EmployeeDashboard() {
     queryKey: ['/api/employees/active-businesses'],
   });
 
-  // Get tickets for the selected business
+  // Get tickets for the selected business or all connected businesses
   const { data: tickets = [] } = useQuery<Ticket[]>({
     queryKey: ['/api/tickets', currentBusinessId],
     queryFn: async () => {
-      if (!currentBusinessId) return [];
-      const res = await fetch(`/api/tickets?businessProfileId=${currentBusinessId}`, {
+      const url = currentBusinessId 
+        ? `/api/tickets?businessProfileId=${currentBusinessId}`
+        : '/api/tickets';
+      const res = await fetch(url, {
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    enabled: !!currentBusinessId,
+    enabled: businessConnections.length > 0,
   });
 
   // Filter tickets based on user input
@@ -75,10 +77,6 @@ export default function EmployeeDashboard() {
     }
   });
 
-  // Check connection states
-  const hasConnections = businessConnections.length > 0;
-  const hasActiveConnections = businessConnections.some(conn => conn.connection.isActive);
-
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -86,7 +84,7 @@ export default function EmployeeDashboard() {
           <div className="flex flex-1 items-center justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-semibold">Employee Dashboard</h1>
-              {hasActiveConnections && (
+              {businessConnections.length > 0 && (
                 <BusinessSwitcher
                   onBusinessChange={setCurrentBusinessId}
                   currentBusinessId={currentBusinessId}
@@ -116,7 +114,7 @@ export default function EmployeeDashboard() {
       <main className="container py-8 space-y-8">
         <InvitationHandler />
 
-        {!hasConnections ? (
+        {businessConnections.length === 0 ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -138,63 +136,15 @@ export default function EmployeeDashboard() {
               </ol>
             </CardContent>
           </Card>
-        ) : !hasActiveConnections ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-amber-500" />
-                Access Currently Paused
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                Your access to the support platform is currently paused. Here are your business connections:
-              </p>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {businessConnections.map((connection) => (
-                  <Card key={connection.business.id}>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Building2 className="h-4 w-4" />
-                        {connection.business.businessName}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-2 text-amber-600">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>Access Paused</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <p className="text-sm text-muted-foreground mt-4">
-                Please contact the respective business administrators to restore your access.
-                You won't be able to view or manage any tickets until your access is restored.
-              </p>
-            </CardContent>
-          </Card>
-        ) : !currentBusinessId ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Select a Business</CardTitle>
-              <CardDescription>
-                Choose a business to view and manage their support tickets
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BusinessSwitcher
-                onBusinessChange={setCurrentBusinessId}
-                currentBusinessId={currentBusinessId}
-              />
-            </CardContent>
-          </Card>
         ) : (
           <Card>
             <CardHeader>
-              <CardTitle>Active Customer Tickets</CardTitle>
+              <CardTitle>
+                {currentBusinessId 
+                  ? `Tickets for ${businessConnections.find(conn => 
+                      conn.business.id.toString() === currentBusinessId)?.business.businessName}`
+                  : "All Active Tickets"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <TicketFilters 

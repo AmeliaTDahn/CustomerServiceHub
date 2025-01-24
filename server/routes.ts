@@ -1492,13 +1492,16 @@ export function registerRoutes(app: Express): Server {
           .where(eq(employeeInvitations.id, parseInt(id)));
 
         if (accept) {
-          // First, deactivate any existing business relationships
+          // First, deactivate any existing relationship with this specific business
           await tx.update(businessEmployees)
             .set({ 
               isActive: false,
               updatedAt: new Date() 
             })
-            .where(eq(businessEmployees.employeeId, req.user.id));
+            .where(and(
+              eq(businessEmployees.employeeId, req.user.id),
+              eq(businessEmployees.businessProfileId, invitation.businessProfileId)
+            ));
 
           // Create new business employee relationship
           await tx.insert(businessEmployees)

@@ -16,6 +16,85 @@ declare global {
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
 
+  // Get business profile
+  app.get("/api/business-profile", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can access this endpoint" });
+      }
+
+      const { data: profile, error } = await supabase
+        .from('business_profiles')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .single();
+
+      if (error) {
+        return res.status(404).json({ error: "Business profile not found" });
+      }
+
+      res.json(profile);
+    } catch (error) {
+      console.error('Error fetching business profile:', error);
+      res.status(500).json({ error: "Failed to fetch business profile" });
+    }
+  });
+
+  // Create or update business profile
+  app.post("/api/business-profile", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can access this endpoint" });
+      }
+
+      const { businessName } = req.body;
+
+      if (!businessName) {
+        return res.status(400).json({ error: "Business name is required" });
+      }
+
+      // Check if profile already exists
+      const { data: existingProfile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', req.user.id)
+        .single();
+
+      let profile;
+      if (existingProfile) {
+        // Update existing profile
+        const { data, error } = await supabase
+          .from('business_profiles')
+          .update({ business_name: businessName })
+          .eq('id', existingProfile.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        profile = data;
+      } else {
+        // Create new profile
+        const { data, error } = await supabase
+          .from('business_profiles')
+          .insert({
+            user_id: req.user.id,
+            business_name: businessName
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        profile = data;
+      }
+
+      res.json(profile);
+    } catch (error) {
+      console.error('Error creating/updating business profile:', error);
+      res.status(500).json({ error: "Failed to create/update business profile" });
+    }
+  });
+
+
   // Get all employees for a specific business
   app.get("/api/businesses/employees", async (req, res) => {
     try {

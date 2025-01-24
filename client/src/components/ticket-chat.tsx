@@ -184,14 +184,20 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
         // For ticket messages
         const { data: ticket } = await supabase
           .from('tickets')
-          .select('customer_id, business_id')
+          .select(`
+            customer_id,
+            business:business_profile_id (
+              id,
+              user_id
+            )
+          `)
           .eq('id', ticketId)
           .single();
         
         if (!ticket) throw new Error("Ticket not found");
         
         receiverId = user.role === 'customer' 
-          ? ticket.business_id 
+          ? ticket.business.user_id
           : ticket.customer_id;
       } else if (directMessageUserId) {
         // For direct messages

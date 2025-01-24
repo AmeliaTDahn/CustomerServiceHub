@@ -12,20 +12,19 @@ export default function AuthPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"business" | "customer" | "employee">("customer");
-  const { login, register } = useUser();
+  const { login, register, refetch } = useUser();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (isLogin) {
-        await login({ username, password });
-        // Reload the page if the logged-in user is a business user
-        if (role === "business") {
-          window.location.reload();
-        }
+        await login({ username, password, role });
+        await refetch(); // Force refresh user data after login
       } else {
         await register({ username, password, role });
+        await refetch(); // Force refresh user data after registration
+
         if (role === "employee") {
           toast({
             title: "Registration successful",

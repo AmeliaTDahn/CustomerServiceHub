@@ -5,14 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { useUser } from "@/hooks/use-user";
 import { Loader2 } from "lucide-react";
 import AuthPage from "@/pages/auth-page";
-import CustomerDashboard from "@/pages/customer-dashboard";
-import CustomerMessages from "@/pages/customer-messages";
-import BusinessDashboard from "@/pages/business-dashboard";
-import BusinessAnalytics from "@/pages/business-analytics";
-import BusinessMessages from "@/pages/business-messages";
-import EmployeeDashboard from "@/pages/employee-dashboard";
-import EmployeeMessages from "@/pages/employee-messages";
 import NotFound from "@/pages/not-found";
+import BusinessDashboard from "@/pages/business-dashboard";
+import CustomerDashboard from "@/pages/customer-dashboard";
+import EmployeeDashboard from "@/pages/employee-dashboard";
 
 function LoadingSpinner() {
   return (
@@ -36,36 +32,18 @@ function Router() {
     return <AuthPage />;
   }
 
-  if (user.role === "business") {
-    return (
-      <div className="min-h-screen bg-background">
-        <Switch>
-          <Route path="/" component={BusinessDashboard} />
-          <Route path="/analytics" component={BusinessAnalytics} />
-          <Route path="/messages" component={BusinessMessages} />
-          <Route component={NotFound} />
-        </Switch>
-      </div>
-    );
-  }
-
-  if (user.role === "employee") {
-    return (
-      <div className="min-h-screen bg-background">
-        <Switch>
-          <Route path="/" component={EmployeeDashboard} />
-          <Route path="/messages" component={EmployeeMessages} />
-          <Route component={NotFound} />
-        </Switch>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Switch>
-        <Route path="/" component={CustomerDashboard} />
-        <Route path="/messages" component={CustomerMessages} />
+        <Route path="/" component={() => {
+          if (user.role === "business") {
+            return <BusinessDashboard />;
+          } else if (user.role === "employee") {
+            return <EmployeeDashboard />;
+          } else {
+            return <CustomerDashboard />;
+          }
+        }} />
         <Route component={NotFound} />
       </Switch>
     </div>

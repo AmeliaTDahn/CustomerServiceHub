@@ -59,7 +59,7 @@ async function fetchUser(): Promise<SelectUser | null> {
 export function useUser() {
   const queryClient = useQueryClient();
 
-  const { data: user, error, isLoading, refetch } = useQuery<SelectUser | null, Error>({ // Added refetch
+  const { data: user, error, isLoading, refetch } = useQuery<SelectUser | null, Error>({
     queryKey: ['user'],
     queryFn: fetchUser,
     staleTime: Infinity,

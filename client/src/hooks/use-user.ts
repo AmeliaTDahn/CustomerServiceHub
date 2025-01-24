@@ -72,7 +72,7 @@ export function useUser() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: async (userData: { username: string; password: string; role: string }) => {
+    mutationFn: async (userData: { email: string; password: string; role?: string }) => {
       const result = await handleRequest('/api/login', 'POST', userData);
       if (!result.ok) {
         throw new Error(result.message);

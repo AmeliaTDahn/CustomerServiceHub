@@ -23,7 +23,7 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const result = await login({ username, password });
+        const result = await login({ email, password });
         if (!result.ok) {
           throw new Error(result.message);
         }

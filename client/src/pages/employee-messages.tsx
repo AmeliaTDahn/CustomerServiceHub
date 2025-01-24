@@ -52,6 +52,20 @@ export default function EmployeeMessages() {
   const [chatType, setChatType] = useState<ChatType>('ticket');
   const queryClient = useQueryClient();
 
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string>("all");
+
+  // Fetch businesses where employee has connections
+  const { data: businesses = [] } = useQuery({
+    queryKey: ['/api/employees/active-businesses'],
+    queryFn: async () => {
+      const res = await fetch('/api/employees/active-businesses', {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+  });
+
   // Fetch only tickets claimed by the current employee
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery<TicketWithCustomer[]>({
     queryKey: ['/api/tickets/claimed'],
@@ -63,6 +77,11 @@ export default function EmployeeMessages() {
       return res.json();
     }
   });
+
+  // Filter tickets by selected business
+  const filteredTickets = tickets.filter(ticket => 
+    selectedBusinessId === "all" || ticket.business_profile_id.toString() === selectedBusinessId
+  );
 
   // Fetch users for direct messaging
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
@@ -144,6 +163,30 @@ export default function EmployeeMessages() {
           {/* Sidebar */}
           <Card className="col-span-4 flex flex-col overflow-hidden">
             <div className="flex flex-col h-full">
+              {/* Business Filter */}
+              <div className="p-4 border-b">
+                <Select
+                  value={selectedBusinessId}
+                  onValueChange={setSelectedBusinessId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Filter by business">
+                      {selectedBusinessId === "all" 
+                        ? "All Businesses" 
+                        : businesses.find(b => b.business.id.toString() === selectedBusinessId)?.business.business_name}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Businesses</SelectItem>
+                    {businesses.map((conn) => (
+                      <SelectItem key={conn.business.id} value={conn.business.id.toString()}>
+                        {conn.business.business_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* View Type Selector */}
               <div className="p-4 border-b">
                 <Select
@@ -190,7 +233,7 @@ export default function EmployeeMessages() {
                 <CardContent className="p-0">
                   {viewType !== 'direct' ? (
                     <div className="divide-y">
-                      {sortedTickets.length === 0 ? (
+                      {filteredTickets.length === 0 ? (
                         <div className="p-4 text-center text-muted-foreground flex items-center justify-center gap-2">
                           <AlertCircle className="h-4 w-4" />
                           <span>No {viewType === 'active' ? 'active' : 'resolved'} customer chats</span>

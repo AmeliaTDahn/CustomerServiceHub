@@ -46,7 +46,13 @@ function Router() {
             return <CustomerDashboard />;
           }
         }} />
-        <Route path="/messages" component={EmployeeMessages} />
+        <Route path="/messages">
+          {user.role === "employee" || user.role === "business" ? (
+            <EmployeeMessages />
+          ) : (
+            <NotFound />
+          )}
+        </Route>
         <Route path="/business/profile" component={BusinessProfileSetup} />
         <Route component={NotFound} />
       </Switch>

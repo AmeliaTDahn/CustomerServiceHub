@@ -24,20 +24,6 @@ export type Tables = {
     delivered_at: string | null;
     read_at: string | null;
   };
-  business_profiles: {
-    id: number;
-    user_id: string;
-    business_name: string;
-    created_at: string;
-    updated_at: string;
-  };
-  business_employees: {
-    id: number;
-    business_profile_id: number;
-    employee_id: string;
-    is_active: boolean;
-    created_at: string;
-  };
   tickets: {
     id: number;
     title: string;
@@ -50,12 +36,5 @@ export type Tables = {
     priority: 'low' | 'medium' | 'high' | 'urgent';
     created_at: string;
     updated_at: string;
-  };
-  ticket_notes: {
-    id: number;
-    ticket_id: number;
-    user_id: string;
-    content: string;
-    created_at: string;
   };
 };

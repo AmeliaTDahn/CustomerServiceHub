@@ -378,7 +378,17 @@ export function registerRoutes(app: Express): Server {
 
       let query = supabase
         .from('tickets')
-        .select('*')
+        .select(`
+          *,
+          customer:users!customer_id(
+            id,
+            username
+          ),
+          business:business_profiles!business_profile_id(
+            id,
+            business_name
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (req.user.role === 'employee' && businessProfileId) {

@@ -26,6 +26,7 @@ import TicketForm from "@/components/ticket-form";
 import { supabase } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 type TicketStatus = 'open' | 'in_progress' | 'resolved';
 
@@ -49,6 +50,7 @@ interface TicketWithInfo {
 
 export default function CustomerMessages() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const ticketId = new URLSearchParams(window.location.search).get('ticketId');
   const { user } = useUser();
   const [ticketSearchTerm, setTicketSearchTerm] = useState("");
@@ -62,7 +64,12 @@ export default function CustomerMessages() {
   const { data: tickets = [], isLoading } = useQuery<TicketWithInfo[]>({
     queryKey: ['/api/tickets/customer'],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) {
+        console.log('No user ID available');
+        return [];
+      }
+
+      console.log('Fetching tickets for user:', user.id);
       const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
@@ -72,10 +79,20 @@ export default function CustomerMessages() {
             username
           )
         `)
-        .eq('customer_id', user.id)
+        .eq('customer_id', user.id.toString())
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching tickets:', error);
+        toast({
+          variant: "destructive",
+          title: "Error fetching tickets",
+          description: error.message
+        });
+        throw error;
+      }
+
+      console.log('Retrieved tickets:', tickets);
 
       // Fetch unread counts and business responses for each ticket
       const ticketsWithInfo = await Promise.all((tickets || []).map(async (ticket) => {
@@ -99,6 +116,7 @@ export default function CustomerMessages() {
         };
       }));
 
+      console.log('Tickets with info:', ticketsWithInfo);
       return ticketsWithInfo;
     },
     refetchInterval: 5000 // Poll every 5 seconds for updates

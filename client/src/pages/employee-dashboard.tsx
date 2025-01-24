@@ -31,7 +31,7 @@ export default function EmployeeDashboard() {
   const [sortBy, setSortBy] = useState("newest");
 
   // Query to check business connections
-  const { data: businessConnections = [] } = useQuery<BusinessConnection[]>({
+  const { data: businessConnections = [], isLoading } = useQuery<BusinessConnection[]>({
     queryKey: ['/api/employees/active-businesses'],
   });
 
@@ -131,7 +131,15 @@ export default function EmployeeDashboard() {
       <main className="container py-8 space-y-8">
         <InvitationHandler />
 
-        {businessConnections.length === 0 ? (
+        {isLoading ? (
+          <Card>
+            <CardContent className="py-8">
+              <div className="flex justify-center">
+                Loading...
+              </div>
+            </CardContent>
+          </Card>
+        ) : businessConnections.length === 0 ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -139,7 +147,7 @@ export default function EmployeeDashboard() {
                 Welcome to the Support Platform
               </CardTitle>
               <CardDescription>
-                You're not currently connected to any business
+                No business available. Accept invitations to see businesses here.
               </CardDescription>
             </CardHeader>
             <CardContent>

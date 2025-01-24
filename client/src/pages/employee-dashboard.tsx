@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import TicketList from "@/components/ticket-list";
 import TicketFilters from "@/components/ticket-filters";
 import InvitationHandler from "@/components/invitation-handler";
+import BusinessSwitcher from "@/components/business-switcher";
 import { useUser } from "@/hooks/use-user";
 import { MessageCircle, Building2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
@@ -13,7 +14,7 @@ import type { Ticket } from "@db/schema";
 interface BusinessConnection {
   business: {
     id: number;
-    username: string;
+    businessName: string;
   };
   connection: {
     isActive: boolean;
@@ -22,26 +23,34 @@ interface BusinessConnection {
 
 export default function EmployeeDashboard() {
   const { user, logout } = useUser();
-
-  const { data: tickets } = useQuery<Ticket[]>({
-    queryKey: ['/api/tickets'],
-  });
-
-  // Query to check business connections
-  const { data: businessConnections = [] } = useQuery<BusinessConnection[]>({
-    queryKey: ['/api/employees/active-businesses'],
-  });
-
+  const [currentBusinessId, setCurrentBusinessId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
 
-  // Filter out resolved tickets first, then apply other filters
-  const activeTickets = tickets?.filter(ticket => ticket.status !== "resolved") || [];
+  // Query to check business connections
+  const { data: businessConnections = [] } = useQuery<BusinessConnection[]>({
+    queryKey: ['/api/employees/active-businesses'],
+  });
 
-  const filteredTickets = activeTickets.filter((ticket) => {
+  // Get tickets for the selected business
+  const { data: tickets = [] } = useQuery<Ticket[]>({
+    queryKey: ['/api/tickets', currentBusinessId],
+    queryFn: async () => {
+      if (!currentBusinessId) return [];
+      const res = await fetch(`/api/tickets?businessProfileId=${currentBusinessId}`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    enabled: !!currentBusinessId,
+  });
+
+  // Filter tickets based on user input
+  const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch = searchTerm === "" || 
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -75,15 +84,20 @@ export default function EmployeeDashboard() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center">
           <div className="flex flex-1 items-center justify-between">
-            <h1 className="text-xl font-semibold">Employee Dashboard</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-semibold">Employee Dashboard</h1>
+              {hasActiveConnections && (
+                <BusinessSwitcher
+                  onBusinessChange={setCurrentBusinessId}
+                  currentBusinessId={currentBusinessId}
+                />
+              )}
+            </div>
             <div className="flex items-center gap-4">
               <Link href="/messages">
                 <Button variant="outline" size="sm" className="flex items-center gap-2">
                   <MessageCircle className="h-4 w-4" />
                   Messages
-                  {tickets?.some(t => t.unreadCount > 0) && (
-                    <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                  )}
                 </Button>
               </Link>
               <div className="flex items-center gap-4 border-l pl-4">
@@ -103,7 +117,6 @@ export default function EmployeeDashboard() {
         <InvitationHandler />
 
         {!hasConnections ? (
-          // No connections at all
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -126,7 +139,6 @@ export default function EmployeeDashboard() {
             </CardContent>
           </Card>
         ) : !hasActiveConnections ? (
-          // Has connections but all are paused
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -145,7 +157,7 @@ export default function EmployeeDashboard() {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
                         <Building2 className="h-4 w-4" />
-                        {connection.business.username}
+                        {connection.business.businessName}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -159,8 +171,24 @@ export default function EmployeeDashboard() {
               </div>
 
               <p className="text-sm text-muted-foreground mt-4">
-                Please contact the respective business administrators to restore your access. You won't be able to view or manage any tickets until your access is restored.
+                Please contact the respective business administrators to restore your access.
+                You won't be able to view or manage any tickets until your access is restored.
               </p>
+            </CardContent>
+          </Card>
+        ) : !currentBusinessId ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Select a Business</CardTitle>
+              <CardDescription>
+                Choose a business to view and manage their support tickets
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BusinessSwitcher
+                onBusinessChange={setCurrentBusinessId}
+                currentBusinessId={currentBusinessId}
+              />
             </CardContent>
           </Card>
         ) : (

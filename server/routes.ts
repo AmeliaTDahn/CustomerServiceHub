@@ -309,36 +309,74 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Create ticket with business selection
-  app.post("/api/tickets", async (req: Request, res) => {
+  // Add new endpoint for getting employee's active business connections
+  app.get("/api/employees/active-businesses", async (req: Request, res) => {
     try {
-      const { title, description, businessProfileId } = req.body;
+      if (!req.user || req.user.role !== "employee") {
+        return res.status(403).json({ error: "Only employees can access their businesses" });
+      }
 
+      // Get all active business connections for this employee
+      const { data: connections, error } = await supabase
+        .from('business_employees')
+        .select(`
+          business:business_profiles(
+            id,
+            business_name
+          ),
+          connection:business_employees!inner(
+            is_active,
+            created_at
+          )
+        `)
+        .eq('employee_id', req.user.id)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('Error fetching active businesses:', error);
+        return res.status(500).json({ error: "Failed to fetch active businesses" });
+      }
+
+      res.json(connections);
+    } catch (error) {
+      console.error('Error fetching active businesses:', error);
+      res.status(500).json({ error: "Failed to fetch active businesses" });
+    }
+  });
+
+  // Update tickets endpoint to filter by business
+  app.get("/api/tickets", async (req: Request, res) => {
+    try {
       if (!req.user) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      if (!businessProfileId) {
-        return res.status(400).json({ error: "Business profile ID is required" });
+      const businessProfileId = req.query.businessProfileId;
+
+      let query = supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (req.user.role === 'employee' && businessProfileId) {
+        query = query.eq('business_profile_id', businessProfileId);
+      } else if (req.user.role === 'business') {
+        query = query.eq('business_profile_id', businessProfileId);
+      } else if (req.user.role === 'customer') {
+        query = query.eq('customer_id', req.user.id);
       }
 
-      const { data: ticket } = await supabase
-        .from('tickets')
-        .insert({
-          title,
-          description,
-          status: 'open',
-          customer_id: req.user.id,
-          business_profile_id: businessProfileId,
-          category: 'general_inquiry',
-          priority: 'medium',
-        })
-        .select();
+      const { data: tickets, error } = await query;
 
-      res.json(ticket);
+      if (error) {
+        console.error('Error fetching tickets:', error);
+        return res.status(500).json({ error: "Failed to fetch tickets" });
+      }
+
+      res.json(tickets);
     } catch (error) {
-      console.error('Error creating ticket:', error);
-      res.status(500).json({ error: "Failed to create ticket" });
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ error: "Failed to fetch tickets" });
     }
   });
 

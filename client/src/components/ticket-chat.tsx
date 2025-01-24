@@ -164,14 +164,24 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
       if (!user) throw new Error("Not authenticated");
 
       let receiverId: string;
-      if (chatType === 'ticket' && ticket) {
+      if (ticketId) {
+        // For ticket messages
+        const { data: ticket } = await supabase
+          .from('tickets')
+          .select('customer_id, business_id')
+          .eq('id', ticketId)
+          .single();
+        
+        if (!ticket) throw new Error("Ticket not found");
+        
         receiverId = user.role === 'customer' 
-          ? ticket.business_id
+          ? ticket.business_id 
           : ticket.customer_id;
       } else if (directMessageUserId) {
+        // For direct messages
         receiverId = directMessageUserId;
       } else {
-        throw new Error("Invalid message target");
+        throw new Error("Invalid message target: Must specify either ticketId or receiverId");
       }
 
       const message = {

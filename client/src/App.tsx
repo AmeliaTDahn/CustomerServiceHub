@@ -10,6 +10,8 @@ import BusinessDashboard from "@/pages/business-dashboard";
 import CustomerDashboard from "@/pages/customer-dashboard";
 import EmployeeDashboard from "@/pages/employee-dashboard";
 import EmployeeMessages from "@/pages/employee-messages";
+import CustomerMessages from "@/pages/customer-messages";
+import BusinessMessages from "@/pages/business-messages";
 import BusinessProfileSetup from "@/pages/business-profile-setup";
 
 function LoadingSpinner() {
@@ -47,11 +49,18 @@ function Router() {
           }
         }} />
         <Route path="/messages">
-          {user.role === "employee" || user.role === "business" ? (
-            <EmployeeMessages />
-          ) : (
-            <NotFound />
-          )}
+          {() => {
+            switch (user.role) {
+              case "business":
+                return <BusinessMessages />;
+              case "employee":
+                return <EmployeeMessages />;
+              case "customer":
+                return <CustomerMessages />;
+              default:
+                return <NotFound />;
+            }
+          }}
         </Route>
         <Route path="/business/profile" component={BusinessProfileSetup} />
         <Route component={NotFound} />

@@ -1,9 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
-import { supabase } from "@db/index"; // Add this import
-import { users, businessProfiles, businessEmployees, employeeInvitations, tickets } from "@db/schema"; //Note: This line likely needs to be updated to reflect your Supabase schema if it's different
-import { eq, and } from "drizzle-orm";
+import { supabase } from "@db/index";
 
 declare global {
   namespace Express {
@@ -37,11 +35,10 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Get only employees connected to this specific business
-      //This section needs to be rewritten for Supabase.  The exact query depends on your schema.
-      const employees = await supabase
-          .from('business_employees')
-          .select('employee:users(*), isActive, created_at') // Adjust fields as needed
-          .eq('business_profile_id', businessProfile.id);
+      const { data: employees } = await supabase
+        .from('business_employees')
+        .select('employee:users(*), is_active, created_at')
+        .eq('business_profile_id', businessProfile.id);
 
       res.json(employees);
     } catch (error) {
@@ -121,7 +118,6 @@ export function registerRoutes(app: Express): Server {
         })
         .select();
 
-
       res.json(invitation);
     } catch (error) {
       console.error('Error inviting employee:', error);
@@ -177,102 +173,6 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error creating ticket:', error);
       res.status(500).json({ error: "Failed to create ticket" });
-    }
-  });
-
-  // Get invitations for an employee
-  app.get("/api/employees/invitations", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can view their invitations" });
-      }
-
-      const invitations = await supabase
-          .from('employee_invitations')
-          .select('*, business:business_profiles(id, business_name, user_id)')
-          .eq('employee_id', req.user.id)
-          .eq('status', 'pending');
-
-      res.json(invitations);
-    } catch (error) {
-      console.error('Error fetching invitations:', error);
-      res.status(500).json({ error: "Failed to fetch invitations" });
-    }
-  });
-
-  // Get active businesses for employee
-  app.get("/api/employees/active-businesses", async (req, res) => {
-    try {
-      if (!req.user || req.user.role !== "employee") {
-        return res.status(403).json({ error: "Only employees can view their business connections" });
-      }
-
-      const connections = await supabase
-          .from('business_employees')
-          .select('business:business_profiles(id, business_name, user_id), is_active')
-          .eq('employee_id', req.user.id);
-
-      res.json(connections);
-    } catch (error) {
-      console.error('Error fetching business connections:', error);
-      res.status(500).json({ error: "Failed to fetch business connections" });
-    }
-  });
-
-  // Get all tickets -  modified to include businessProfileId filtering
-  app.get("/api/tickets", async (req, res) => {
-    try {
-      if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'business' && req.user.role !== 'employee')) {
-        return res.status(403).json({ error: "Unauthorized" });
-      }
-
-      const { data: businessProfile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('user_id', req.user.id)
-          .single();
-      const businessProfileId = businessProfile?.id;
-
-
-      let ticketsQuery = supabase
-          .from('tickets')
-          .select('*, customer:users(id, username, role), business:business_profiles(id, business_name, user_id), claimed_by:users(id, username, role)')
-          .order('created_at', {ascending: false});
-
-      if(businessProfileId){
-          ticketsQuery = ticketsQuery.eq('business_profile_id', businessProfileId);
-      }
-      const {data: ticketsResult} = await ticketsQuery;
-      res.json(ticketsResult);
-    } catch (error) {
-      console.error('Error fetching tickets:', error);
-      res.status(500).json({ error: "Failed to fetch tickets" });
-    }
-  });
-
-
-  // Update ticket
-  app.patch("/api/tickets/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const updates = req.body;
-
-      const { data: ticket } = await supabase
-        .from('tickets')
-        .update({
-          ...updates,
-          updated_at: new Date()
-        })
-        .eq('id', id)
-        .select();
-
-      if (!ticket) {
-        return res.status(404).json({ error: "Ticket not found" });
-      }
-      res.json(ticket);
-    } catch (error) {
-      console.error('Error updating ticket:', error);
-      res.status(500).json({ error: "Failed to update ticket" });
     }
   });
 

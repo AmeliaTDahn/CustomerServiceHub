@@ -37,6 +37,7 @@ export default function BusinessSwitcher({ onBusinessChange, currentBusinessId }
             <SelectValue placeholder="Select business" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="">All Businesses</SelectItem>
             {businesses.map((business) => (
               <SelectItem
                 key={business.id}

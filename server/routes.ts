@@ -47,6 +47,56 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Get all available employees that can be invited
+  app.get("/api/employees", async (req, res) => {
+    try {
+      if (!req.user || req.user.role !== "business") {
+        return res.status(403).json({ error: "Only business accounts can search employees" });
+      }
+
+      // Get the current business profile
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
+        .select()
+        .eq('user_id', req.user.id)
+        .single();
+
+      if (!businessProfile) {
+        return res.status(404).json({ error: "Business profile not found" });
+      }
+
+      // Get all users with role 'employee'
+      const { data: employees } = await supabase
+        .from('users')
+        .select(`
+          id,
+          username,
+          role,
+          business_employees!inner (
+            business_profile_id
+          ),
+          employee_invitations!inner (
+            business_profile_id,
+            status
+          )
+        `)
+        .eq('role', 'employee')
+        .not('business_employees.business_profile_id', 'eq', businessProfile.id)
+        .not('employee_invitations.business_profile_id', 'eq', businessProfile.id)
+        .not('employee_invitations.status', 'eq', 'pending');
+
+      const availableEmployees = employees?.map(({ id, username }) => ({
+        id,
+        username
+      })) || [];
+
+      res.json(availableEmployees);
+    } catch (error) {
+      console.error('Error fetching available employees:', error);
+      res.status(500).json({ error: "Failed to fetch available employees" });
+    }
+  });
+
   // Employee invitation endpoint
   app.post("/api/businesses/employees/invite", async (req, res) => {
     try {
@@ -109,7 +159,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Create invitation
-      const { data: invitation } = await supabase
+      const { data: invitation, error } = await supabase
         .from('employee_invitations')
         .insert({
           business_profile_id: businessProfile.id,
@@ -117,6 +167,11 @@ export function registerRoutes(app: Express): Server {
           status: 'pending',
         })
         .select();
+
+      if (error) {
+        console.error('Error creating invitation:', error);
+        return res.status(500).json({ error: "Failed to create invitation" });
+      }
 
       res.json(invitation);
     } catch (error) {

@@ -152,18 +152,21 @@ export function setupAuth(app: Express) {
         return res.status(400).send("Email and password are required");
       }
 
-      // Sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      // First get the user from Supabase Auth
+      const { data: { user: authUser }, error: authError } = await supabase.auth.admin.getUserByEmail(email);
+
+      if (authError || !authUser) {
+        return res.status(400).send("Invalid email");
+      }
+
+      // Verify the password with Supabase Auth
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (authError) {
-        return res.status(400).send(authError.message);
-      }
-
-      if (!authData.user) {
-        return res.status(400).send("Invalid credentials");
+      if (signInError || !authData.user) {
+        return res.status(400).send("Invalid password");
       }
 
       // Get user from database using Supabase ID

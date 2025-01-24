@@ -600,15 +600,14 @@ export function registerRoutes(app: Express): Server {
     try {
       // For employees, first check if they have any active connections
       if (req.user.role === "employee") {
-        const activeConnections = await db
+        const { data: activeConnections, error: connectionsError } = await supabase
+          .from('business_employees')
           .select()
-          .from(businessEmployees)
-          .where(and(
-            eq(businessEmployees.employeeId, req.user.id),
-            eq(businessEmployees.isActive, true)
-          ));
+          .eq('employee_id', req.user.id)
+          .eq('is_active', true);
 
-        if (activeConnections.length === 0) {
+        if (connectionsError) throw connectionsError;
+        if (!activeConnections?.length) {
           return res.json([]); // Return empty array if no active connections
         }
       }

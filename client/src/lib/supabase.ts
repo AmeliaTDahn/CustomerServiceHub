@@ -10,7 +10,6 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// Types for database tables
 export type Tables = {
   users: {
     id: number;
@@ -26,6 +25,13 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  business_employees: {
+    id: number;
+    business_profile_id: number;
+    employee_id: number;
+    is_active: boolean;
+    created_at: string;
+  };
   tickets: {
     id: number;
     title: string;
@@ -37,5 +43,4 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
-  // Add other table types as needed
 };

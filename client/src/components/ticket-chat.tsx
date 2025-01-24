@@ -117,8 +117,19 @@ export default function TicketChat({ ticketId, directMessageUserId, chatType = '
 
       if (error) throw error;
       
-      if (user?.role === 'employee' && data.claimed_by_id !== user.id) {
-        throw new Error('You can only view chats of tickets you have claimed');
+      // For employees, check if they have access to the business
+      if (user?.role === 'employee') {
+        const { data: hasAccess } = await supabase
+          .from('business_employees')
+          .select('*')
+          .eq('employee_id', user.id)
+          .eq('business_profile_id', data.business_profile_id)
+          .eq('is_active', true)
+          .single();
+
+        if (!hasAccess) {
+          throw new Error('You do not have access to this ticket');
+        }
       }
       
       return data;

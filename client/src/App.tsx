@@ -49,8 +49,6 @@ function Router() {
         <Route path="/messages">
           {user.role === "employee" || user.role === "business" ? (
             <EmployeeMessages />
-          ) : user.role === "customer" ? (
-            <CustomerMessages />
           ) : (
             <NotFound />
           )}
